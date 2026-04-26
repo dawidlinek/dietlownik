@@ -14,7 +14,7 @@ async function getLeaves(companyId: string): Promise<PriceLeaf[]> {
        d.is_menu_configuration,
        co.delivery_on_saturday
      FROM diet_calories dc
-     JOIN diet_options do2
+     LEFT JOIN diet_options do2
        ON do2.diet_option_id = dc.diet_option_id
       AND do2.tier_id        = dc.tier_id
       AND do2.diet_id        = dc.diet_id
@@ -26,7 +26,7 @@ async function getLeaves(companyId: string): Promise<PriceLeaf[]> {
      WHERE dc.company_id = $1
        AND dc.valid_to IS NULL
        AND d.valid_to   IS NULL
-       AND do2.valid_to IS NULL`,
+       AND (dc.diet_option_id IS NULL OR do2.valid_to IS NULL)`,
     [companyId],
   );
   return rows;

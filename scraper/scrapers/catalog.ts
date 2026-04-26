@@ -175,16 +175,38 @@ export async function scrapeCatalog(companyId: string, cityId: number): Promise<
   await upsertCompany(companyId, constant, cityData);
   await upsertCompanyCity(companyId, cityId, cityData);
 
+  // dietPriceInfo gives kcal IDs for all diets (used for "ready"/non-tiered diets)
+  const dietPriceMap = new Map(
+    (cityData.dietPriceInfo ?? []).map(p => [p.dietId, p.dietCaloriesIds]),
+  );
+
   const activeDietIds: number[] = [];
+  let totalCalories = 0;
 
   for (const diet of constant.companyDiets ?? []) {
     await upsertDiet(companyId, diet);
     activeDietIds.push(diet.dietId);
 
-    for (const tier of diet.dietTiers ?? []) {
-      await upsertTier(companyId, diet.dietId, tier);
-      for (const opt of tier.dietOptions ?? []) {
-        await upsertOption(companyId, diet.dietId, tier.tierId, opt);
+    if ((diet.dietTiers ?? []).length > 0) {
+      // Tiered diet: full tree from /constant
+      for (const tier of diet.dietTiers) {
+        await upsertTier(companyId, diet.dietId, tier);
+        for (const opt of tier.dietOptions ?? []) {
+          await upsertOption(companyId, diet.dietId, tier.tierId, opt);
+          totalCalories += opt.dietCalories?.length ?? 0;
+        }
+      }
+    } else {
+      // Ready / flat diet: kcal IDs only from /city dietPriceInfo
+      const calIds = dietPriceMap.get(diet.dietId) ?? [];
+      for (const calId of calIds) {
+        await q(
+          `INSERT INTO diet_calories (diet_calories_id, diet_id, company_id, valid_from)
+           VALUES ($1,$2,$3,NOW())
+           ON CONFLICT (diet_calories_id) DO UPDATE SET valid_to = NULL, updated_at = NOW()`,
+          [calId, diet.dietId, companyId],
+        );
+        totalCalories++;
       }
     }
   }
@@ -197,14 +219,6 @@ export async function scrapeCatalog(companyId: string, cityId: number): Promise<
       [companyId, activeDietIds],
     );
   }
-
-  const totalCalories = (constant.companyDiets ?? []).reduce(
-    (s, d) => s + (d.dietTiers ?? []).reduce(
-      (s2, t) => s2 + (t.dietOptions ?? []).reduce((s3, o) => s3 + (o.dietCalories ?? []).length, 0),
-      0,
-    ),
-    0,
-  );
 
   console.log(`[catalog] ✓ ${companyId}: ${activeDietIds.length} diets, ${totalCalories} kcal nodes`);
 }

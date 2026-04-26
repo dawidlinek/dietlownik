@@ -118,11 +118,20 @@ export interface CitySearchResult {
   deliveryFee: number | null;
 }
 
+export interface DietPriceInfo {
+  dietId: number;
+  discountPrice: string;
+  defaultPrice: string;
+  dietCaloriesIds: number[];
+  dietPriceInCompanyPromotion: boolean;
+}
+
 export interface CityResponse {
   companyPriceCategory: string | null;
   companySettings: CompanySettings;
   lowestPrice: LowestPrice;
   citySearchResult: CitySearchResult;
+  dietPriceInfo: DietPriceInfo[];
 }
 
 // ── calculate-price ───────────────────────────────────────────────────────────
