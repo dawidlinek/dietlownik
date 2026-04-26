@@ -6,9 +6,9 @@ export type DaysRow = { order_days: number };
 
 export type CompanyRow = { company_id: string; name: string | null };
 
-export interface DashboardRow {
+/** One leaf row — a single (company, diet, tier, option, kcal) price observation. */
+export interface LeafRow {
   company_id: string;
-  company_name: string | null;
   diet_id: number;
   diet_name: string | null;
   diet_tag: string | null;
@@ -28,6 +28,28 @@ export interface DashboardRow {
   promo_codes: string[] | null;
   captured_at: string;
   prev_per_day: string | null;
+}
+
+/** A catering "tile" — one company, with its cheapest leaf surfaced. */
+export interface CateringTile {
+  company_id: string;
+  company_name: string | null;
+  awarded: boolean | null;
+  feedback_value: string | null;
+  feedback_number: number | null;
+  /** The single cheapest leaf for this company in the kcal range. */
+  cheapest: LeafRow;
+  /** All leaves for this company in the kcal range, sorted asc by price. */
+  leaves: LeafRow[];
+}
+
+export interface CateringPage {
+  tiles: CateringTile[];
+  total: number;          // total number of companies that have at least one leaf in range
+  page: number;           // 1-indexed
+  pageSize: number;
+  rangeMin: number | null;  // cheapest per-day price across ALL pages, for the header summary
+  rangeMax: number | null;  // costliest per-day price across ALL pages
 }
 
 export interface CampaignRow {
@@ -60,18 +82,50 @@ export async function getCities(): Promise<CityRow[]> {
   );
 }
 
-// ── 2. Kcal options for a city ──────────────────────────────────────────────
+// ── 2. Kcal range bounds for a city ─────────────────────────────────────────
 
-export async function getKcalOptions(cityId: number): Promise<number[]> {
-  const rows = await query<KcalRow>(
+export interface KcalBounds {
+  min: number;
+  max: number;
+  /** Distinct kcal values with enough data to be useful as preset chips. */
+  presets: number[];
+}
+
+const PRESET_CANDIDATES = [1200, 1500, 1800, 2000, 2500];
+const KCAL_HARD_CAP = 4000; // Filter junk like 6000/10000 outliers from filter UI.
+
+export async function getKcalBounds(cityId: number): Promise<KcalBounds> {
+  const [bounds] = await query<{ min: number | null; max: number | null }>(
+    `SELECT
+        MIN(dc.calories)::int AS min,
+        MAX(dc.calories)::int AS max
+     FROM diet_calories dc
+     JOIN company_cities cc ON cc.company_id = dc.company_id
+     WHERE cc.city_id = $1
+       AND dc.calories IS NOT NULL
+       AND dc.calories <= $2
+       AND dc.valid_to IS NULL`,
+    [cityId, KCAL_HARD_CAP]
+  );
+
+  // Which presets actually have data in this city?
+  const hits = await query<{ calories: number }>(
     `SELECT DISTINCT dc.calories
      FROM diet_calories dc
      JOIN company_cities cc ON cc.company_id = dc.company_id
-     WHERE cc.city_id = $1 AND dc.calories IS NOT NULL
-     ORDER BY dc.calories ASC`,
-    [cityId]
+     WHERE cc.city_id = $1
+       AND dc.calories = ANY($2::int[])
+       AND dc.valid_to IS NULL`,
+    [cityId, PRESET_CANDIDATES]
   );
-  return rows.map((r) => r.calories);
+  const present = new Set(hits.map((h) => h.calories));
+  const presets = PRESET_CANDIDATES.filter((p) => present.has(p));
+
+  return {
+    min: bounds?.min ?? 1000,
+    max: bounds?.max ?? 3000,
+    presets: presets.length ? presets : PRESET_CANDIDATES,
+  };
 }
 
 // ── 3. Day options for a city ───────────────────────────────────────────────
@@ -87,105 +141,212 @@ export async function getDayOptions(cityId: number): Promise<number[]> {
   return rows.map((r) => r.order_days);
 }
 
-// ── 4. Dashboard data ───────────────────────────────────────────────────────
-// One row per (company, diet, tier, diet_option, diet_calories) combination
-// matching the chosen kcal target, with the latest price for the chosen days.
+// ── 4. The catering page (flat tiles, paginated) ────────────────────────────
 //
-// We compute the latest and second-latest captures inline with window functions
-// so this works without depending on the latest_prices view.
+// One row per company in the city. Each row carries:
+//   - the cheapest leaf (for ranking + the collapsed display)
+//   - every leaf in range (for the drill-down table; sorted asc)
+//   - rating / awarded info from the companies table
+// `total` is the total number of companies in range (for pagination).
 
-export async function getDashboardRows(args: {
+const PAGE_SIZE = 25;
+const MAX_PAGE_SIZE = 200;
+
+export async function getCateringPage(args: {
   cityId: number;
-  kcal: number;
+  kcalMin: number;
+  kcalMax: number;
   days: number;
-}): Promise<DashboardRow[]> {
-  const { cityId, kcal, days } = args;
-  return query<DashboardRow>(
+  page: number;          // 1-indexed
+  pageSize?: number;
+}): Promise<CateringPage> {
+  const { cityId, kcalMin, kcalMax, days } = args;
+  const page = Math.max(1, args.page);
+  const pageSize = Math.min(MAX_PAGE_SIZE, Math.max(1, args.pageSize ?? PAGE_SIZE));
+  const offset = (page - 1) * pageSize;
+
+  // We DISTINCT ON (company, dc_id, tier|null, option|null, days) to capture
+  // the latest capture per real combo (the same dc_id can appear under
+  // multiple tiers — verified live: different prices). Then we filter by
+  // calories range, group per company, sort ascending by cheapest.
+  type PageRow = {
+    company_id: string;
+    company_name: string | null;
+    awarded: boolean | null;
+    feedback_value: string | null;
+    feedback_number: number | null;
+    cheapest: string;       // numeric cast — comparable for ordering
+    leaves: string;          // jsonb agg
+    total_companies: number;
+    overall_min: string | null;
+    overall_max: string | null;
+  };
+
+  const rows = await query<PageRow>(
     `
     WITH ranked AS (
       SELECT
         p.*,
         ROW_NUMBER() OVER (
-          PARTITION BY p.company_id, p.city_id, p.diet_calories_id, p.order_days
+          PARTITION BY p.company_id, p.diet_calories_id,
+                       COALESCE(p.tier_diet_option_id, ''), p.order_days
           ORDER BY p.captured_at DESC, p.id DESC
         ) AS rn
       FROM prices p
-      WHERE p.city_id = $1
+      WHERE p.city_id    = $1
         AND p.order_days = $2
         AND (p.promo_codes IS NULL OR cardinality(p.promo_codes) = 0)
     ),
-    latest AS (
-      SELECT * FROM ranked WHERE rn = 1
+    leaves_in_range AS (
+      SELECT
+        r.company_id,
+        dc.diet_id,
+        d.name                                  AS diet_name,
+        d.diet_tag,
+        d.description                           AS diet_description,
+        dc.tier_id,
+        t.name                                  AS tier_name,
+        dc.diet_option_id,
+        do2.name                                AS diet_option_name,
+        dc.diet_calories_id,
+        dc.calories,
+        r.per_day_cost::text                    AS per_day_cost,
+        r.per_day_cost_with_discounts::text     AS per_day_cost_with_discounts,
+        r.total_cost::text                      AS total_cost,
+        r.total_cost_without_discounts::text    AS total_cost_without_discounts,
+        r.total_promo_code_discount::text       AS total_promo_code_discount,
+        r.total_order_length_discount::text     AS total_order_length_discount,
+        r.promo_codes,
+        r.captured_at::text                     AS captured_at,
+        r.per_day_cost_with_discounts::numeric  AS per_day_num,
+        r.tier_diet_option_id
+      FROM ranked r
+      -- Use the composite tier_diet_option_id to disambiguate when the same
+      -- dietCaloriesId lives under multiple tiers. For ready diets both sides
+      -- are NULL — match via COALESCE.
+      JOIN diet_calories dc
+        ON dc.diet_calories_id = r.diet_calories_id
+       AND dc.company_id        = r.company_id
+       AND (
+         (dc.tier_id IS NULL AND dc.diet_option_id IS NULL AND r.tier_diet_option_id IS NULL)
+         OR (
+           dc.tier_id IS NOT NULL AND dc.diet_option_id IS NOT NULL
+           AND r.tier_diet_option_id = dc.tier_id || '-' || dc.diet_option_id
+         )
+       )
+      JOIN diets d
+        ON d.diet_id = dc.diet_id AND d.company_id = dc.company_id
+      LEFT JOIN tiers t
+        ON t.tier_id = dc.tier_id AND t.diet_id = dc.diet_id AND t.company_id = dc.company_id
+      LEFT JOIN diet_options do2
+        ON do2.diet_option_id = dc.diet_option_id
+       AND do2.tier_id = dc.tier_id
+       AND do2.diet_id = dc.diet_id
+       AND do2.company_id = dc.company_id
+      WHERE r.rn = 1
+        AND dc.calories BETWEEN $3 AND $4
+        AND dc.valid_to IS NULL
+        AND d.valid_to  IS NULL
     ),
+    -- Previous (rn = 2) capture, for the price delta arrow.
     prev AS (
-      SELECT * FROM ranked WHERE rn = 2
+      SELECT
+        company_id, diet_calories_id,
+        COALESCE(tier_diet_option_id, '') AS tdo_key,
+        order_days,
+        per_day_cost_with_discounts::text AS prev_per_day
+      FROM ranked
+      WHERE rn = 2
+    ),
+    enriched AS (
+      SELECT
+        l.*,
+        prev.prev_per_day
+      FROM leaves_in_range l
+      LEFT JOIN prev
+        ON prev.company_id       = l.company_id
+       AND prev.diet_calories_id = l.diet_calories_id
+       AND prev.tdo_key          = COALESCE(l.tier_diet_option_id, '')
+    ),
+    grouped AS (
+      SELECT
+        e.company_id,
+        MIN(e.per_day_num) AS cheapest_num,
+        json_agg(
+          json_build_object(
+            'company_id',                    e.company_id,
+            'diet_id',                       e.diet_id,
+            'diet_name',                     e.diet_name,
+            'diet_tag',                      e.diet_tag,
+            'diet_description',              e.diet_description,
+            'tier_id',                       e.tier_id,
+            'tier_name',                     e.tier_name,
+            'diet_option_id',                e.diet_option_id,
+            'diet_option_name',              e.diet_option_name,
+            'diet_calories_id',              e.diet_calories_id,
+            'calories',                      e.calories,
+            'per_day_cost',                  e.per_day_cost,
+            'per_day_cost_with_discounts',   e.per_day_cost_with_discounts,
+            'total_cost',                    e.total_cost,
+            'total_cost_without_discounts',  e.total_cost_without_discounts,
+            'total_promo_code_discount',     e.total_promo_code_discount,
+            'total_order_length_discount',   e.total_order_length_discount,
+            'promo_codes',                   e.promo_codes,
+            'captured_at',                   e.captured_at,
+            'prev_per_day',                  e.prev_per_day
+          )
+          ORDER BY e.per_day_num ASC, e.calories ASC
+        ) AS leaves
+      FROM enriched e
+      GROUP BY e.company_id
     )
     SELECT
-      l.company_id,
-      co.name                            AS company_name,
-      dc.diet_id,
-      d.name                             AS diet_name,
-      d.diet_tag                         AS diet_tag,
-      d.description                      AS diet_description,
-      dc.tier_id,
-      t.name                             AS tier_name,
-      dc.diet_option_id,
-      do2.name                           AS diet_option_name,
-      dc.diet_calories_id,
-      dc.calories,
-      l.per_day_cost::text               AS per_day_cost,
-      l.per_day_cost_with_discounts::text AS per_day_cost_with_discounts,
-      l.total_cost::text                 AS total_cost,
-      l.total_cost_without_discounts::text AS total_cost_without_discounts,
-      l.total_promo_code_discount::text  AS total_promo_code_discount,
-      l.total_order_length_discount::text AS total_order_length_discount,
-      l.promo_codes,
-      l.captured_at,
-      prev.per_day_cost_with_discounts::text AS prev_per_day
-    FROM latest l
-    JOIN diet_calories dc ON dc.diet_calories_id = l.diet_calories_id
-    JOIN companies co     ON co.company_id = l.company_id
-    JOIN diets d          ON d.diet_id = dc.diet_id AND d.company_id = dc.company_id
-    LEFT JOIN tiers t
-      ON t.tier_id = dc.tier_id
-     AND t.diet_id = dc.diet_id
-     AND t.company_id = dc.company_id
-    LEFT JOIN diet_options do2
-      ON do2.diet_option_id = dc.diet_option_id
-     AND do2.tier_id = dc.tier_id
-     AND do2.diet_id = dc.diet_id
-     AND do2.company_id = dc.company_id
-    LEFT JOIN prev
-      ON prev.company_id = l.company_id
-     AND prev.city_id = l.city_id
-     AND prev.diet_calories_id = l.diet_calories_id
-     AND prev.order_days = l.order_days
-    WHERE dc.calories = $3
-    ORDER BY
-      CASE WHEN d.diet_tag = 'STANDARD' THEN 0 ELSE 1 END,
-      d.diet_tag NULLS LAST,
-      co.name NULLS LAST,
-      d.name NULLS LAST,
-      t.name NULLS LAST
+      g.company_id,
+      co.name                          AS company_name,
+      co.awarded                       AS awarded,
+      co.feedback_value::text          AS feedback_value,
+      co.feedback_number,
+      g.cheapest_num::text             AS cheapest,
+      g.leaves::text                   AS leaves,
+      COUNT(*) OVER ()::int            AS total_companies,
+      MIN(g.cheapest_num) OVER ()::text AS overall_min,
+      MAX(g.cheapest_num) OVER ()::text AS overall_max
+    FROM grouped g
+    JOIN companies co ON co.company_id = g.company_id
+    ORDER BY g.cheapest_num ASC, g.company_id ASC
+    LIMIT $5 OFFSET $6
     `,
-    [cityId, days, kcal]
+    [cityId, days, kcalMin, kcalMax, pageSize, offset]
   );
+
+  const tiles: CateringTile[] = rows.map((r) => {
+    const leaves = JSON.parse(r.leaves) as LeafRow[];
+    return {
+      company_id: r.company_id,
+      company_name: r.company_name,
+      awarded: r.awarded,
+      feedback_value: r.feedback_value,
+      feedback_number: r.feedback_number,
+      cheapest: leaves[0],
+      leaves,
+    };
+  });
+
+  const total = rows[0]?.total_companies ?? 0;
+  const overallMin = rows[0]?.overall_min ?? null;
+  const overallMax = rows[0]?.overall_max ?? null;
+
+  return {
+    tiles,
+    total,
+    page,
+    pageSize,
+    rangeMin: overallMin ? parseFloat(overallMin) : null,
+    rangeMax: overallMax ? parseFloat(overallMax) : null,
+  };
 }
 
-// ── 5. Companies operating in a city (for the summary line) ─────────────────
-
-export async function getCompaniesInCity(cityId: number): Promise<CompanyRow[]> {
-  return query<CompanyRow>(
-    `SELECT c.company_id, c.name
-     FROM companies c
-     JOIN company_cities cc ON cc.company_id = c.company_id
-     WHERE cc.city_id = $1
-     ORDER BY c.company_id ASC`,
-    [cityId]
-  );
-}
-
-// ── 6. Active campaigns ─────────────────────────────────────────────────────
+// ── 5. Active campaigns ─────────────────────────────────────────────────────
 
 export async function getActiveCampaigns(): Promise<CampaignRow[]> {
   // active_promotions (v4) supersedes active_campaigns (v2). Try v4 first,
@@ -227,7 +388,7 @@ export async function getActiveCampaigns(): Promise<CampaignRow[]> {
   }
 }
 
-// ── 7. Price history for one (company, diet_calories, city, days) combo ────
+// ── 6. Price history for one (company, diet_calories, city, days) combo ────
 
 export async function getPriceHistory(args: {
   companyId: string;

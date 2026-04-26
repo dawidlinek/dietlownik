@@ -24,10 +24,8 @@ export interface CityOption {
 
 export interface HeaderProps {
   cities: CityOption[];
-  kcalOptions: number[];
   activeCityId: number;
   activeCityName: string;
-  activeKcal: number;
 }
 
 function useUrlSetter() {
@@ -94,10 +92,8 @@ function PickerButton({
 
 export function Header({
   cities,
-  kcalOptions,
   activeCityId,
   activeCityName,
-  activeKcal,
 }: HeaderProps) {
   const setUrl = useUrlSetter();
 
@@ -119,24 +115,11 @@ export function Header({
         </a>
 
         <div className="flex items-center gap-1">
-          <PickerButton
-            label="Miasto"
-            value={activeCityName || "Wrocław"}
-          >
+          <PickerButton label="Miasto" value={activeCityName || "Wrocław"}>
             <CityPicker
               cities={cities}
               activeId={activeCityId}
               onSelect={(id) => setUrl({ city: id })}
-            />
-          </PickerButton>
-
-          <span aria-hidden className="text-[var(--color-bone)]">·</span>
-
-          <PickerButton label="Kcal" value={`${activeKcal} kcal`}>
-            <KcalPicker
-              options={kcalOptions}
-              active={activeKcal}
-              onSelect={(k) => setUrl({ kcal: k })}
             />
           </PickerButton>
         </div>
@@ -184,39 +167,3 @@ function CityPicker({
   );
 }
 
-function KcalPicker({
-  options,
-  active,
-  onSelect,
-  onPick,
-}: {
-  options: number[];
-  active: number;
-  onSelect: (k: number) => void;
-  onPick?: () => void;
-}) {
-  return (
-    <Command>
-      <CommandList>
-        <CommandGroup heading="Kalorie">
-          {options.map((k) => (
-            <CommandItem
-              key={k}
-              value={String(k)}
-              onSelect={() => {
-                onSelect(k);
-                onPick?.();
-              }}
-              className="justify-between tnum"
-            >
-              <span>{k} kcal</span>
-              {k === active && (
-                <span className="text-[var(--color-amber)] text-[12px]">●</span>
-              )}
-            </CommandItem>
-          ))}
-        </CommandGroup>
-      </CommandList>
-    </Command>
-  );
-}

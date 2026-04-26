@@ -1,26 +1,30 @@
 import {
   getCities,
-  getKcalOptions,
+  getKcalBounds,
   getDayOptions,
-  getDashboardRows,
+  getCateringPage,
   getActiveCampaigns,
 } from "@/lib/queries";
 import { Header } from "@/components/header";
-import { FilterStrip } from "@/components/filter-strip";
-import { CheapestSummary } from "@/components/cheapest-summary";
-import { AllOffersDisclosure } from "@/components/all-offers-disclosure";
+import { KcalRangeFilter } from "@/components/kcal-range-filter";
+import { CateringList } from "@/components/catering-list";
 
 export const dynamic = "force-dynamic";
 
 const DEFAULT_CITY_ID = 986283; // Wrocław
-const DEFAULT_KCAL = 1500;
+const DEFAULT_KCAL_MIN = 1500;
+const DEFAULT_KCAL_MAX = 2000;
 const DEFAULT_DAYS = 10;
+const DEFAULT_PAGE_SIZE = 25;
 
 interface PageProps {
   searchParams: Promise<{
     city?: string;
-    kcal?: string;
+    kcal?: string;        // legacy: single value → kcal_min=kcal_max=kcal
+    kcal_min?: string;
+    kcal_max?: string;
     days?: string;
+    page?: string;
   }>;
 }
 
@@ -28,20 +32,41 @@ export default async function Page({ searchParams }: PageProps) {
   const params = await searchParams;
 
   const cityId = parseIntOr(params.city, DEFAULT_CITY_ID);
-  const kcal = parseIntOr(params.kcal, DEFAULT_KCAL);
-  const days = parseIntOr(params.days, DEFAULT_DAYS);
 
-  const [cities, kcalOptions, dayOptions, rows, campaigns] = await Promise.all([
+  // Legacy ?kcal=X support: collapse to a single-value range.
+  const legacyKcal = params.kcal ? parseIntOr(params.kcal, NaN) : NaN;
+  let kcalMin = parseIntOr(params.kcal_min, Number.isFinite(legacyKcal) ? legacyKcal : DEFAULT_KCAL_MIN);
+  let kcalMax = parseIntOr(params.kcal_max, Number.isFinite(legacyKcal) ? legacyKcal : DEFAULT_KCAL_MAX);
+  if (kcalMin > kcalMax) [kcalMin, kcalMax] = [kcalMax, kcalMin];
+
+  const days = parseIntOr(params.days, DEFAULT_DAYS);
+  const page = Math.max(1, parseIntOr(params.page, 1));
+
+  const [cities, bounds, dayOptions, pageData, campaigns] = await Promise.all([
     getCities().catch(() => [] as Awaited<ReturnType<typeof getCities>>),
-    getKcalOptions(cityId).catch(
-      () => [] as Awaited<ReturnType<typeof getKcalOptions>>
-    ),
+    getKcalBounds(cityId).catch(() => ({
+      min: 1000,
+      max: 3000,
+      presets: [1200, 1500, 1800, 2000, 2500],
+    })),
     getDayOptions(cityId).catch(
       () => [] as Awaited<ReturnType<typeof getDayOptions>>
     ),
-    getDashboardRows({ cityId, kcal, days }).catch(
-      () => [] as Awaited<ReturnType<typeof getDashboardRows>>
-    ),
+    getCateringPage({
+      cityId,
+      kcalMin,
+      kcalMax,
+      days,
+      page,
+      pageSize: DEFAULT_PAGE_SIZE,
+    }).catch(() => ({
+      tiles: [],
+      total: 0,
+      page,
+      pageSize: DEFAULT_PAGE_SIZE,
+      rangeMin: null,
+      rangeMax: null,
+    })),
     getActiveCampaigns().catch(
       () => [] as Awaited<ReturnType<typeof getActiveCampaigns>>
     ),
@@ -51,45 +76,54 @@ export default async function Page({ searchParams }: PageProps) {
     cities.find((c) => c.city_id === cityId) ??
     ({ city_id: cityId, name: "Wrocław" } as const);
 
-  const latestCaptureAt = rows.reduce<string | null>((acc, r) => {
-    if (!r.captured_at) return acc;
-    if (!acc) return r.captured_at;
-    return r.captured_at > acc ? r.captured_at : acc;
+  // Latest capture across visible tiles for the freshness footer.
+  const latestCaptureAt = pageData.tiles.reduce<string | null>((acc, t) => {
+    const cap = t.cheapest.captured_at;
+    if (!cap) return acc;
+    if (!acc) return cap;
+    return cap > acc ? cap : acc;
   }, null);
 
-  const safeKcal = kcalOptions.includes(kcal) ? kcal : kcalOptions[0] ?? kcal;
+  // Don't silently clamp the requested range — if a user asked for 9000-10000
+  // we want to render the empty state, not pretend they asked for 4000. The
+  // KcalRangeFilter input clamps live typing visually; bounds are passed
+  // through so it knows the slider extents.
+  const safeMin = kcalMin;
+  const safeMax = kcalMax;
   const safeDays = dayOptions.includes(days) ? days : dayOptions[0] ?? days;
 
   return (
     <>
       <Header
         cities={cities}
-        kcalOptions={kcalOptions.length ? kcalOptions : [DEFAULT_KCAL]}
         activeCityId={activeCity.city_id}
         activeCityName={activeCity.name}
-        activeKcal={safeKcal}
       />
 
-      <FilterStrip
-        kcalOptions={kcalOptions.length ? kcalOptions : [DEFAULT_KCAL]}
+      <KcalRangeFilter
+        dataMin={bounds.min}
+        dataMax={bounds.max}
+        presets={bounds.presets}
+        activeMin={safeMin}
+        activeMax={safeMax}
         dayOptions={dayOptions.length ? dayOptions : [DEFAULT_DAYS]}
-        activeKcal={safeKcal}
         activeDays={safeDays}
       />
 
       <main className="flex-1">
-        <CheapestSummary
-          rows={rows}
+        <CateringList
+          tiles={pageData.tiles}
+          total={pageData.total}
+          page={pageData.page}
+          pageSize={pageData.pageSize}
           campaigns={campaigns}
-          cityName={activeCity.name}
-          kcal={safeKcal}
-          days={safeDays}
-        />
-
-        <AllOffersDisclosure
-          rows={rows}
           cityId={cityId}
           days={safeDays}
+          kcalMin={safeMin}
+          kcalMax={safeMax}
+          cityName={activeCity.name}
+          rangeMin={pageData.rangeMin}
+          rangeMax={pageData.rangeMax}
           latestCaptureAt={latestCaptureAt}
         />
       </main>
