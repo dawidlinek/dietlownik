@@ -5,11 +5,11 @@ declare global {
   var __dietlownikPool: Pool | undefined;
 }
 
-function makePool() {
+function makePool(): Pool {
   const url = process.env.DATABASE_URL;
   if (!url) {
     throw new Error(
-      "DATABASE_URL is not set. Expected it in /Users/rei/projects/dietlownik/.env (loaded via next.config.ts)."
+      "DATABASE_URL is not set. Provide it via .env (dev) or environment (prod)."
     );
   }
   return new Pool({
@@ -20,16 +20,20 @@ function makePool() {
   });
 }
 
-export const pool: Pool = global.__dietlownikPool ?? makePool();
-
-if (process.env.NODE_ENV !== "production") {
+// Lazy: pool is created on first call, then cached on globalThis so HMR
+// doesn't leak connections in dev. Module load must NOT throw — Next collects
+// page data at build time without env vars set.
+function getPool(): Pool {
+  if (global.__dietlownikPool) return global.__dietlownikPool;
+  const pool = makePool();
   global.__dietlownikPool = pool;
+  return pool;
 }
 
 export async function query<T extends QueryResultRow = QueryResultRow>(
   text: string,
   params: unknown[] = []
 ) {
-  const res = await pool.query<T>(text, params as never[]);
+  const res = await getPool().query<T>(text, params as never[]);
   return res.rows;
 }
