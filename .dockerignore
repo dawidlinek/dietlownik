@@ -16,11 +16,12 @@ dist
 .env.local
 .env.*.local
 
-# Scraper code, tests, and migrations — not needed for the web image
-scraper
-db
+# Web build doesn't need vitest config or the legacy Python scraper. Tests
+# stay out of the image; everything else under scraper/ + db/ ships so the
+# image can run scheduled scraper / migration jobs (see Dockerfile).
 vitest.config.ts
 scrape.py
+scraper/__tests__
 
 # Reverse-engineering artifacts (often contain auth tokens)
 *.har
