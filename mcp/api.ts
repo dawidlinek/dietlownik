@@ -57,6 +57,55 @@ function refreshSessionFromResponse(
   setSession(email, rememberMe, sessionCookie);
 }
 
+function isCloudflareChallenge(status: number, body: string): boolean {
+  if (status !== 403 && status !== 503 && status !== 429) return false;
+  return body.includes("Just a moment") || body.includes("cf-browser-verification") || body.includes("__cf_chl_");
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+async function fetchWithRetry(url: string, init: RequestInit): Promise<Response> {
+  const RETRY_MAX = 3;
+  let lastRes: Response | undefined;
+
+  for (let attempt = 1; attempt <= RETRY_MAX; attempt++) {
+    try {
+      const res = await fetch(url, init);
+      const cloned = res.clone();
+      const text = await cloned.text().catch(() => "");
+      
+      if (!res.ok && isCloudflareChallenge(res.status, text)) {
+        if (attempt < RETRY_MAX) {
+          const wait = 5000 * 2 ** (attempt - 1) + Math.random() * 2000;
+          console.warn(`[MCP] Cloudflare blockage on ${url}. Retrying in ${Math.round(wait)}ms`);
+          await sleep(wait);
+          continue;
+        }
+      }
+      
+      if (!res.ok && res.status >= 500) {
+        if (attempt < RETRY_MAX) {
+          const wait = 1000 * attempt;
+          console.warn(`[MCP] 5xx error on ${url}. Retrying in ${wait}ms`);
+          await sleep(wait);
+          continue;
+        }
+      }
+      
+      return res;
+    } catch (err: any) {
+      if (attempt < RETRY_MAX && (err.message?.includes("fetch failed") || err.message?.includes("ECONN"))) {
+        await sleep(1000 * attempt);
+        continue;
+      }
+      throw err;
+    }
+  }
+  return lastRes as Response;
+}
+
 async function parseResponse<T>(res: Response, method: string, path: string): Promise<T> {
   const text = await res.text();
   if (!res.ok) {
@@ -95,7 +144,7 @@ export async function loginRequest(
   form.set("deviceToken", LOGIN_DEVICE_TOKEN);
   form.set("notificationsPermitted", "true");
 
-  const response = await fetch(buildUrl(LOGIN_PATH), {
+  const response = await fetchWithRetry(buildUrl(LOGIN_PATH), {
     method: "POST",
     headers: new Headers(MOBILE_HEADERS),
     body: form,
@@ -136,7 +185,7 @@ export async function authGet<T>(
     throw new HttpError("GET", path, 401, `No stored session for ${email}`);
   }
 
-  const response = await fetch(buildUrl(path), {
+  const response = await fetchWithRetry(buildUrl(path), {
     method: "GET",
     headers: authHeaders(session, companyId ? { "company-id": companyId } : {}),
     cache: "no-store",
@@ -157,7 +206,7 @@ export async function authPost<T>(
     throw new HttpError("POST", path, 401, `No stored session for ${email}`);
   }
 
-  const response = await fetch(buildUrl(path), {
+  const response = await fetchWithRetry(buildUrl(path), {
     method: "POST",
     headers: authHeaders(session, {
       "content-type": "application/json",
@@ -174,7 +223,7 @@ export async function anonGet<T>(
   path: string,
   companyId?: string
 ): Promise<T> {
-  const response = await fetch(buildUrl(path), {
+  const response = await fetchWithRetry(buildUrl(path), {
     method: "GET",
     headers: anonHeaders(companyId ? { "company-id": companyId } : {}),
   });
