@@ -23,9 +23,12 @@ export interface LeafRow {
   per_day_cost_with_discounts: string | null;
   total_cost: string | null;
   total_cost_without_discounts: string | null;
+  total_delivery_cost: string | null;
   total_promo_code_discount: string | null;
   total_order_length_discount: string | null;
   promo_codes: string[] | null;
+  applied_promo_codes: string[] | null;
+  effective_per_day: string | null;
   captured_at: string;
   prev_per_day: string | null;
 }
@@ -69,6 +72,21 @@ export interface PriceHistoryPoint {
   bucket: string; // ISO date
   price: number;
   promo_codes: string[] | null;
+}
+
+export interface VariantMealRow {
+  slot_name: string;
+  meal_id: number;
+  name: string;
+  label: string | null;
+  kcal: number | null;
+  protein_g: number | null;
+  fat_g: number | null;
+  carbs_g: number | null;
+  image_url: string | null;
+  allergens: string[] | null;
+  last_seen_date: string; // YYYY-MM-DD
+  occurrences: number;
 }
 
 // ── 1. Cities ───────────────────────────────────────────────────────────────
@@ -184,18 +202,38 @@ export async function getCateringPage(args: {
 
   const rows = await query<PageRow>(
     `
-    WITH ranked AS (
-      SELECT
+    -- 1. Bucket each price row by its capture day, and within each
+    --    (combo, day) pick the row with MIN(total_cost). Order-length and
+    --    promo-code discounts DO NOT stack — the API picks whichever is
+    --    better — so the cheapest variant on a given day IS the offer.
+    WITH cheapest_per_day AS (
+      SELECT DISTINCT ON (
+        p.company_id, p.diet_calories_id,
+        COALESCE(p.tier_diet_option_id, ''), p.order_days,
+        date_trunc('day', p.captured_at)
+      )
         p.*,
-        ROW_NUMBER() OVER (
-          PARTITION BY p.company_id, p.diet_calories_id,
-                       COALESCE(p.tier_diet_option_id, ''), p.order_days
-          ORDER BY p.captured_at DESC, p.id DESC
-        ) AS rn
+        date_trunc('day', p.captured_at) AS capture_day
       FROM prices p
       WHERE p.city_id    = $1
         AND p.order_days = $2
-        AND (p.promo_codes IS NULL OR cardinality(p.promo_codes) = 0)
+      ORDER BY
+        p.company_id, p.diet_calories_id,
+        COALESCE(p.tier_diet_option_id, ''), p.order_days,
+        date_trunc('day', p.captured_at),
+        p.total_cost ASC NULLS LAST,
+        p.captured_at DESC, p.id DESC
+    ),
+    -- 2. Among day-buckets per combo, rn=1 is current, rn=2 is prev.
+    ranked AS (
+      SELECT
+        c.*,
+        ROW_NUMBER() OVER (
+          PARTITION BY c.company_id, c.diet_calories_id,
+                       COALESCE(c.tier_diet_option_id, ''), c.order_days
+          ORDER BY c.capture_day DESC
+        ) AS rn
+      FROM cheapest_per_day c
     ),
     leaves_in_range AS (
       SELECT
@@ -214,11 +252,15 @@ export async function getCateringPage(args: {
         r.per_day_cost_with_discounts::text     AS per_day_cost_with_discounts,
         r.total_cost::text                      AS total_cost,
         r.total_cost_without_discounts::text    AS total_cost_without_discounts,
+        r.total_delivery_cost::text             AS total_delivery_cost,
         r.total_promo_code_discount::text       AS total_promo_code_discount,
         r.total_order_length_discount::text     AS total_order_length_discount,
         r.promo_codes,
+        r.promo_codes                           AS applied_promo_codes,
         r.captured_at::text                     AS captured_at,
-        r.per_day_cost_with_discounts::numeric  AS per_day_num,
+        -- Effective per-day = (food + delivery) / days, the truthful number.
+        ((r.total_cost / NULLIF(r.order_days, 0))::numeric(10,2))::text AS effective_per_day,
+        ((r.total_cost / NULLIF(r.order_days, 0))::numeric(10,2))       AS effective_per_day_num,
         r.tier_diet_option_id
       FROM ranked r
       -- Use the composite tier_diet_option_id to disambiguate when the same
@@ -248,13 +290,15 @@ export async function getCateringPage(args: {
         AND dc.valid_to IS NULL
         AND d.valid_to  IS NULL
     ),
-    -- Previous (rn = 2) capture, for the price delta arrow.
+    -- Previous (rn = 2) day-bucket capture, for the price delta arrow.
+    -- We compare effective per-day (total/days) so the delta reflects the
+    -- truthful price the user pays today vs. previously.
     prev AS (
       SELECT
         company_id, diet_calories_id,
         COALESCE(tier_diet_option_id, '') AS tdo_key,
         order_days,
-        per_day_cost_with_discounts::text AS prev_per_day
+        ((total_cost / NULLIF(order_days, 0))::numeric(10,2))::text AS prev_per_day
       FROM ranked
       WHERE rn = 2
     ),
@@ -271,7 +315,7 @@ export async function getCateringPage(args: {
     grouped AS (
       SELECT
         e.company_id,
-        MIN(e.per_day_num) AS cheapest_num,
+        MIN(e.effective_per_day_num) AS cheapest_num,
         json_agg(
           json_build_object(
             'company_id',                    e.company_id,
@@ -289,13 +333,16 @@ export async function getCateringPage(args: {
             'per_day_cost_with_discounts',   e.per_day_cost_with_discounts,
             'total_cost',                    e.total_cost,
             'total_cost_without_discounts',  e.total_cost_without_discounts,
+            'total_delivery_cost',           e.total_delivery_cost,
             'total_promo_code_discount',     e.total_promo_code_discount,
             'total_order_length_discount',   e.total_order_length_discount,
             'promo_codes',                   e.promo_codes,
+            'applied_promo_codes',           e.applied_promo_codes,
+            'effective_per_day',             e.effective_per_day,
             'captured_at',                   e.captured_at,
             'prev_per_day',                  e.prev_per_day
           )
-          ORDER BY e.per_day_num ASC, e.calories ASC
+          ORDER BY e.effective_per_day_num ASC, e.calories ASC
         ) AS leaves
       FROM enriched e
       GROUP BY e.company_id
@@ -389,6 +436,64 @@ export async function getActiveCampaigns(): Promise<CampaignRow[]> {
 }
 
 // ── 6. Price history for one (company, diet_calories, city, days) combo ────
+
+// ── 7. Variant meals — what's been on the menu in the last 14 days ─────────
+
+export async function getVariantMeals(args: {
+  companyId: string;
+  dietCaloriesId: number;
+  tierId: number | null;
+}): Promise<VariantMealRow[]> {
+  const { companyId, dietCaloriesId, tierId } = args;
+  // The menu scraper writes a single canonical menu per (tier_id, diet_option_id),
+  // typically at the LOWEST kcal in that group. Sibling leaves (same option,
+  // different kcal) share the same dish lineup with only portion sizes differing,
+  // so meals_by_dc_id is sparse. Look up the (tier_id, diet_option_id) of the
+  // requested leaf and pull menus from any sibling under that same option.
+  return query<VariantMealRow>(
+    `
+    WITH target AS (
+      SELECT diet_id, tier_id, diet_option_id
+      FROM diet_calories
+      WHERE company_id = $1 AND diet_calories_id = $2
+      ORDER BY (COALESCE(tier_id::text,'') = COALESCE($3::int::text,'')) DESC
+      LIMIT 1
+    ),
+    siblings AS (
+      SELECT dc.diet_calories_id
+      FROM diet_calories dc, target t
+      WHERE dc.company_id = $1
+        AND dc.diet_id = t.diet_id
+        AND COALESCE(dc.tier_id, -1)        = COALESCE(t.tier_id, -1)
+        AND COALESCE(dc.diet_option_id, -1) = COALESCE(t.diet_option_id, -1)
+    )
+    SELECT
+      dm.slot_name,
+      m.id::int                                    AS meal_id,
+      m.name,
+      m.label,
+      m.kcal::float                                AS kcal,
+      m.protein_g::float                           AS protein_g,
+      m.fat_g::float                               AS fat_g,
+      m.carbs_g::float                             AS carbs_g,
+      m.image_url,
+      m.allergens,
+      to_char(MAX(dm.menu_date), 'YYYY-MM-DD')     AS last_seen_date,
+      COUNT(DISTINCT dm.menu_date)::int            AS occurrences
+    FROM daily_menu dm
+    JOIN meals m ON m.id = dm.meal_id
+    WHERE dm.company_id       = $1
+      AND dm.diet_calories_id IN (SELECT diet_calories_id FROM siblings)
+      AND dm.menu_date >= CURRENT_DATE - INTERVAL '14 days'
+    GROUP BY dm.slot_name, m.id, m.name, m.label, m.kcal, m.protein_g, m.fat_g, m.carbs_g, m.image_url, m.allergens
+    ORDER BY dm.slot_name,
+             COUNT(DISTINCT dm.menu_date) DESC,
+             MAX(dm.menu_date) DESC,
+             m.name
+    `,
+    [companyId, dietCaloriesId, tierId]
+  );
+}
 
 export async function getPriceHistory(args: {
   companyId: string;

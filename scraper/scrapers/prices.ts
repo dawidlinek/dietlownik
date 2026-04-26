@@ -5,6 +5,39 @@ import type { PriceRequestBody, PriceResponse, PriceLeaf } from '../types.js';
 const ORDER_DAY_TIERS = [5, 10, 20];
 const CONCURRENCY = 8;
 
+/**
+ * Active per-company promo codes from the campaigns SCD. The mobile API
+ * doesn't stack promo-code with order-length discounts — it picks whichever
+ * is bigger. So we quote each leaf both with `[]` (order-length-only) and
+ * once per active code; the dashboard's cheapest-pick per (company, leaf,
+ * days) takes care of the rest.
+ *
+ * Returns deduped, trimmed, non-empty codes. Comparison is
+ * case-insensitive: a campaign that surfaces both `Fit` and `FIT` for the
+ * same company collapses to one quote with whichever spelling came first.
+ */
+export async function getActivePromoCodes(companyId: string): Promise<string[]> {
+  const { rows } = await q<{ code: string }>(
+    `SELECT DISTINCT code FROM campaigns
+      WHERE is_active = TRUE
+        AND company_id = $1
+        AND (deadline IS NULL OR deadline >= CURRENT_DATE)
+        AND (valid_to IS NULL OR valid_to >= NOW())`,
+    [companyId],
+  );
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const r of rows) {
+    const code = (r.code ?? '').trim();
+    if (!code) continue;
+    const key = code.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(code);
+  }
+  return out;
+}
+
 async function getLeaves(companyId: string): Promise<PriceLeaf[]> {
   const { rows } = await q<PriceLeaf>(
     `SELECT
@@ -34,22 +67,29 @@ async function getLeaves(companyId: string): Promise<PriceLeaf[]> {
   return rows;
 }
 
-// (leaf, days) pairs — the unit of work
+// (leaf, days, promoCodes) triples — the unit of work. promoCodes=[] is the
+// order-length-only baseline; non-empty arrays are with-code variants.
 interface PriceJob {
   leaf: PriceLeaf;
   days: number;
   deliveryDates: string[];
+  promoCodes: string[];
 }
 
-async function fetchAndInsert(
+/**
+ * One quote → one row. Returns true on insert, false on any HTTP/API
+ * failure. With-code failures are isolated: the no-code job is a separate
+ * PriceJob, so its outcome is independent.
+ */
+export async function fetchAndInsert(
   job: PriceJob,
   companyId: string,
   cityId: number,
 ): Promise<boolean> {
-  const { leaf, days, deliveryDates } = job;
+  const { leaf, days, deliveryDates, promoCodes } = job;
 
   const body: PriceRequestBody = {
-    promoCodes: [],
+    promoCodes,
     deliveryDates,
     dietCaloriesId: leaf.diet_calories_id,
     testOrder: false,
@@ -67,8 +107,9 @@ async function fetchAndInsert(
       { companyId },
     );
   } catch (err) {
+    const codeTag = promoCodes.length ? ` code=${promoCodes.join(',')}` : '';
     console.warn(
-      `[prices] skip cal=${leaf.diet_calories_id} days=${days}: ${(err as Error).message}`,
+      `[prices] skip cal=${leaf.diet_calories_id} days=${days}${codeTag}: ${(err as Error).message}`,
     );
     return false;
   }
@@ -87,7 +128,7 @@ async function fetchAndInsert(
     [
       leaf.diet_calories_id, companyId, cityId,
       leaf.tier_diet_option_id ?? null,
-      days, [],
+      days, promoCodes,
       item.perDayDietCost ?? null,
       item.perDayDietWithDiscountsCost ?? null,
       cart.totalCostToPay ?? null,
@@ -106,12 +147,13 @@ async function runConcurrent(
   jobs: PriceJob[],
   companyId: string,
   cityId: number,
+  concurrency: number = CONCURRENCY,
 ): Promise<number> {
   let inserted = 0;
   const queue = [...jobs];
 
   await Promise.all(
-    Array.from({ length: CONCURRENCY }, async () => {
+    Array.from({ length: concurrency }, async () => {
       while (queue.length > 0) {
         const job = queue.shift()!;
         if (await fetchAndInsert(job, companyId, cityId)) inserted++;
@@ -131,6 +173,11 @@ export async function scrapePrices(companyId: string, cityId: number): Promise<v
     return;
   }
 
+  const codes = await getActivePromoCodes(companyId);
+  if (codes.length > 0) {
+    console.log(`[prices]   active codes for ${companyId}: ${codes.join(', ')}`);
+  }
+
   const includeSaturday = leaves[0]?.delivery_on_saturday ?? false;
   const includeSunday   = leaves[0]?.delivery_on_sunday   ?? false;
 
@@ -139,8 +186,19 @@ export async function scrapePrices(companyId: string, cityId: number): Promise<v
     ORDER_DAY_TIERS.map(days => [days, futureWeekdays(days, { includeSaturday, includeSunday })]),
   );
 
+  // For each (leaf, days), one no-code quote and one quote per active code.
+  // The dashboard's cheapest-pick per (company, leaf, days) takes care of
+  // selecting the winning row downstream.
+  const promoVariants: string[][] = [[], ...codes.map(c => [c])];
   const jobs: PriceJob[] = leaves.flatMap(leaf =>
-    ORDER_DAY_TIERS.map(days => ({ leaf, days, deliveryDates: datesByDays[days] })),
+    ORDER_DAY_TIERS.flatMap(days =>
+      promoVariants.map(promoCodes => ({
+        leaf,
+        days,
+        deliveryDates: datesByDays[days],
+        promoCodes,
+      })),
+    ),
   );
 
   const t0 = Date.now();
@@ -149,3 +207,7 @@ export async function scrapePrices(companyId: string, cityId: number): Promise<v
 
   console.log(`[prices] ✓ ${companyId}: ${inserted}/${jobs.length} rows inserted (${elapsed}s)`);
 }
+
+// Exported for the backfill script.
+export { runConcurrent, getLeaves, ORDER_DAY_TIERS };
+export type { PriceJob };

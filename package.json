@@ -11,6 +11,7 @@
     "scrape": "tsx scraper/index.ts",
     "scrape:smoke": "COMPANY=robinfood SKIP_MENUS=1 tsx scraper/index.ts",
     "scrape:menu-smoke": "COMPANY=robinfood tsx scraper/index.ts",
+    "scrape:promo-prices": "tsx scraper/scripts/scrape-prices-with-promos.ts",
     "migrate": "node db/migrate.js",
     "migrate:v2": "node db/migrate_v2.js",
     "migrate:v3": "node db/migrate_v3.js",

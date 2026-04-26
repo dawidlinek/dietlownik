@@ -11,6 +11,7 @@ import {
   type CateringTile,
   type CampaignRow,
   type LeafRow,
+  type VariantMealRow,
 } from "@/lib/queries";
 import {
   formatPriceNumber,
@@ -19,6 +20,48 @@ import {
   formatDate,
 } from "@/lib/format";
 import { cn } from "@/lib/utils";
+
+// Canonical daily order (lowercased compare). Anything unknown sorts last.
+const SLOT_ORDER: ReadonlyArray<string> = [
+  "śniadanie",
+  "i śniadanie",
+  "ii śniadanie",
+  "drugie śniadanie",
+  "obiad",
+  "podwieczorek",
+  "przekąska",
+  "kolacja",
+];
+
+function slotRank(name: string): number {
+  const k = name.trim().toLowerCase();
+  for (let i = 0; i < SLOT_ORDER.length; i++) {
+    const needle = SLOT_ORDER[i];
+    if (k === needle || k.startsWith(needle + " ") || k.startsWith(needle + "-")) {
+      return i;
+    }
+  }
+  return SLOT_ORDER.length;
+}
+
+function groupMealsBySlot(
+  meals: VariantMealRow[]
+): Array<{ slot: string; meals: VariantMealRow[] }> {
+  const buckets = new Map<string, VariantMealRow[]>();
+  for (const m of meals) {
+    const list = buckets.get(m.slot_name) ?? [];
+    list.push(m);
+    buckets.set(m.slot_name, list);
+  }
+  const slots = Array.from(buckets.keys());
+  slots.sort((a, b) => {
+    const ra = slotRank(a);
+    const rb = slotRank(b);
+    if (ra !== rb) return ra - rb;
+    return a.localeCompare(b, "pl");
+  });
+  return slots.map((slot) => ({ slot, meals: buckets.get(slot)! }));
+}
 
 const DEFAULT_VISIBLE_COLLAPSED = 5;
 
@@ -198,8 +241,32 @@ function CateringTileRow({
   const dietLine = [c.diet_name, c.tier_name, c.diet_option_name]
     .filter(Boolean)
     .join(" · ");
-  const delta = formatDelta(c.per_day_cost_with_discounts, c.prev_per_day);
+  const delta = formatDelta(c.effective_per_day, c.prev_per_day);
   const dietlyUrl = `https://dietly.pl/catering-dietetyczny-firma/${tile.company_id}`;
+  const appliedCode =
+    c.applied_promo_codes && c.applied_promo_codes.length > 0
+      ? c.applied_promo_codes[0]
+      : null;
+
+  // Pick a single chip to show: prefer the code that's actually applied to
+  // the displayed price; otherwise fall back to the company's primary chip
+  // (most discount %, ties broken alphabetically). If neither exists, show
+  // nothing — keeps the column reserved by the grid for alignment.
+  const primaryChip: PromoChip | null = (() => {
+    if (appliedCode) {
+      const match = chips.find((x) => x.code === appliedCode);
+      if (match) return match;
+      // Applied code may not be in the campaigns table (e.g. no `separate`
+      // info). Synthesize a chip so the user still sees what unlocked the
+      // displayed price.
+      return { code: appliedCode, discountPct: null, scope: "company" };
+    }
+    if (chips.length === 0) return null;
+    return [...chips].sort(
+      (a, b) =>
+        (b.discountPct ?? 0) - (a.discountPct ?? 0) || a.code.localeCompare(b.code, "pl"),
+    )[0];
+  })();
 
   return (
     <li
@@ -221,7 +288,8 @@ function CateringTileRow({
         aria-controls={`tile-${tile.company_id}`}
         className={cn(
           "w-full text-left grid items-center gap-x-6 gap-y-2 py-4 px-1 -mx-1 rounded-sm",
-          "grid-cols-[auto_1fr] lg:grid-cols-[auto_minmax(0,2.4fr)_minmax(0,1fr)_auto_auto]",
+          // rank | company+diet | promo chip | price | expand-indicator
+          "grid-cols-[auto_1fr] lg:grid-cols-[auto_minmax(0,1fr)_auto_auto_auto]",
           "hover:bg-[var(--color-oat)] transition-colors"
         )}
       >
@@ -263,19 +331,22 @@ function CateringTileRow({
               </>
             )}
           </div>
-          {chips.length > 0 && (
-            <div className="mt-1.5 flex flex-wrap gap-1.5 lg:hidden">
-              {chips.map((x) => (
-                <Chip key={x.code} chip={x} />
-              ))}
+          {primaryChip && (
+            <div className="mt-1.5 flex lg:hidden">
+              <Chip chip={primaryChip} />
             </div>
           )}
         </div>
 
-        {/* price */}
-        <div className="lg:text-right tnum whitespace-nowrap">
+        {/* promo chip — single, sits left of the price column on desktop */}
+        <div className="hidden lg:flex justify-end">
+          {primaryChip ? <Chip chip={primaryChip} /> : null}
+        </div>
+
+        {/* price — final per-day with delivery folded in, right-aligned */}
+        <div className="text-right tnum whitespace-nowrap">
           <span className="text-[18px] text-[var(--color-ink)]">
-            {formatPriceNumber(c.per_day_cost_with_discounts)}
+            {formatPriceNumber(c.effective_per_day)}
           </span>
           <span className="ml-1 text-[12px] text-[var(--color-ink-3)]">zł / dzień</span>
           {delta.kind !== "flat" && (
@@ -290,13 +361,6 @@ function CateringTileRow({
               {delta.text}
             </span>
           )}
-        </div>
-
-        {/* promo chips (desktop only) */}
-        <div className="hidden lg:flex flex-wrap justify-end gap-1.5 max-w-[280px]">
-          {chips.map((x) => (
-            <Chip key={x.code} chip={x} />
-          ))}
         </div>
 
         {/* expand indicator */}
@@ -330,6 +394,11 @@ function CateringTileRow({
 }
 
 // ── expanded panel ───────────────────────────────────────────────────────────
+
+type MealsState =
+  | { kind: "loading" }
+  | { kind: "ready"; meals: VariantMealRow[] }
+  | { kind: "error" };
 
 function CateringDrilldown({
   id,
@@ -380,10 +449,107 @@ function CateringDrilldown({
     return () => ctrl.abort();
   }, [cheapest.company_id, cheapest.diet_calories_id, cityId, days]);
 
+  // Per-leaf meals cache, keyed by leafKey. Single in-flight controller so a
+  // rapid second click cancels the first request.
+  const [mealsCache, setMealsCache] = React.useState<Map<string, MealsState>>(
+    () => new Map()
+  );
+  const mealsAbortRef = React.useRef<AbortController | null>(null);
+  const requestedRef = React.useRef<Set<string>>(new Set());
+
+  const requestMeals = React.useCallback(
+    (leaf: LeafRow) => {
+      const key = leafKey(leaf);
+      if (requestedRef.current.has(key)) return; // already loading or loaded
+      requestedRef.current.add(key);
+      mealsAbortRef.current?.abort();
+      const ctrl = new AbortController();
+      mealsAbortRef.current = ctrl;
+      setMealsCache((prev) => {
+        const next = new Map(prev);
+        next.set(key, { kind: "loading" });
+        return next;
+      });
+      (async () => {
+        try {
+          const u = new URL("/api/variant-meals", window.location.origin);
+          u.searchParams.set("company_id", leaf.company_id);
+          u.searchParams.set("diet_calories_id", String(leaf.diet_calories_id));
+          if (leaf.tier_id != null) {
+            u.searchParams.set("tier_id", String(leaf.tier_id));
+          }
+          const res = await fetch(u.toString(), { signal: ctrl.signal });
+          if (ctrl.signal.aborted) return;
+          const data = res.ok
+            ? ((await res.json()) as { meals: VariantMealRow[] })
+            : { meals: [] };
+          if (ctrl.signal.aborted) return;
+          setMealsCache((prev) => {
+            const next = new Map(prev);
+            next.set(key, { kind: "ready", meals: data.meals });
+            return next;
+          });
+        } catch (err) {
+          if ((err as { name?: string })?.name === "AbortError") return;
+          setMealsCache((prev) => {
+            const next = new Map(prev);
+            next.set(key, { kind: "error" });
+            return next;
+          });
+          // Allow retry on error.
+          requestedRef.current.delete(key);
+        }
+      })();
+    },
+    []
+  );
+
+  // Pre-fetch the cheapest leaf so the right column lights up immediately.
+  React.useEffect(() => {
+    requestMeals(cheapest);
+  }, [cheapest, requestMeals]);
+
+  // Which leaf row is open in the table. null = none expanded.
+  const [expandedKey, setExpandedKey] = React.useState<string | null>(null);
+  const onLeafClick = React.useCallback(
+    (leaf: LeafRow) => {
+      const key = leafKey(leaf);
+      setExpandedKey((cur) => {
+        if (cur === key) return null;
+        return key;
+      });
+      requestMeals(leaf);
+    },
+    [requestMeals]
+  );
+
+  React.useEffect(() => {
+    return () => {
+      mealsAbortRef.current?.abort();
+    };
+  }, []);
+
   // Show 8 leaves by default; expand to all on demand.
   const [showAllLeaves, setShowAllLeaves] = React.useState(false);
   const visible = showAllLeaves ? tile.leaves : tile.leaves.slice(0, 8);
   const hidden = tile.leaves.length - visible.length;
+
+  // The leaf whose meals show on the right: the expanded one if any, else cheapest.
+  const focusedLeaf: LeafRow = React.useMemo(() => {
+    if (!expandedKey) return cheapest;
+    return tile.leaves.find((l) => leafKey(l) === expandedKey) ?? cheapest;
+  }, [expandedKey, cheapest, tile.leaves]);
+  const focusedMeals = mealsCache.get(leafKey(focusedLeaf));
+  const focusedDietLine = [
+    focusedLeaf.diet_name,
+    focusedLeaf.tier_name,
+    focusedLeaf.diet_option_name,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  const focusedHeader = expandedKey
+    ? "Posiłki w tym wariancie"
+    : "Najtańszy wariant";
 
   return (
     <div
@@ -400,16 +566,33 @@ function CateringDrilldown({
             <table className="w-full text-[13px]">
               <thead>
                 <tr className="bg-[var(--color-oat)]/60">
-                  <Th className="w-[44%]">Dieta · Tier · Wariant</Th>
-                  <Th className="w-[16%]">Kcal</Th>
-                  <Th className="w-[20%] text-right">Cena / dzień</Th>
-                  <Th className="w-[20%] text-right pr-3">Suma</Th>
+                  <Th className="w-[68%]">Dieta · Tier · Wariant</Th>
+                  <Th className="w-[14%]">Kcal</Th>
+                  <Th className="w-[18%] text-right pr-3">Cena / dzień</Th>
                 </tr>
               </thead>
               <tbody>
-                {visible.map((l, idx) => (
-                  <LeafRowDisplay key={leafKey(l)} leaf={l} highlight={idx === 0} />
-                ))}
+                {visible.map((l, idx) => {
+                  const k = leafKey(l);
+                  const isOpen = expandedKey === k;
+                  return (
+                    <React.Fragment key={k}>
+                      <LeafRowDisplay
+                        leaf={l}
+                        highlight={idx === 0}
+                        open={isOpen}
+                        onToggle={() => onLeafClick(l)}
+                      />
+                      {isOpen && (
+                        <tr className="border-t border-[var(--color-bone)] bg-[var(--color-cream)]">
+                          <td colSpan={3} className="px-3 py-3">
+                            <LeafMealsInline state={mealsCache.get(k)} />
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -447,7 +630,7 @@ function CateringDrilldown({
           </div>
         </div>
 
-        {/* right: history chart for the cheapest leaf */}
+        {/* right: history chart + meals for the focused leaf */}
         <div>
           <p className="text-[11px] uppercase tracking-[0.08em] text-[var(--color-ink-3)] font-medium mb-3">
             Historia ceny najtańszego wariantu
@@ -462,43 +645,175 @@ function CateringDrilldown({
             </p>
           )}
 
-          {cheapest.diet_description && (
-            <>
-              <p className="text-[11px] uppercase tracking-[0.08em] text-[var(--color-ink-3)] font-medium mt-6 mb-2">
-                Opis najtańszej diety
+          <div className="mt-6">
+            <p className="text-[11px] uppercase tracking-[0.08em] text-[var(--color-ink-3)] font-medium">
+              {focusedHeader}
+            </p>
+            {focusedDietLine && (
+              <p className="mt-1 text-[13px] text-[var(--color-ink-2)] truncate">
+                {focusedDietLine}
               </p>
-              <p className="text-[13px] text-[var(--color-ink-2)] leading-relaxed">
-                {cheapest.diet_description}
-              </p>
-            </>
-          )}
+            )}
+            <div className="mt-3">
+              <MealsBySlot state={focusedMeals} />
+            </div>
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-function LeafRowDisplay({ leaf, highlight }: { leaf: LeafRow; highlight: boolean }) {
+function LeafMealsInline({ state }: { state: MealsState | undefined }) {
+  if (!state || state.kind === "loading") {
+    return (
+      <div className="space-y-2">
+        <div className="h-3 w-1/3 rounded bg-[var(--color-oat)]/60" />
+        <div className="h-3 w-2/3 rounded bg-[var(--color-oat)]/60" />
+        <div className="h-3 w-1/2 rounded bg-[var(--color-oat)]/60" />
+      </div>
+    );
+  }
+  if (state.kind === "error") {
+    return (
+      <p className="text-[12px] text-[var(--color-ink-3)]">
+        Nie udało się pobrać menu — spróbuj ponownie.
+      </p>
+    );
+  }
+  return <MealsBySlot state={state} />;
+}
+
+function MealsBySlot({ state }: { state: MealsState | undefined }) {
+  if (!state || state.kind === "loading") {
+    return (
+      <div className="space-y-2">
+        <div className="h-3 w-1/3 rounded bg-[var(--color-oat)]/60" />
+        <div className="h-3 w-2/3 rounded bg-[var(--color-oat)]/60" />
+        <div className="h-3 w-1/2 rounded bg-[var(--color-oat)]/60" />
+        <div className="h-3 w-2/3 rounded bg-[var(--color-oat)]/60" />
+      </div>
+    );
+  }
+  if (state.kind === "error") {
+    return (
+      <p className="text-[12px] text-[var(--color-ink-3)]">
+        Nie udało się pobrać menu — spróbuj ponownie.
+      </p>
+    );
+  }
+  if (state.meals.length === 0) {
+    return (
+      <p className="text-[12px] text-[var(--color-ink-3)]">
+        Brak menu w bazie dla tego wariantu (jeszcze nie zescrapowane).
+      </p>
+    );
+  }
+  const groups = groupMealsBySlot(state.meals);
+  return (
+    <div className="space-y-4">
+      {groups.map(({ slot, meals }) => (
+        <div key={slot}>
+          <p className="text-[11px] uppercase tracking-[0.08em] text-[var(--color-ink-3)] font-medium mb-1.5">
+            {slot}
+            <span className="ml-1.5 tnum text-[var(--color-ink-3)]/70">
+              · {meals.length}
+            </span>
+          </p>
+          <ul className="divide-y divide-[var(--color-bone)]">
+            {meals.map((m) => (
+              <MealLine key={`${slot}-${m.meal_id}`} meal={m} />
+            ))}
+          </ul>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function MealLine({ meal }: { meal: VariantMealRow }) {
+  const fullTitle = meal.label ? `${meal.name} — ${meal.label}` : meal.name;
+  return (
+    <li className="py-1.5 flex items-baseline gap-3">
+      <span
+        className="flex-1 min-w-0 truncate text-[13px] text-[var(--color-ink)]"
+        title={fullTitle}
+      >
+        {meal.name}
+      </span>
+      {meal.kcal != null && (
+        <span className="tnum text-[12px] text-[var(--color-ink-2)] whitespace-nowrap">
+          {Math.round(meal.kcal)}
+          <span className="ml-0.5 text-[var(--color-ink-3)]">kcal</span>
+        </span>
+      )}
+      {meal.occurrences > 1 && (
+        <span
+          className="tnum text-[11px] text-[var(--color-ink-3)] whitespace-nowrap"
+          title={`Pojawia się w ${meal.occurrences} dniach`}
+        >
+          ×{meal.occurrences}
+        </span>
+      )}
+      <span
+        className="tnum text-[11px] text-[var(--color-ink-3)]/80 whitespace-nowrap"
+        title="Ostatnio widziane"
+      >
+        {meal.last_seen_date.slice(5)}
+      </span>
+    </li>
+  );
+}
+
+function LeafRowDisplay({
+  leaf,
+  highlight,
+  open,
+  onToggle,
+}: {
+  leaf: LeafRow;
+  highlight: boolean;
+  open: boolean;
+  onToggle: () => void;
+}) {
   const dietLine = [leaf.diet_name, leaf.tier_name, leaf.diet_option_name]
     .filter(Boolean)
     .join(" · ");
   return (
     <tr
+      onClick={onToggle}
+      role="button"
+      tabIndex={0}
+      aria-expanded={open}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onToggle();
+        }
+      }}
       className={cn(
-        "border-t border-[var(--color-bone)]",
-        highlight && "bg-[var(--color-amber-tint)]/35"
+        "border-t border-[var(--color-bone)] cursor-pointer hover:bg-[var(--color-oat)]/40 transition-colors",
+        highlight && !open && "bg-[var(--color-amber-tint)]/35",
+        open && "bg-[var(--color-amber-tint)]/55"
       )}
     >
-      <td className="py-2 px-3">{dietLine || "—"}</td>
+      <td className="py-2 px-3">
+        <span
+          aria-hidden
+          className={cn(
+            "inline-block w-3 mr-1 text-[var(--color-ink-3)] tnum text-[10px] transition-transform",
+            open && "rotate-90"
+          )}
+        >
+          ›
+        </span>
+        <span>{dietLine || "—"}</span>
+      </td>
       <td className="py-2 px-3 tnum text-[var(--color-ink-2)]">
         {leaf.calories != null ? `${formatInt(leaf.calories)}` : "—"}
       </td>
-      <td className="py-2 px-3 text-right tnum">
-        {formatPriceNumber(leaf.per_day_cost_with_discounts)}
-        <span className="ml-1 text-[var(--color-ink-3)]">zł</span>
-      </td>
-      <td className="py-2 px-3 text-right tnum pr-3 text-[var(--color-ink-2)]">
-        {formatPriceNumber(leaf.total_cost)}
+      <td className="py-2 px-3 text-right tnum pr-3">
+        {formatPriceNumber(leaf.effective_per_day)}
         <span className="ml-1 text-[var(--color-ink-3)]">zł</span>
       </td>
     </tr>
