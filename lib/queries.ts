@@ -40,6 +40,7 @@ export interface CampaignRow {
   is_active: boolean;
   first_seen_at: string | null;
   last_seen_at: string | null;
+  company_id: string | null;
 }
 
 export interface PriceHistoryPoint {
@@ -187,28 +188,42 @@ export async function getCompaniesInCity(cityId: number): Promise<CompanyRow[]> 
 // ── 6. Active campaigns ─────────────────────────────────────────────────────
 
 export async function getActiveCampaigns(): Promise<CampaignRow[]> {
-  // active_campaigns view is created in migrate_v2.sql but might not exist.
-  // Fall back to filtering campaigns directly.
+  // active_promotions (v4) supersedes active_campaigns (v2). Try v4 first,
+  // fall back to v2, fall back to a direct campaigns scan.
   try {
     return await query<CampaignRow>(
       `SELECT id, code, title,
               starts_at::text, ends_at::text,
               discount_percent::text, is_active,
-              first_seen_at::text, last_seen_at::text
-       FROM active_campaigns
-       ORDER BY ends_at ASC NULLS LAST`
+              first_seen_at::text, last_seen_at::text,
+              company_id
+       FROM active_promotions
+       ORDER BY company_id NULLS FIRST, ends_at ASC NULLS LAST`
     );
   } catch {
-    return query<CampaignRow>(
-      `SELECT id, code, title,
-              starts_at::text, ends_at::text,
-              discount_percent::text, is_active,
-              NULL::text AS first_seen_at, NULL::text AS last_seen_at
-       FROM campaigns
-       WHERE is_active = TRUE
-         AND (ends_at IS NULL OR ends_at >= CURRENT_DATE)
-       ORDER BY ends_at ASC NULLS LAST`
-    );
+    try {
+      return await query<CampaignRow>(
+        `SELECT id, code, title,
+                starts_at::text, ends_at::text,
+                discount_percent::text, is_active,
+                first_seen_at::text, last_seen_at::text,
+                company_id
+         FROM active_campaigns
+         ORDER BY company_id NULLS FIRST, ends_at ASC NULLS LAST`
+      );
+    } catch {
+      return query<CampaignRow>(
+        `SELECT id, code, title,
+                starts_at::text, ends_at::text,
+                discount_percent::text, is_active,
+                NULL::text AS first_seen_at, NULL::text AS last_seen_at,
+                company_id
+         FROM campaigns
+         WHERE is_active = TRUE
+           AND (ends_at IS NULL OR ends_at >= CURRENT_DATE)
+         ORDER BY company_id NULLS FIRST, ends_at ASC NULLS LAST`
+      );
+    }
   }
 }
 

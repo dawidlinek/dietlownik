@@ -9,11 +9,6 @@ export interface FilterStripProps {
   dayOptions: number[];
   activeKcal: number;
   activeDays: number;
-  summary: {
-    companies: number;
-    pricedRows: number;
-    activeCampaigns: number;
-  };
 }
 
 function useUrlSetter() {
@@ -64,24 +59,11 @@ export function FilterStrip({
   dayOptions,
   activeKcal,
   activeDays,
-  summary,
 }: FilterStripProps) {
   const setUrl = useUrlSetter();
 
   return (
-    <div className="px-5 sm:px-8 lg:px-14 py-6 border-b border-[var(--color-bone)]">
-      <div className="text-[13px] text-[var(--color-ink-3)] mb-3">
-        <span>{summary.companies} firm</span>
-        <span aria-hidden className="mx-2 text-[var(--color-bone)]">·</span>
-        <span>{summary.pricedRows} ofert</span>
-        <span aria-hidden className="mx-2 text-[var(--color-bone)]">·</span>
-        <span>
-          {summary.activeCampaigns === 0
-            ? "0 promocji aktywnych"
-            : `${summary.activeCampaigns} promocji aktywnych`}
-        </span>
-      </div>
-
+    <div className="px-5 sm:px-8 lg:px-14 py-5 border-b border-[var(--color-bone)]">
       <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
         <div className="flex flex-wrap items-center gap-1">
           <span className="text-[11px] uppercase tracking-[0.08em] text-[var(--color-ink-3)] mr-2">

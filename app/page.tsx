@@ -1,17 +1,14 @@
-import { Suspense } from "react";
 import {
   getCities,
   getKcalOptions,
   getDayOptions,
   getDashboardRows,
-  getCompaniesInCity,
   getActiveCampaigns,
 } from "@/lib/queries";
 import { Header } from "@/components/header";
 import { FilterStrip } from "@/components/filter-strip";
-import { HeroCheapest } from "@/components/hero-cheapest";
-import { PromoStrip } from "@/components/promo-strip";
-import { PriceTable } from "@/components/price-table";
+import { CheapestSummary } from "@/components/cheapest-summary";
+import { AllOffersDisclosure } from "@/components/all-offers-disclosure";
 
 export const dynamic = "force-dynamic";
 
@@ -30,47 +27,37 @@ interface PageProps {
 export default async function Page({ searchParams }: PageProps) {
   const params = await searchParams;
 
-  // Resolve filters with sensible defaults & coercion.
   const cityId = parseIntOr(params.city, DEFAULT_CITY_ID);
   const kcal = parseIntOr(params.kcal, DEFAULT_KCAL);
   const days = parseIntOr(params.days, DEFAULT_DAYS);
 
-  // Fetch in parallel.
-  const [cities, kcalOptions, dayOptions, rows, companies, campaigns] =
-    await Promise.all([
-      getCities().catch(() => [] as Awaited<ReturnType<typeof getCities>>),
-      getKcalOptions(cityId).catch(
-        () => [] as Awaited<ReturnType<typeof getKcalOptions>>
-      ),
-      getDayOptions(cityId).catch(
-        () => [] as Awaited<ReturnType<typeof getDayOptions>>
-      ),
-      getDashboardRows({ cityId, kcal, days }).catch(
-        () => [] as Awaited<ReturnType<typeof getDashboardRows>>
-      ),
-      getCompaniesInCity(cityId).catch(
-        () => [] as Awaited<ReturnType<typeof getCompaniesInCity>>
-      ),
-      getActiveCampaigns().catch(
-        () => [] as Awaited<ReturnType<typeof getActiveCampaigns>>
-      ),
-    ]);
+  const [cities, kcalOptions, dayOptions, rows, campaigns] = await Promise.all([
+    getCities().catch(() => [] as Awaited<ReturnType<typeof getCities>>),
+    getKcalOptions(cityId).catch(
+      () => [] as Awaited<ReturnType<typeof getKcalOptions>>
+    ),
+    getDayOptions(cityId).catch(
+      () => [] as Awaited<ReturnType<typeof getDayOptions>>
+    ),
+    getDashboardRows({ cityId, kcal, days }).catch(
+      () => [] as Awaited<ReturnType<typeof getDashboardRows>>
+    ),
+    getActiveCampaigns().catch(
+      () => [] as Awaited<ReturnType<typeof getActiveCampaigns>>
+    ),
+  ]);
 
   const activeCity =
     cities.find((c) => c.city_id === cityId) ??
     ({ city_id: cityId, name: "Wrocław" } as const);
 
-  // Latest capture across the visible rows (used as "data freshness" stamp).
   const latestCaptureAt = rows.reduce<string | null>((acc, r) => {
     if (!r.captured_at) return acc;
     if (!acc) return r.captured_at;
     return r.captured_at > acc ? r.captured_at : acc;
   }, null);
 
-  // Make sure the active values are valid; fall back to nearest.
-  const safeKcal = kcalOptions.includes(kcal)
-    ? kcal
-    : kcalOptions[0] ?? kcal;
+  const safeKcal = kcalOptions.includes(kcal) ? kcal : kcalOptions[0] ?? kcal;
   const safeDays = dayOptions.includes(days) ? days : dayOptions[0] ?? days;
 
   return (
@@ -83,33 +70,23 @@ export default async function Page({ searchParams }: PageProps) {
         activeKcal={safeKcal}
       />
 
-      <Suspense>
-        <HeroCheapest
-          rows={rows}
-          kcal={safeKcal}
-          days={safeDays}
-          cityName={activeCity.name}
-        />
-      </Suspense>
-
       <FilterStrip
         kcalOptions={kcalOptions.length ? kcalOptions : [DEFAULT_KCAL]}
         dayOptions={dayOptions.length ? dayOptions : [DEFAULT_DAYS]}
         activeKcal={safeKcal}
         activeDays={safeDays}
-        summary={{
-          companies: companies.length,
-          pricedRows: rows.length,
-          activeCampaigns: campaigns.length,
-        }}
       />
 
-      <div className="mt-6">
-        <PromoStrip campaigns={campaigns} />
-      </div>
-
       <main className="flex-1">
-        <PriceTable
+        <CheapestSummary
+          rows={rows}
+          campaigns={campaigns}
+          cityName={activeCity.name}
+          kcal={safeKcal}
+          days={safeDays}
+        />
+
+        <AllOffersDisclosure
           rows={rows}
           cityId={cityId}
           days={safeDays}
