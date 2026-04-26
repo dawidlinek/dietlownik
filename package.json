@@ -21,6 +21,7 @@
     "test:integration": "INTEGRATION=1 vitest run scraper/__tests__/api.integration.test.ts"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@radix-ui/react-dropdown-menu": "^2.1.6",
     "@radix-ui/react-popover": "^1.1.6",
     "@radix-ui/react-separator": "^1.1.2",
@@ -36,7 +37,8 @@
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "recharts": "^2.15.0",
-    "tailwind-merge": "^2.6.0"
+    "tailwind-merge": "^2.6.0",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
