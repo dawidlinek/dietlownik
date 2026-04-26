@@ -248,5 +248,15 @@ export async function scrapeCatalog(companyId: string, cityId: number): Promise<
     );
   }
 
+  // Persist any active promo info from the company header at catalog time —
+  // ensures partial / single-company runs still get current promo data without
+  // waiting for the end-of-run scrapePromotions pass.
+  try {
+    const { recordPromosFromConstants } = await import('./promotions.js');
+    await recordPromosFromConstants(cityId, [{ companyId, constant }]);
+  } catch (err) {
+    console.warn(`[catalog] promo write skipped (${(err as Error).message})`);
+  }
+
   console.log(`[catalog] ✓ ${companyId}: ${activeDietIds.length} diets, ${totalCalories} kcal nodes`);
 }
