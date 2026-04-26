@@ -10,6 +10,7 @@ const MOBILE_HEADERS = {
   "x-mobile-version": "4.0.0",
   "accept-language": "pl-PL",
   accept: "application/json",
+  "user-agent": "okhttp/4.9.2",
 };
 
 function buildUrl(path: string): string {
@@ -98,6 +99,7 @@ export async function loginRequest(
     method: "POST",
     headers: new Headers(MOBILE_HEADERS),
     body: form,
+    cache: "no-store",
   });
 
   const bodyText = await response.text();
@@ -137,6 +139,7 @@ export async function authGet<T>(
   const response = await fetch(buildUrl(path), {
     method: "GET",
     headers: authHeaders(session, companyId ? { "company-id": companyId } : {}),
+    cache: "no-store",
   });
 
   refreshSessionFromResponse(email, session, response.headers);

@@ -21,7 +21,7 @@ function normalizeProfileResponse(raw: unknown) {
 }
 
 export async function getProfileTool(input: GetProfileInput) {
-  const profileResponse = await authGet<unknown>(input.email, "/api/mobile/profile");
+  const profileResponse = await authGet<unknown>(input.email, "/api/profile");
   const normalized = normalizeProfileResponse(profileResponse);
 
   return {

@@ -26,7 +26,7 @@ export async function loginTool(input: LoginInput) {
   const session = await loginRequest(input.email, input.password);
   setSession(input.email, session.rememberMe, session.sessionCookie);
 
-  const profileResponse = await authGet<unknown>(input.email, "/api/mobile/profile");
+  const profileResponse = await authGet<unknown>(input.email, "/api/profile");
   const normalized = normalizeProfileResponse(profileResponse);
 
   return {
