@@ -1,0 +1,19 @@
+{
+  "name": "dietlownik",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "scrape": "tsx scraper/index.ts",
+    "migrate": "node db/migrate.js",
+    "migrate:v2": "node db/migrate_v2.js"
+  },
+  "dependencies": {
+    "pg": "^8.13.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/pg": "^8.11.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}
