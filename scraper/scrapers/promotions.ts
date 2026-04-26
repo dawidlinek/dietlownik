@@ -78,13 +78,25 @@ function fromBanner(banner: Banner, city_id: number): PromoObservation | null {
 }
 
 async function insertObservation(o: PromoObservation): Promise<void> {
+  // promo_observations.company_id has an FK to companies(company_id).
+  // awarded-and-top can run ahead of catalog during a partial scrape,
+  // pointing at a company we haven't catalogued yet. Drop the link rather
+  // than blow up the batch — we still want the observation persisted.
+  let companyId = o.company_id;
+  if (companyId) {
+    const exists = await q<{ exists: boolean }>(
+      `SELECT TRUE AS exists FROM companies WHERE company_id = $1 LIMIT 1`,
+      [companyId],
+    );
+    if (exists.rowCount === 0) companyId = null;
+  }
   await q(
     `INSERT INTO promo_observations
        (code, source, company_id, city_id, discount_percents, promo_text,
         deadline, separate, valid_from, valid_to, raw)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
     [
-      o.code, o.source, o.company_id, o.city_id, o.discount_percents,
+      o.code, o.source, companyId, o.city_id, o.discount_percents,
       o.promo_text, o.deadline, o.separate, o.valid_from, o.valid_to,
       JSON.stringify(o.raw ?? null),
     ],
@@ -97,6 +109,14 @@ async function insertObservation(o: PromoObservation): Promise<void> {
  * index in v4 lets us conflict-update.
  */
 async function upsertCampaign(o: PromoObservation): Promise<void> {
+  let companyId = o.company_id;
+  if (companyId) {
+    const exists = await q<{ exists: boolean }>(
+      `SELECT TRUE AS exists FROM companies WHERE company_id = $1 LIMIT 1`,
+      [companyId],
+    );
+    if (exists.rowCount === 0) companyId = null;
+  }
   await q(
     `INSERT INTO campaigns
        (code, source, company_id, discount_percent, title, deadline,
@@ -119,7 +139,7 @@ async function upsertCampaign(o: PromoObservation): Promise<void> {
     [
       o.code,
       o.source,
-      o.company_id,
+      companyId,
       o.discount_percents,
       o.promo_text,
       o.deadline,
