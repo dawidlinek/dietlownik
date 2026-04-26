@@ -1,46 +1,36 @@
-import { getHtml } from '../api.js';
-import type { City, CompanySearchItem } from '../types.js';
+import { get } from '../api.js';
+import type { AwardedAndTopResponse, City, CompanySearchItem } from '../types.js';
 
-interface SearchData {
-  currentPage: number;
-  totalPages: number;
-  totalElements: number;
-  searchData: CompanySearchItem[];
-}
+const PAGE_SIZE = 50;
 
-interface NextDataQueries {
-  [key: string]: { status: string; data: SearchData };
-}
-
-function extractSearchData(html: string): SearchData | null {
-  const m = html.match(/<script id="__NEXT_DATA__" type="application\/json">([\s\S]+?)<\/script>/);
-  if (!m) throw new Error('__NEXT_DATA__ not found');
-  const nd = JSON.parse(m[1]) as { props: { pageProps: { initialState?: { dietlyApi?: { queries?: NextDataQueries } } } } };
-  const queries = nd.props.pageProps?.initialState?.dietlyApi?.queries ?? {};
-  const key = Object.keys(queries).find(k => k.startsWith('getApiSearchFull'));
-  return key ? (queries[key].data ?? null) : null;
-}
-
+/**
+ * List every company that delivers to a given city, using the JSON
+ * `awarded-and-top` endpoint. This replaces the old HTML/__NEXT_DATA__
+ * scraper that was capping at ~5 companies per city.
+ *
+ * `rV=V2023_1` returns the richer per-company shape including
+ * `activePromotionInfo` and `params` (so we can populate promotions and
+ * delivery flags without a per-company fetch).
+ */
 export async function listCompanies(city: City): Promise<CompanySearchItem[]> {
-  console.log(`[companies] fetching page 1 for ${city.name}...`);
-  const html1 = await getHtml(`/catering-dietetyczny/${city.sanitizedName}`);
-  const page1 = extractSearchData(html1);
-  if (!page1) throw new Error('getApiSearchFull not found in __NEXT_DATA__');
+  console.log(`[companies] listing ${city.name} (cityId=${city.cityId}) via awarded-and-top...`);
 
-  const totalPages = page1.totalPages ?? 1;
-  console.log(`[companies] ${page1.totalElements} total, ${totalPages} pages`);
+  const all: CompanySearchItem[] = [];
+  let page = 0;
+  let totalPages = 1;
+  let totalElements = 0;
 
-  const all = [...(page1.searchData ?? [])];
-
-  for (let p = 2; p <= totalPages; p++) {
-    console.log(`[companies] fetching page ${p}/${totalPages}...`);
-    const html = await getHtml(`/catering-dietetyczny/${city.sanitizedName}?page=${p}`);
-    const data = extractSearchData(html);
-    if (data?.searchData) all.push(...data.searchData);
+  while (page < totalPages) {
+    const data = await get<AwardedAndTopResponse>(
+      `/api/open/search/full/awarded-and-top?cId=${city.cityId}&rV=V2023_1&pageSize=${PAGE_SIZE}&page=${page}&active=`,
+    );
+    totalPages = data.totalPages ?? 1;
+    totalElements = data.totalElements ?? 0;
+    for (const c of data.searchData ?? []) all.push({ ...c, companyId: c.name });
+    console.log(`[companies] page ${page + 1}/${totalPages} → +${data.searchData?.length ?? 0} (total ${all.length}/${totalElements})`);
+    page += 1;
   }
 
-  // "name" is the companyId slug (e.g. "robinfood")
-  const companies = all.map(c => ({ ...c, companyId: c.name }));
-  console.log(`[companies] ✓ ${companies.length} companies collected`);
-  return companies;
+  console.log(`[companies] ✓ ${all.length} companies collected`);
+  return all;
 }

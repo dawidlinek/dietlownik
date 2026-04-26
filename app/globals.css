@@ -1,0 +1,169 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@theme {
+  /* ── surfaces — warm, never pure white ─────────────────────────────────── */
+  --color-cream: oklch(97.5% 0.012 78);
+  --color-oat: oklch(95% 0.018 75);
+  --color-linen: oklch(92% 0.022 72);
+  --color-bone: oklch(86% 0.022 70);
+
+  /* ── ink — warm dark, never #000 ──────────────────────────────────────── */
+  --color-ink: oklch(22% 0.018 60);
+  --color-ink-2: oklch(40% 0.022 65);
+  --color-ink-3: oklch(58% 0.022 70);
+
+  /* ── accent — burnt amber (the only loud color) ───────────────────────── */
+  --color-amber: oklch(54% 0.16 55);
+  --color-amber-deep: oklch(44% 0.15 50);
+  --color-amber-tint: oklch(93% 0.045 65);
+
+  /* ── deltas — muted, food-derived, NEVER traffic-light red/green ──────── */
+  --color-olive: oklch(48% 0.085 130);
+  --color-olive-tint: oklch(94% 0.030 130);
+  --color-clay: oklch(52% 0.130 35);
+  --color-clay-tint: oklch(94% 0.035 35);
+
+  /* ── fonts — wired up via next/font CSS variables ─────────────────────── */
+  --font-display: var(--font-fraunces);
+  --font-body: var(--font-jakarta);
+
+  /* ── type scale (fluid) ───────────────────────────────────────────────── */
+  --text-xs: clamp(11px, 0.55vw + 9px, 12px);
+  --text-sm: clamp(13px, 0.55vw + 11px, 14px);
+  --text-base: clamp(15px, 0.65vw + 13px, 16px);
+  --text-lg: clamp(17px, 0.95vw + 14px, 19px);
+  --text-xl: clamp(22px, 1.4vw + 18px, 28px);
+  --text-2xl: clamp(32px, 2.2vw + 22px, 44px);
+  --text-hero: clamp(64px, 7vw + 28px, 128px);
+
+  /* ── shadcn chart variables ───────────────────────────────────────────── */
+  --color-chart-1: oklch(54% 0.16 55);
+  --color-chart-2: oklch(48% 0.085 130);
+  --color-chart-3: oklch(52% 0.130 35);
+  --color-chart-4: oklch(40% 0.022 65);
+  --color-chart-5: oklch(58% 0.022 70);
+}
+
+/* ── shadcn semantic tokens (mapped to the palette above) ───────────────── */
+:root {
+  color-scheme: light only;
+
+  --background: var(--color-cream);
+  --foreground: var(--color-ink);
+
+  --card: var(--color-cream);
+  --card-foreground: var(--color-ink);
+
+  --popover: var(--color-cream);
+  --popover-foreground: var(--color-ink);
+
+  --primary: var(--color-amber);
+  --primary-foreground: var(--color-cream);
+
+  --secondary: var(--color-oat);
+  --secondary-foreground: var(--color-ink);
+
+  --muted: var(--color-oat);
+  --muted-foreground: var(--color-ink-3);
+
+  --accent: var(--color-amber-tint);
+  --accent-foreground: var(--color-ink);
+
+  --destructive: var(--color-clay);
+  --destructive-foreground: var(--color-cream);
+
+  --border: var(--color-bone);
+  --input: var(--color-bone);
+  --ring: var(--color-amber);
+
+  --radius: 0.375rem;
+
+  --chart-1: var(--color-chart-1);
+  --chart-2: var(--color-chart-2);
+  --chart-3: var(--color-chart-3);
+  --chart-4: var(--color-chart-4);
+  --chart-5: var(--color-chart-5);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 2px);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --font-sans: var(--font-body);
+  --font-serif: var(--font-display);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-bone);
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    background: var(--color-cream);
+    color: var(--color-ink);
+    font-family: var(--font-body), system-ui, sans-serif;
+    font-feature-settings: "ss01", "cv11";
+    font-size: var(--text-base);
+    line-height: 1.5;
+  }
+
+  ::selection {
+    background: var(--color-amber-tint);
+    color: var(--color-ink);
+  }
+}
+
+@layer utilities {
+  .font-display {
+    font-family: var(--font-display), Georgia, serif;
+  }
+  .font-body {
+    font-family: var(--font-body), system-ui, sans-serif;
+  }
+  .tnum {
+    font-variant-numeric: tabular-nums lining-nums;
+  }
+}
+
+/* ── row-expand transition (grid-template-rows technique) ───────────────── */
+.row-expand {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 300ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.row-expand[data-open="true"] {
+  grid-template-rows: 1fr;
+}
+.row-expand > .row-expand-inner {
+  overflow: hidden;
+  min-height: 0;
+}

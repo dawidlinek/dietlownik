@@ -13,7 +13,8 @@ async function getLeaves(companyId: string): Promise<PriceLeaf[]> {
        dc.tier_id,
        do2.tier_diet_option_id,
        d.is_menu_configuration,
-       co.delivery_on_saturday
+       co.delivery_on_saturday,
+       co.delivery_on_sunday
      FROM diet_calories dc
      LEFT JOIN diet_options do2
        ON do2.diet_option_id = dc.diet_option_id
@@ -61,7 +62,7 @@ async function fetchAndInsert(
   let result: PriceResponse;
   try {
     result = await post<PriceResponse>(
-      `/api/dietly/open/company-card/${companyId}/quick-order/calculate-price`,
+      `/api/mobile/open/company-card/${companyId}/quick-order/calculate-price`,
       body,
       { companyId },
     );
@@ -131,10 +132,11 @@ export async function scrapePrices(companyId: string, cityId: number): Promise<v
   }
 
   const includeSaturday = leaves[0]?.delivery_on_saturday ?? false;
+  const includeSunday   = leaves[0]?.delivery_on_sunday   ?? false;
 
   // Pre-compute delivery date arrays once per order length
   const datesByDays = Object.fromEntries(
-    ORDER_DAY_TIERS.map(days => [days, futureWeekdays(days, { includeSaturday })]),
+    ORDER_DAY_TIERS.map(days => [days, futureWeekdays(days, { includeSaturday, includeSunday })]),
   );
 
   const jobs: PriceJob[] = leaves.flatMap(leaf =>
