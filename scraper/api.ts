@@ -87,6 +87,18 @@ function backoffMs(attempt: number): number {
   return base + Math.random() * base * 0.5; // up to +50% jitter
 }
 
+/** Cloudflare challenge: long, jittered backoffs because CF needs idle time. */
+function cfBackoffMs(attempt: number): number {
+  const base = 5000 * 2 ** (attempt - 1);   // 5s, 10s, 20s, 40s
+  return base + Math.random() * base * 0.5;
+}
+
+/** Detect Cloudflare's "Just a moment..." JS challenge page. */
+function isCloudflareChallenge(status: number, body: string): boolean {
+  if (status !== 403 && status !== 503 && status !== 429) return false;
+  return body.includes('Just a moment') || body.includes('cf-browser-verification') || body.includes('__cf_chl_');
+}
+
 // ── core fetcher ──────────────────────────────────────────────────────────────
 
 async function apiFetch<T>(path: string, options: FetchOptions = {}): Promise<T> {
@@ -119,10 +131,15 @@ async function apiFetch<T>(path: string, options: FetchOptions = {}): Promise<T>
       const res = await fetch(url, { ...init, signal: ctrl.signal });
       if (!res.ok) {
         const text = await res.text().catch(() => '');
-        const err = new HttpError(method, path, res.status, text);
-        if (attempt < RETRY_MAX && isRetryable(res.status, retry4xx)) {
+        const cfChallenge = isCloudflareChallenge(res.status, text);
+        // Trim Cloudflare challenge bodies (~30 KB of HTML each) to a tag.
+        const snippet = cfChallenge ? '[cloudflare-challenge]' : text;
+        const err = new HttpError(method, path, res.status, snippet);
+        // CF "Just a moment..." page → wait substantially before retrying.
+        if (attempt < RETRY_MAX && (cfChallenge || isRetryable(res.status, retry4xx))) {
           lastErr = err;
-          await sleep(backoffMs(attempt));
+          const wait = cfChallenge ? cfBackoffMs(attempt) : backoffMs(attempt);
+          await sleep(wait);
           continue;
         }
         throw err;
