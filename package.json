@@ -4,8 +4,16 @@
   "type": "module",
   "scripts": {
     "scrape": "tsx scraper/index.ts",
+    "scrape:smoke": "COMPANY=robinfood SKIP_MENUS=1 tsx scraper/index.ts",
+    "scrape:menu-smoke": "COMPANY=robinfood tsx scraper/index.ts",
     "migrate": "node db/migrate.js",
-    "migrate:v2": "node db/migrate_v2.js"
+    "migrate:v2": "node db/migrate_v2.js",
+    "migrate:v3": "node db/migrate_v3.js",
+    "migrate:v4": "node db/migrate_v4.js",
+    "migrate:v5": "node db/migrate_v5.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:integration": "INTEGRATION=1 vitest run scraper/__tests__/api.integration.test.ts"
   },
   "dependencies": {
     "dotenv": "^17.4.2",
@@ -15,6 +23,7 @@
     "@types/node": "^22.0.0",
     "@types/pg": "^8.11.0",
     "tsx": "^4.19.0",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "vitest": "^3.2.4"
   }
 }

@@ -35,7 +35,7 @@ async function upsertCompany(
        updated_at         = NOW()`,
     [
       companyId, h?.name ?? companyId, h?.logoUrl ?? null,
-      h?.avgScore ?? null, h?.feedbackValue ?? null, h?.feedbackNumber ?? null,
+      h?.rateValue ?? null, h?.feedbackValue ?? null, h?.feedbackNumber ?? null,
       h?.awarded ?? false, cityData?.companyPriceCategory ?? null,
       p?.deliveryOnSaturday ?? null, p?.deliveryOnSunday ?? null,
       m?.menuEnabled ?? null, m?.menuDaysAhead ?? null,
@@ -48,7 +48,7 @@ async function upsertCompany(
     `INSERT INTO company_snapshots (company_id, avg_score, feedback_value, feedback_number, awarded, price_category)
      VALUES ($1,$2,$3,$4,$5,$6)`,
     [
-      companyId, h?.avgScore ?? null, h?.feedbackValue ?? null,
+      companyId, h?.rateValue ?? null, h?.feedbackValue ?? null,
       h?.feedbackNumber ?? null, h?.awarded ?? false,
       cityData?.companyPriceCategory ?? null,
     ],
@@ -150,16 +150,41 @@ async function upsertOption(
   );
 
   for (const cal of opt.dietCalories ?? []) {
-    await q(
-      `INSERT INTO diet_calories (diet_calories_id, diet_option_id, tier_id, diet_id, company_id, calories, valid_from)
-       VALUES ($1,$2,$3,$4,$5,$6,NOW())
-       ON CONFLICT (diet_calories_id) DO UPDATE SET
-         calories   = EXCLUDED.calories,
-         valid_to   = NULL,
-         updated_at = NOW()`,
-      [cal.dietCaloriesId, opt.dietOptionId, tierId, dietId, companyId, cal.calories],
-    );
+    await upsertDietCalories(companyId, dietId, cal.dietCaloriesId, cal.calories, tierId, opt.dietOptionId);
   }
+}
+
+/**
+ * Upsert one (company, diet, kcal_id, tier|null, option|null) row.
+ * Uses the v4 composite unique index. Two-phase update-or-insert because the
+ * index has COALESCE() expressions (NULL-safe), which ON CONFLICT can match
+ * but only with the same expressions — easier to do explicitly in two steps.
+ */
+async function upsertDietCalories(
+  companyId: string, dietId: number,
+  dietCaloriesId: number, calories: number | null,
+  tierId: number | null, dietOptionId: number | null,
+): Promise<void> {
+  const upd = await q(
+    `UPDATE diet_calories
+        SET calories   = COALESCE($5::numeric, calories),
+            valid_to   = NULL,
+            updated_at = NOW()
+      WHERE company_id = $1
+        AND diet_id    = $2
+        AND diet_calories_id = $3
+        AND COALESCE(tier_id, -1)        = COALESCE($4::int, -1)
+        AND COALESCE(diet_option_id, -1) = COALESCE($6::int, -1)`,
+    [companyId, dietId, dietCaloriesId, tierId, calories, dietOptionId],
+  );
+  if (upd.rowCount && upd.rowCount > 0) return;
+  await q(
+    `INSERT INTO diet_calories
+       (diet_calories_id, diet_option_id, tier_id, diet_id, company_id, calories, valid_from)
+     VALUES ($1,$2,$3,$4,$5,$6,NOW())
+     ON CONFLICT DO NOTHING`,
+    [dietCaloriesId, dietOptionId, tierId, dietId, companyId, calories],
+  );
 }
 
 // ── main export ───────────────────────────────────────────────────────────────
@@ -168,8 +193,8 @@ export async function scrapeCatalog(companyId: string, cityId: number): Promise<
   console.log(`[catalog] ${companyId} / city=${cityId}`);
 
   const [constant, cityData] = await Promise.all([
-    get<ConstantResponse>(`/api/dietly/open/company-card/${companyId}/constant?cityId=${cityId}`, { companyId }),
-    get<CityResponse>(`/api/dietly/open/company-card/${companyId}/city/${cityId}`, { companyId }),
+    get<ConstantResponse>(`/api/mobile/open/company-card/${companyId}/constant?cityId=${cityId}`, { companyId }),
+    get<CityResponse>(`/api/mobile/open/company-card/${companyId}/city/${cityId}`, { companyId }),
   ]);
 
   await upsertCompany(companyId, constant, cityData);
@@ -197,15 +222,18 @@ export async function scrapeCatalog(companyId: string, cityId: number): Promise<
         }
       }
     } else {
-      // Ready / flat diet: kcal IDs only from /city dietPriceInfo
-      const calIds = dietPriceMap.get(diet.dietId) ?? [];
-      for (const calId of calIds) {
-        await q(
-          `INSERT INTO diet_calories (diet_calories_id, diet_id, company_id, valid_from)
-           VALUES ($1,$2,$3,NOW())
-           ON CONFLICT (diet_calories_id) DO UPDATE SET valid_to = NULL, updated_at = NOW()`,
-          [calId, diet.dietId, companyId],
-        );
+      // Ready / flat diet: prefer /constant dietOptions (has calories number),
+      // fall back to /city dietPriceInfo (id list only).
+      const fromConstant = (diet.dietOptions ?? []).flatMap(o =>
+        (o.dietCalories ?? []).map(c => ({ id: c.dietCaloriesId, calories: c.calories })),
+      );
+      const fromCity = (dietPriceMap.get(diet.dietId) ?? []).map(id => ({ id, calories: null as number | null }));
+      const merged = new Map<number, number | null>();
+      for (const e of [...fromConstant, ...fromCity]) {
+        if (!merged.has(e.id) || merged.get(e.id) == null) merged.set(e.id, e.calories);
+      }
+      for (const [calId, calories] of merged) {
+        await upsertDietCalories(companyId, diet.dietId, calId, calories, null, null);
         totalCalories++;
       }
     }
