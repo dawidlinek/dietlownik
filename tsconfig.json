@@ -23,6 +23,7 @@
     "app/**/*",
     "components/**/*",
     "lib/**/*",
+    "mcp/**/*",
     "scraper/**/*",
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts"
