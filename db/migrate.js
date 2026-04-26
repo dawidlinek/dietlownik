@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import pg from 'pg';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
@@ -7,9 +8,8 @@ const { Client } = pg;
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 
-const DATABASE_URL =
-  process.env.DATABASE_URL ||
-  'postgres://postgres:h38cUAhVwkITI9HqXg60YakepF3p0fuGO5LT8pCcxTKpMzLZWTa1pPzt21ZB54M0@145.239.90.205:6767/postgres';
+const DATABASE_URL = process.env.DATABASE_URL;
+if (!DATABASE_URL) throw new Error('DATABASE_URL is not set');
 
 async function migrate() {
   const client = new Client({ connectionString: DATABASE_URL });

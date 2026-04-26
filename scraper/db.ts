@@ -1,11 +1,12 @@
+import 'dotenv/config';
 import pg from 'pg';
 
 const { Pool } = pg;
 
+if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is not set');
+
 export const pool = new Pool({
-  connectionString:
-    process.env.DATABASE_URL ??
-    'postgres://postgres:h38cUAhVwkITI9HqXg60YakepF3p0fuGO5LT8pCcxTKpMzLZWTa1pPzt21ZB54M0@145.239.90.205:6767/postgres',
+  connectionString: process.env.DATABASE_URL,
   max: 5,
 });
 
