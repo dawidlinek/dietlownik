@@ -21,7 +21,7 @@ import {
   isCloudflareChallenge,
   launchCfBrowser,
   USER_DATA_DIR,
-} from "./cf_shared";
+} from "./cf-shared";
 
 const HEADLESS = process.env.CF_HEADLESS !== "0";
 
@@ -40,7 +40,7 @@ const getCtx = (): Promise<{
   }
   ctxPromise = (async () => {
     process.stderr.write(
-      `[cf_fetch] launching chrome (headless=${HEADLESS}) profile=${USER_DATA_DIR}\n`
+      `[cf-fetch] launching chrome (headless=${HEADLESS}) profile=${USER_DATA_DIR}\n`
     );
     const ctx = await launchCfBrowser({ headless: HEADLESS });
 
@@ -91,7 +91,7 @@ const solveChallengeInPage = async (
   });
   await prev;
   try {
-    process.stderr.write(`[cf_fetch] CF challenge — solving in page: ${url}\n`);
+    process.stderr.write(`[cf-fetch] CF challenge — solving in page: ${url}\n`);
     const page = await ctx.newPage();
     try {
       try {

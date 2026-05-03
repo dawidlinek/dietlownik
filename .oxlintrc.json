@@ -19,7 +19,7 @@
     "no-eq-null": "off",
     "unicorn/filename-case": [
       "error",
-      { "case": "snakeCase", "ignore": ["next-env\\.d\\.ts"] }
+      { "case": "kebabCase", "ignore": ["next-env\\.d\\.ts"] }
     ],
     "import/no-named-as-default-member": "off"
   }

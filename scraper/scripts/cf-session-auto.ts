@@ -1,4 +1,4 @@
-// Refresh `.cf_session.json` automatically by driving a real Chrome via
+// Refresh `.cf-session.json` automatically by driving a real Chrome via
 // patchright (a stealth-patched Playwright fork). The script:
 //
 //   1. launches patchright + system Chrome,
@@ -26,7 +26,7 @@ import {
   launchCfBrowser,
   waitForChallengeCleared,
   writeCfSession,
-} from "../cf_shared";
+} from "../cf-shared";
 
 const TIMEOUT_MS = Number(process.env.CF_TIMEOUT_MS ?? 120_000);
 const HEADLESS = process.env.CF_HEADLESS === "1";
@@ -44,7 +44,7 @@ const SMOKE_TEST = {
 };
 
 const log = (msg: string): void => {
-  process.stderr.write(`[cf_session_auto] ${msg}\n`);
+  process.stderr.write(`[cf-session-auto] ${msg}\n`);
 };
 
 const errMessage = (error: unknown): string =>

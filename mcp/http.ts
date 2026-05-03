@@ -1,5 +1,5 @@
 import { HttpError, sleep } from "@/scraper/api";
-import { isCloudflareChallenge } from "@/scraper/cf_shared";
+import { isCloudflareChallenge } from "@/scraper/cf-shared";
 
 // --- Wire-level constants ---
 

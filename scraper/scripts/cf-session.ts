@@ -4,19 +4,19 @@
 // DevTools → Network → right-click any request to aplikacja.dietly.pl →
 // "Copy as cURL", and pipe it into this script:
 //
-//   pbpaste | bun scraper/scripts/cf_session.ts
-//   # or:  bun scraper/scripts/cf_session.ts < curl.txt
+//   pbpaste | bun scraper/scripts/cf-session.ts
+//   # or:  bun scraper/scripts/cf-session.ts < curl.txt
 //
 // Direct override (skip the parser):
 //
-//   bun scraper/scripts/cf_session.ts --cookie 'cf_clearance=...; __cf_bm=...' \
+//   bun scraper/scripts/cf-session.ts --cookie 'cf_clearance=...; __cf_bm=...' \
 //     --ua 'Mozilla/5.0 ...'
 //
-// The session lands at `.cf_session.json` (gitignored). The scraper picks it
+// The session lands at `.cf-session.json` (gitignored). The scraper picks it
 // up automatically. `cf_clearance` is bound to {IP, User-Agent} — if your
 // public IP changes, refresh the session.
 
-import { writeCfSession } from "../cf_shared";
+import { writeCfSession } from "../cf-shared";
 
 interface ParsedCurl {
   cookie?: string;
@@ -149,11 +149,11 @@ const readStdin = async (): Promise<string> => {
 };
 
 const HELP = `Usage:
-  pbpaste | bun scraper/scripts/cf_session.ts
-  bun scraper/scripts/cf_session.ts < curl.txt
-  bun scraper/scripts/cf_session.ts --cookie '...' --ua '...'
+  pbpaste | bun scraper/scripts/cf-session.ts
+  bun scraper/scripts/cf-session.ts < curl.txt
+  bun scraper/scripts/cf-session.ts --cookie '...' --ua '...'
 
-Writes ./.cf_session.json (gitignored). The scraper reads it on startup.`;
+Writes ./.cf-session.json (gitignored). The scraper reads it on startup.`;
 
 const main = async (): Promise<void> => {
   const flags = parseFlags(process.argv.slice(2));
@@ -178,25 +178,25 @@ const main = async (): Promise<void> => {
 
   if (cookie === undefined || cookie === "") {
     if (userAgent === undefined || userAgent === "") {
-      console.error("cf_session: no cookie or user-agent found.\n");
+      console.error("cf-session: no cookie or user-agent found.\n");
       console.error(HELP);
       process.exit(1);
     }
     console.error(
-      "cf_session: cookie missing — `cf_clearance` is required to bypass the challenge."
+      "cf-session: cookie missing — `cf_clearance` is required to bypass the challenge."
     );
     process.exit(1);
   }
   if (userAgent === undefined || userAgent === "") {
     console.error(
-      "cf_session: user-agent missing — cf_clearance is bound to UA, send the same one your browser used."
+      "cf-session: user-agent missing — cf_clearance is bound to UA, send the same one your browser used."
     );
     process.exit(1);
   }
 
   if (!cookie.includes("cf_clearance=")) {
     console.error(
-      "cf_session: warning — cookie has no `cf_clearance`. CF will likely still challenge."
+      "cf-session: warning — cookie has no `cf_clearance`. CF will likely still challenge."
     );
   }
 

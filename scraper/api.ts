@@ -6,17 +6,17 @@
 //
 // Cloudflare bypass: the host is fronted by CF, which challenges bun/node
 // fetch under any meaningful concurrency (TLS fingerprint leak). By default
-// we route every call through `cf_fetch.ts`, which drives a real Chrome via
+// we route every call through `cf-fetch.ts`, which drives a real Chrome via
 // patchright (`channel: 'chrome'`); chrome's fingerprints clear CF, and a
 // page-based fallback solves the JS challenge whenever it does fire.
 //
 // Set `DIETLY_USE_PATCHRIGHT=0` to fall back to bun fetch — in that mode
-// you'll need a fresh `.cf_session.json` (cookie + UA) at the repo root.
-// `scraper/scripts/cf_session.ts` parses a "Copy as cURL" string and writes
-// it for you; `cf_session_auto.ts` does the same headlessly via patchright.
+// you'll need a fresh `.cf-session.json` (cookie + UA) at the repo root.
+// `scraper/scripts/cf-session.ts` parses a "Copy as cURL" string and writes
+// it for you; `cf-session-auto.ts` does the same headlessly via patchright.
 
-import { cfFetch } from "./cf_fetch";
-import { isCloudflareChallenge, loadCfSession } from "./cf_shared";
+import { cfFetch } from "./cf-fetch";
+import { isCloudflareChallenge, loadCfSession } from "./cf-shared";
 
 const BASE = process.env.DIETLY_API_BASE ?? "https://aplikacja.dietly.pl";
 
@@ -104,7 +104,7 @@ class Limiter {
 
 const limiter = new Limiter(MAX_IN_FLIGHT, MIN_INTERVAL_MS);
 
-// `.cf_session.json` cookie/UA — only used by the legacy bun-fetch path
+// `.cf-session.json` cookie/UA — only used by the legacy bun-fetch path
 // (USE_PATCHRIGHT=0). Patchright manages its own cookie jar.
 const cfSession = loadCfSession();
 
@@ -171,9 +171,9 @@ const cfChallengeHint = (): string => {
     return "[cloudflare-challenge: chrome was rate-limited — lower MAX_IN_FLIGHT or set MIN_INTERVAL_MS]";
   }
   if (cfSession.cookie !== undefined && cfSession.cookie !== "") {
-    return "[cloudflare-challenge: session expired — refresh via `bun scraper/scripts/cf_session.ts`]";
+    return "[cloudflare-challenge: session expired — refresh via `bun scraper/scripts/cf-session.ts`]";
   }
-  return "[cloudflare-challenge: no DIETLY_COOKIE / .cf_session.json — see scraper/api.ts header]";
+  return "[cloudflare-challenge: no DIETLY_COOKIE / .cf-session.json — see scraper/api.ts header]";
 };
 
 // ── core fetcher ──────────────────────────────────────────────────────────────

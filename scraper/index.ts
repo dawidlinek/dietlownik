@@ -2,7 +2,7 @@ import { pool } from "./db";
 import { scrapeCatalog } from "./scrapers/catalog";
 import { scrapeCity } from "./scrapers/city";
 import { listCompanies } from "./scrapers/companies";
-import { scrapeDietTags } from "./scrapers/diet_tags";
+import { scrapeDietTags } from "./scrapers/diet-tags";
 import { scrapePrices } from "./scrapers/prices";
 import type { CompanySearchItem, DeepReadonly } from "./types";
 
