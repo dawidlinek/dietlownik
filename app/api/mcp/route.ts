@@ -1,7 +1,12 @@
 // Next.js entry for the dietly MCP server. Architecture mirrors matrix-mcp:
 // per-request `Server` construction (the SDK only allows one transport per
-// Server), shared process-wide `DietlyClient` for cookie-cache reuse,
-// session map keyed by MCP session ID for the streamable-HTTP transport.
+// Server), session map keyed by MCP session ID for the streamable-HTTP
+// transport.
+//
+// IMPORTANT: each MCP session gets its OWN `DietlyClient` instance — the
+// dietly cookie jar is per-session, never process-wide. This is critical
+// for multi-user safety: without it, anyone calling a tool with another
+// user's email could reuse that user's cached cookies.
 //
 // All tool definition, dispatch, and error handling live under `mcp/`.
 // This route only does HTTP plumbing.
@@ -11,13 +16,14 @@ import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 
-import { getDietlyClient } from "@/mcp/client";
+import { DietlyClient } from "@/mcp/client";
 import { buildServer } from "@/mcp/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 interface SessionBinding {
+  client: DietlyClient;
   // eslint-disable-next-line @typescript-eslint/no-deprecated -- see import
   server: Server;
   transport: WebStandardStreamableHTTPServerTransport;
@@ -37,15 +43,17 @@ async function createSessionBinding(): Promise<SessionBinding> {
       const existing = sessions.get(sessionId);
       if (existing) {
         await existing.server.close();
+        // The client + its cookie cache become unreachable here and get GC'd.
         sessions.delete(sessionId);
       }
     },
   });
 
-  const server = buildServer(getDietlyClient());
+  const client = new DietlyClient();
+  const server = buildServer(client);
   await server.connect(transport);
 
-  binding = { server, transport };
+  binding = { client, server, transport };
   return binding;
 }
 

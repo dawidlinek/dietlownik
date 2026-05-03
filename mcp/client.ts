@@ -183,10 +183,6 @@ export class DietlyClient {
   }
 }
 
-let _singleton: DietlyClient | undefined;
-
-/** Process-wide DietlyClient — keeps the cookie cache warm across requests. */
-export function getDietlyClient(): DietlyClient {
-  _singleton ??= new DietlyClient();
-  return _singleton;
-}
+// Intentionally NO singleton. The cookie cache is per-instance; route code
+// must create one DietlyClient per MCP transport session so cookies don't
+// leak across users / Claude conversations. See app/api/mcp/route.ts.
