@@ -3,13 +3,33 @@
 // Adds a global token-bucket rate limiter and exponential-backoff retry on
 // transient failures. Every /company-card/{slug}/... call must include the
 // `company-id` request header — without it the mobile API returns 400.
+//
+// Cloudflare bypass: the host is fronted by CF, which challenges bun/node
+// fetch under any meaningful concurrency (TLS fingerprint leak). By default
+// we route every call through `cf-fetch.ts`, which drives a real Chrome via
+// patchright (`channel: 'chrome'`); chrome's fingerprints clear CF, and a
+// page-based fallback solves the JS challenge whenever it does fire.
+//
+// Set `DIETLY_USE_PATCHRIGHT=0` to fall back to bun fetch — in that mode
+// you'll need a fresh `.cf-session.json` (cookie + UA) at the repo root.
+// `scraper/scripts/cf-session.ts` parses a "Copy as cURL" string and writes
+// it for you; `cf-session-auto.ts` does the same headlessly via patchright.
+
+import { cfFetch } from './cf-fetch.js';
+import { isCloudflareChallenge, loadCfSession } from './cf-shared.js';
 
 const BASE = process.env.DIETLY_API_BASE ?? 'https://aplikacja.dietly.pl';
 
-// Tunables. The HTTP server doesn't rate-limit (no headers seen in HAR), so
-// we mostly rely on a concurrency cap. MIN_INTERVAL_MS is opt-in (0 = off);
-// set it to e.g. 50 if you want to be polite to a struggling backend.
-const MAX_IN_FLIGHT      = Number(process.env.MAX_IN_FLIGHT      ?? 32);
+// Default-on: route every request through patchright + Chrome (the only
+// reliable way to clear CF's bot management at scraper concurrency).
+// Set DIETLY_USE_PATCHRIGHT=0 to fall back to the legacy bun fetch path.
+const USE_PATCHRIGHT = process.env.DIETLY_USE_PATCHRIGHT !== '0';
+
+// Tunables. With USE_PATCHRIGHT (the default), all requests funnel through a
+// single Chrome instance — keep concurrency modest so we don't trip CF's
+// bot-management rate threshold. Without patchright, the previous values
+// (32 / 0) hold; raise via env if running on a private API server.
+const MAX_IN_FLIGHT      = Number(process.env.MAX_IN_FLIGHT      ?? (USE_PATCHRIGHT ? 6 : 32));
 const MIN_INTERVAL_MS    = Number(process.env.MIN_INTERVAL_MS    ?? 0);
 const RETRY_MAX          = Number(process.env.RETRY_MAX          ?? 3);
 const RETRY_BASE_MS      = Number(process.env.RETRY_BASE_MS      ?? 500);
@@ -67,6 +87,10 @@ class Limiter {
 
 const limiter = new Limiter(MAX_IN_FLIGHT, MIN_INTERVAL_MS);
 
+// `.cf-session.json` cookie/UA — only used by the legacy bun-fetch path
+// (USE_PATCHRIGHT=0). Patchright manages its own cookie jar.
+const cfSession = loadCfSession();
+
 // Exposed for tests.
 export function _newLimiterForTests(maxInFlight: number, minIntervalMs: number): Limiter {
   return new Limiter(maxInFlight, minIntervalMs);
@@ -93,10 +117,10 @@ function cfBackoffMs(attempt: number): number {
   return base + Math.random() * base * 0.5;
 }
 
-/** Detect Cloudflare's "Just a moment..." JS challenge page. */
-function isCloudflareChallenge(status: number, body: string): boolean {
-  if (status !== 403 && status !== 503 && status !== 429) return false;
-  return body.includes('Just a moment') || body.includes('cf-browser-verification') || body.includes('__cf_chl_');
+function cfChallengeHint(): string {
+  if (USE_PATCHRIGHT) return '[cloudflare-challenge: chrome was rate-limited — lower MAX_IN_FLIGHT or set MIN_INTERVAL_MS]';
+  if (cfSession.cookie) return '[cloudflare-challenge: session expired — refresh via `bun scraper/scripts/cf-session.ts`]';
+  return '[cloudflare-challenge: no DIETLY_COOKIE / .cf-session.json — see scraper/api.ts header]';
 }
 
 // ── core fetcher ──────────────────────────────────────────────────────────────
@@ -106,7 +130,8 @@ async function apiFetch<T>(path: string, options: FetchOptions = {}): Promise<T>
   const method = (rest.method ?? 'GET').toUpperCase();
   const url = `${BASE}${path}`;
 
-  const init: RequestInit = {
+  // Static across retry attempts; only `signal` is per-attempt.
+  const baseInit: RequestInit = {
     ...rest,
     method,
     headers: {
@@ -114,6 +139,10 @@ async function apiFetch<T>(path: string, options: FetchOptions = {}): Promise<T>
       'accept-language': 'pl-PL',
       'x-launcher-type': 'ANDROID_APP',
       'x-mobile-version': '4.0.0',
+      // Patchright drives a real chrome that manages its own cookie jar +
+      // sends a real chrome UA — overriding either confuses CF.
+      ...(!USE_PATCHRIGHT && cfSession.userAgent ? { 'user-agent': cfSession.userAgent } : {}),
+      ...(!USE_PATCHRIGHT && cfSession.cookie ? { cookie: cfSession.cookie } : {}),
       ...(companyId ? { 'company-id': companyId } : {}),
       ...(body !== undefined ? { 'content-type': 'application/json' } : {}),
       ...headers,
@@ -127,15 +156,16 @@ async function apiFetch<T>(path: string, options: FetchOptions = {}): Promise<T>
 
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
+    const init: RequestInit = { ...baseInit, signal: ctrl.signal };
     try {
-      const res = await fetch(url, { ...init, signal: ctrl.signal });
+      const res = USE_PATCHRIGHT
+        ? await cfFetch(url, init, REQUEST_TIMEOUT_MS)
+        : await fetch(url, init);
       if (!res.ok) {
         const text = await res.text().catch(() => '');
         const cfChallenge = isCloudflareChallenge(res.status, text);
-        // Trim Cloudflare challenge bodies (~30 KB of HTML each) to a tag.
-        const snippet = cfChallenge ? '[cloudflare-challenge]' : text;
+        const snippet = cfChallenge ? cfChallengeHint() : text;
         const err = new HttpError(method, path, res.status, snippet);
-        // CF "Just a moment..." page → wait substantially before retrying.
         if (attempt < RETRY_MAX && (cfChallenge || isRetryable(res.status, retry4xx))) {
           lastErr = err;
           const wait = cfChallenge ? cfBackoffMs(attempt) : backoffMs(attempt);
@@ -144,7 +174,6 @@ async function apiFetch<T>(path: string, options: FetchOptions = {}): Promise<T>
         }
         throw err;
       }
-      // 204 etc. — guard before json().
       const ct = res.headers.get('content-type') ?? '';
       if (!ct.includes('application/json')) {
         return undefined as T;

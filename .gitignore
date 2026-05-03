@@ -17,6 +17,9 @@ coverage/
 .env.local
 .env.*.local
 
+# scraper Cloudflare session (cookie + user-agent, refreshed by hand)
+.cf-session.json
+
 # typescript / next
 *.tsbuildinfo
 next-env.d.ts
