@@ -42,3 +42,12 @@ yarn-error.log*
 # claude-code runtime state (skills/agents config is committed; runtime is not)
 .claude/scheduled_tasks.lock
 .claude/worktrees/
+.claude/settings.json
+# locally-installed claude/agents skills (shadcn is the only project-tracked one)
+.claude/skills/migrate-oxfmt
+.claude/skills/migrate-oxlint
+.claude/skills/playwright-cli/
+.agents/skills/migrate-oxfmt/
+.agents/skills/migrate-oxlint/
+# patchright/playwright runtime artifacts
+.playwright-cli/
