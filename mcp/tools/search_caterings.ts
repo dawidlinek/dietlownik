@@ -1,7 +1,9 @@
 import { z } from "zod";
+
+import { defineTool } from "@/mcp/tool";
 import { q } from "@/scraper/db";
 
-export const searchCateringsInputSchema = z.object({
+const inputSchema = z.object({
   city_id: z.number().int().positive(),
   diet_tag: z.string().min(1).optional(),
   max_price_per_day: z.number().positive().optional(),
@@ -9,32 +11,30 @@ export const searchCateringsInputSchema = z.object({
   with_promo_only: z.boolean().optional(),
 });
 
-export type SearchCateringsInput = z.infer<typeof searchCateringsInputSchema>;
-
-export const searchCateringsOutputSchema = z.object({
-  total: z.number(),
+const outputSchema = z.object({
   caterings: z.array(z.unknown()),
+  total: z.number(),
 });
 
 interface SearchRow {
+  awarded: boolean | null;
+  avg_score: string | number | null;
+  calories: number | null;
   company_id: string;
   company_name: string | null;
-  avg_score: string | number | null;
-  price_category: string | null;
-  awarded: boolean | null;
+  diet_calories_id: number;
   diet_name: string | null;
   diet_tag: string | null;
   is_menu_configuration: boolean | null;
+  order_days: number | null;
+  price_category: string | null;
+  price_per_day: string | number | null;
+  promo_code: string | null;
+  promo_deadline: string | null;
+  promo_discount: string | number | null;
+  tier_diet_option_id: string | null;
   tier_id: number | null;
   tier_name: string | null;
-  tier_diet_option_id: string | null;
-  diet_calories_id: number;
-  calories: number | null;
-  price_per_day: string | number | null;
-  order_days: number | null;
-  promo_code: string | null;
-  promo_discount: string | number | null;
-  promo_deadline: string | null;
 }
 
 const SEARCH_SQL = `
@@ -108,45 +108,53 @@ function toNumber(value: string | number | null): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-export async function searchCateringsTool(input: SearchCateringsInput) {
-  const result = await q<SearchRow>(SEARCH_SQL, [input.city_id]);
+export const search_caterings = defineTool({
+  annotations: { openWorldHint: false, readOnlyHint: true },
+  description:
+    "Read the local scraper Postgres for catering options in a city, " +
+    "optionally filtered by diet tag, max per-day price, min review " +
+    "score, or active promo. Returns the IDs (`diet_calories_id`, " +
+    "`tier_diet_option_id`, `is_menu_configuration`) that " +
+    "`get_meal_options` and `place_order` require. No live API call.",
+  execute: async (input) => {
+    const result = await q<SearchRow>(SEARCH_SQL, [input.city_id]);
+    let rows = result.rows.map((row) => ({
+      ...row,
+      avg_score_num: toNumber(row.avg_score),
+      price_per_day_num: toNumber(row.price_per_day),
+      promo_discount_num: toNumber(row.promo_discount),
+    }));
 
-  let rows = result.rows.map((row) => ({
-    ...row,
-    avg_score_num: toNumber(row.avg_score),
-    price_per_day_num: toNumber(row.price_per_day),
-    promo_discount_num: toNumber(row.promo_discount),
-  }));
+    if (input.diet_tag) {
+      rows = rows.filter((row) => row.diet_tag === input.diet_tag);
+    }
+    if (typeof input.max_price_per_day === "number") {
+      const cap = input.max_price_per_day;
+      rows = rows.filter(
+        (row) => row.price_per_day_num !== null && row.price_per_day_num <= cap,
+      );
+    }
+    if (typeof input.min_score === "number") {
+      const floor = input.min_score;
+      rows = rows.filter(
+        (row) => row.avg_score_num !== null && row.avg_score_num >= floor,
+      );
+    }
+    if (input.with_promo_only) {
+      rows = rows.filter((row) => Boolean(row.promo_code));
+    }
 
-  if (input.diet_tag) {
-    rows = rows.filter((row) => row.diet_tag === input.diet_tag);
-  }
+    rows.sort((a, b) => {
+      if (a.price_per_day_num == null && b.price_per_day_num == null) return 0;
+      if (a.price_per_day_num == null) return 1;
+      if (b.price_per_day_num == null) return -1;
+      return a.price_per_day_num - b.price_per_day_num;
+    });
 
-  const maxPricePerDay = input.max_price_per_day;
-  if (typeof maxPricePerDay === "number") {
-    rows = rows.filter(
-      (row) => row.price_per_day_num !== null && row.price_per_day_num <= maxPricePerDay
-    );
-  }
-
-  const minScore = input.min_score;
-  if (typeof minScore === "number") {
-    rows = rows.filter(
-      (row) => row.avg_score_num !== null && row.avg_score_num >= minScore
-    );
-  }
-
-  if (input.with_promo_only) {
-    rows = rows.filter((row) => Boolean(row.promo_code));
-  }
-
-  rows.sort((a, b) => {
-    if (a.price_per_day_num == null && b.price_per_day_num == null) return 0;
-    if (a.price_per_day_num == null) return 1;
-    if (b.price_per_day_num == null) return -1;
-    return a.price_per_day_num - b.price_per_day_num;
-  });
-
-  const caterings = rows.slice(0, 50);
-  return { total: caterings.length, caterings };
-}
+    const caterings = rows.slice(0, 50);
+    return { caterings, total: caterings.length };
+  },
+  inputSchema,
+  name: "search_caterings",
+  outputSchema,
+});

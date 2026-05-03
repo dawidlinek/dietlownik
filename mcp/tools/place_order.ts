@@ -1,13 +1,19 @@
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
-import { authPost } from "@/mcp/api";
 
-export const placeOrderInputSchema = z.object({
-  email: z.string().email(),
+import { defineTool } from "@/mcp/tool";
+
+const inputSchema = z.object({
   company_id: z.string().min(1),
-  profile_address_id: z.number().int().positive(),
-  diet_calories_id: z.number().int().positive(),
-  tier_diet_option_id: z.string().min(1).optional(),
+  confirmed: z
+    .boolean()
+    .default(false)
+    .describe(
+      "Set to true to skip the in-tool confirmation step. Used as a fallback when the host doesn't support spec elicitation (the tool returns a summary on the first call; re-call with confirmed:true after the user agrees).",
+    ),
   delivery_dates: z.array(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)).min(1),
+  diet_calories_id: z.number().int().positive(),
+  email: z.string().email(),
   meal_selections: z
     .array(
       z.object({
@@ -15,25 +21,33 @@ export const placeOrderInputSchema = z.object({
         meals: z.array(
           z.object({
             diet_calories_meal_id: z.number().int().positive(),
-          })
+          }),
         ),
-      })
+      }),
     )
     .min(1),
+  profile_address_id: z.number().int().positive(),
   promo_codes: z.array(z.string().min(1)).optional(),
   test_order: z.boolean().optional(),
-  confirmed: z
-    .boolean()
-    .default(false)
-    .describe(
-      "Set to true to skip the in-tool confirmation step. Used as a fallback when the host doesn't support spec elicitation (the tool returns a summary on the first call; re-call with confirmed:true after the user agrees).",
-    ),
+  tier_diet_option_id: z.string().min(1).optional(),
 });
 
-export type PlaceOrderInput = z.infer<typeof placeOrderInputSchema>;
+type PlaceOrderInput = z.infer<typeof inputSchema>;
 
-/** Human-readable summary used by the confirmation step. */
-export function summarizeOrder(input: PlaceOrderInput): string {
+interface DeliveryMealPayload {
+  amount: 1;
+  dietCaloriesMealId: number;
+}
+
+interface PlaceOrderResponse {
+  orders?: Array<{ orderId?: number }>;
+  paymentUrl?: {
+    paymentUrl?: string;
+    paymentUrlWithCost?: { url?: string };
+  };
+}
+
+function summarizeOrder(input: PlaceOrderInput): string {
   const totalMeals = input.meal_selections.reduce(
     (sum, sel) => sum + sel.meals.length,
     0,
@@ -53,85 +67,64 @@ export function summarizeOrder(input: PlaceOrderInput): string {
   return lines.join("\n");
 }
 
-interface DeliveryMealPayload {
-  amount: 1;
-  dietCaloriesMealId: number;
-}
-
-interface SelectionPayload {
-  date: string;
-  meals: DeliveryMealPayload[];
-}
-
-interface PlaceOrderResponse {
-  paymentUrl?: {
-    paymentUrl?: string;
-    paymentUrlWithCost?: {
-      url?: string;
-    };
+function jsonResult(data: unknown): CallToolResult {
+  return {
+    content: [{ text: JSON.stringify(data), type: "text" }],
+    structuredContent:
+      data !== null && typeof data === "object" && !Array.isArray(data)
+        ? (data as Record<string, unknown>)
+        : undefined,
   };
-  orders?: Array<{
-    orderId?: number;
-  }>;
 }
 
-function normalizeSelections(input: PlaceOrderInput): SelectionPayload[] {
-  return input.meal_selections.map((selection) => ({
-    date: selection.date,
-    meals: selection.meals.map((meal) => ({
-      amount: 1 as const,
-      dietCaloriesMealId: meal.diet_calories_meal_id,
-    })),
-  }));
-}
-
-export async function placeOrderTool(input: PlaceOrderInput) {
-  const selections = normalizeSelections(input);
-  const defaultMeals = selections[0]?.meals ?? [];
-
+async function executeOrder(input: PlaceOrderInput, client: import("@/mcp/client").DietlyClient) {
   const customDeliveryMeals: Record<string, DeliveryMealPayload[]> = {};
-  for (const selection of selections) {
-    customDeliveryMeals[selection.date] = selection.meals;
+  for (const selection of input.meal_selections) {
+    customDeliveryMeals[selection.date] = selection.meals.map((m) => ({
+      amount: 1 as const,
+      dietCaloriesMealId: m.diet_calories_meal_id,
+    }));
   }
+  const defaultMeals = customDeliveryMeals[input.delivery_dates[0]] ?? [];
 
   const payload: Record<string, unknown> = {
     clientPreferences: [],
-    promoCodes: input.promo_codes ?? [],
-    lang: "pl",
-    newProfileAddress: null,
-    newProfile: null,
-    newPassword: null,
-    signUp: false,
+    companyId: input.company_id,
     invoiceData: null,
-    originId: null,
-    profilePreferences: [],
+    lang: "pl",
     loyaltyProgramPoints: 0,
     loyaltyProgramPointsGlobal: 0,
-    companyId: input.company_id,
+    newPassword: null,
+    newProfile: null,
+    newProfileAddress: null,
+    originId: null,
     paymentRedirectUrl: {
       defaultUrl: "dietly://mobile/payment-default",
       failureUrl: "dietly://mobile/payment-failure",
       successUrl: "dietly://mobile/payment-successful",
     },
+    profilePreferences: [],
+    promoCodes: input.promo_codes ?? [],
+    signUp: false,
     simpleOrders: [
       {
-        itemId: crypto.randomUUID().replace(/-/g, "").slice(0, 20),
+        addressId: null,
+        customDeliveryMeals,
         deliveryDates: input.delivery_dates,
+        deliveryMeals: defaultMeals,
+        dietCaloriesId: input.diet_calories_id,
         hourPreference: "",
         invoice: false,
+        itemId: crypto.randomUUID().replace(/-/g, "").slice(0, 20),
         note: "",
         paymentNote: "",
         paymentType: "ONLINE",
+        pickupPointDiscount: null,
         pickupPointId: null,
         profileAddressId: input.profile_address_id,
-        addressId: null,
-        pickupPointDiscount: null,
-        utmMap: {},
-        testOrder: input.test_order ?? false,
-        dietCaloriesId: input.diet_calories_id,
-        customDeliveryMeals,
         sideOrders: [],
-        deliveryMeals: defaultMeals,
+        testOrder: input.test_order ?? false,
+        utmMap: {},
         ...(input.tier_diet_option_id
           ? { tierDietOptionId: input.tier_diet_option_id }
           : {}),
@@ -139,22 +132,77 @@ export async function placeOrderTool(input: PlaceOrderInput) {
     ],
   };
 
-  const response = await authPost<PlaceOrderResponse>(
+  const response = await client.authPost<PlaceOrderResponse>(
     input.email,
     "/api/mobile/profile/shopping-cart/order",
     payload,
-    input.company_id
+    input.company_id,
   );
 
-  const paymentUrl =
+  const payment_url =
     response.paymentUrl?.paymentUrl ??
     response.paymentUrl?.paymentUrlWithCost?.url ??
     null;
-  const orderId = response.orders?.[0]?.orderId ?? null;
+  const order_id = response.orders?.[0]?.orderId ?? null;
 
-  return {
-    payment_url: paymentUrl,
-    order_id: orderId,
-    raw: response,
-  };
+  return { order_id, payment_url, raw: response };
 }
+
+export const place_order = defineTool({
+  annotations: {
+    destructiveHint: true,
+    idempotentHint: false,
+    openWorldHint: true,
+  },
+  description:
+    "Create a real Dietly cart order. IRREVERSIBLE — incurs a charge " +
+    "unless `test_order: true`. Requires a logged-in email, a " +
+    "`profile_address_id` from `login`/`get_profile`, " +
+    "`diet_calories_id` from `search_caterings`, and " +
+    "`meal_selections` built from `get_meal_options`. " +
+    "First call shows a summary and asks for confirmation; " +
+    "re-call with `confirmed: true` to actually place. Returns " +
+    "payment URL + order ID.",
+  execute: async (input, { client, server }) => {
+    if (!input.confirmed) {
+      const summary = summarizeOrder(input);
+      // Try elicitation if the host advertises support; otherwise return a
+      // text fallback that asks the agent to re-call with confirmed:true.
+      if (server?.getClientCapabilities()?.elicitation) {
+        const r = await server.elicitInput({
+          message: `Place this order?\n\n${summary}`,
+          requestedSchema: {
+            properties: {
+              confirm: {
+                title: input.test_order
+                  ? "Place test order"
+                  : "Place real order (will charge)",
+                type: "boolean",
+              },
+            },
+            required: ["confirm"],
+            type: "object",
+          },
+        });
+        if (
+          r.action !== "accept" ||
+          !(r.content as { confirm?: boolean } | undefined)?.confirm
+        ) {
+          return jsonResult({ reason: r.action, status: "cancelled", summary });
+        }
+      } else {
+        return jsonResult({
+          next: "Show the user this summary. If they agree, re-call place_order with `confirmed: true`.",
+          status: "confirmation_required",
+          summary,
+        });
+      }
+    }
+    return executeOrder(input, client);
+  },
+  inputSchema,
+  name: "place_order",
+  // No outputSchema: the success path returns { order_id, payment_url, raw },
+  // but the confirmation/cancellation paths return raw CallToolResults.
+  // Output validation would have to be a discriminated union; not worth it.
+});
