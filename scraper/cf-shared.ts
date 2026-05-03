@@ -55,10 +55,12 @@ export const loadCfSession = (): CfSession => {
   }
 };
 
-export const writeCfSession = (payload: {
-  cookie: string;
-  userAgent: string;
-}): string => {
+export const writeCfSession = (
+  payload: Readonly<{
+    cookie: string;
+    userAgent: string;
+  }>
+): string => {
   const out = { ...payload, savedAt: new Date().toISOString() };
   writeFileSync(CF_SESSION_PATH, `${JSON.stringify(out, null, 2)}\n`, "utf-8");
   return CF_SESSION_PATH;
@@ -76,9 +78,11 @@ export const FORCED_UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36";
 
 // oxlint-disable-next-line typescript/promise-function-async -- thin forwarder; adding async would force return-await dance
-export const launchCfBrowser = (opts: {
-  headless: boolean;
-}): Promise<BrowserContext> => {
+export const launchCfBrowser = (
+  opts: Readonly<{
+    headless: boolean;
+  }>
+): Promise<BrowserContext> => {
   mkdirSync(USER_DATA_DIR, { recursive: true });
   return chromium.launchPersistentContext(USER_DATA_DIR, {
     channel: "chrome",
@@ -93,6 +97,7 @@ export const launchCfBrowser = (opts: {
  * Returns true if cleared, false on timeout.
  */
 export const waitForChallengeCleared = async (
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- patchright Page is a third-party class with mutating navigation methods
   page: Page,
   deadlineAt: number
 ): Promise<boolean> => {

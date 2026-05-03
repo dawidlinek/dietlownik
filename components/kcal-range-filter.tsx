@@ -7,16 +7,16 @@ import { cn } from "@/lib/utils";
 
 interface Props {
   /** Hard data bounds — what's actually in the DB for this city. */
-  dataMin: number;
-  dataMax: number;
+  readonly dataMin: number;
+  readonly dataMax: number;
   /** Quick-pick chips with confirmed data, e.g. [1200, 1500, 1800, 2000, 2500]. */
-  presets: number[];
+  readonly presets: readonly number[];
   /** Currently selected range. */
-  activeMin: number;
-  activeMax: number;
+  readonly activeMin: number;
+  readonly activeMax: number;
   /** Day-length pills shown next to the range so the whole filter row is one strip. */
-  dayOptions: number[];
-  activeDays: number;
+  readonly dayOptions: readonly number[];
+  readonly activeDays: number;
 }
 
 const URL_DEBOUNCE_MS = 200;
@@ -28,17 +28,18 @@ const clamp = (n: number, lo: number, hi: number): number => {
   return Math.max(lo, Math.min(hi, n));
 };
 
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- React.ReactNode union recursively includes mutable Iterable<ReactNode>; cannot be made deeply readonly
 const Pill = ({
   active,
   children,
   onClick,
   title,
-}: {
+}: Readonly<{
   active: boolean;
   onClick: () => void;
   children: React.ReactNode;
   title?: string;
-}) => (
+}>) => (
   <button
     aria-pressed={active}
     className={cn(
@@ -59,11 +60,11 @@ const NumberCell = ({
   ariaLabel,
   onChange,
   value,
-}: {
+}: Readonly<{
   value: string;
   onChange: (v: string) => void;
   ariaLabel: string;
-}) => (
+}>) => (
   <input
     aria-label={ariaLabel}
     className={cn(
@@ -73,9 +74,12 @@ const NumberCell = ({
       "focus:outline-none focus:border-[var(--color-amber)] focus:bg-white"
     )}
     inputMode="numeric"
-    onChange={(e) => {
-      onChange(e.target.value);
-    }}
+    onChange={
+      // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- React.ChangeEvent has DOM refs (target/currentTarget) that cannot be deeply readonly
+      (e) => {
+        onChange(e.target.value);
+      }
+    }
     pattern="[0-9]*"
     type="number"
     value={value}
@@ -90,7 +94,7 @@ export const KcalRangeFilter = ({
   dataMin,
   dayOptions,
   presets,
-}: Props) => {
+}: Readonly<Props>) => {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -105,7 +109,7 @@ export const KcalRangeFilter = ({
   }, [activeMin, activeMax]);
 
   const setUrl = React.useCallback(
-    (patch: Record<string, string | number | undefined>) => {
+    (patch: Readonly<Record<string, string | number | undefined>>) => {
       const sp = new URLSearchParams(searchParams.toString());
       for (const [k, v] of Object.entries(patch)) {
         if (v === undefined) {

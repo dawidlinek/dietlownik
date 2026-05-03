@@ -23,7 +23,8 @@ export interface BadgeProps
     React.HTMLAttributes<HTMLSpanElement>,
     VariantProps<typeof badgeVariants> {}
 
-const Badge = ({ className, variant, ...props }: BadgeProps) => (
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- shadcn-generated component shape; React.HTMLAttributes contains DOM event handler types that cannot be deeply readonly
+const Badge = ({ className, variant, ...props }: Readonly<BadgeProps>) => (
   <span className={cn(badgeVariants({ variant }), className)} {...props} />
 );
 

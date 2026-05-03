@@ -5,6 +5,7 @@ import * as React from "react";
 
 import { cn } from "@/lib/utils";
 
+/* oxlint-disable typescript/prefer-readonly-parameter-types -- shadcn-generated component shape; Radix prop types and React.Ref include mutable DOM refs and event handlers that cannot be deeply readonly */
 const Separator = React.forwardRef<
   React.ComponentRef<typeof SeparatorPrimitive.Root>,
   React.ComponentPropsWithoutRef<typeof SeparatorPrimitive.Root>
@@ -27,5 +28,6 @@ const Separator = React.forwardRef<
   )
 );
 Separator.displayName = SeparatorPrimitive.Root.displayName;
+/* oxlint-enable typescript/prefer-readonly-parameter-types */
 
 export { Separator };

@@ -1,3 +1,27 @@
+// ── Deep-readonly utility (for function-parameter annotations) ───────────────
+//
+// Used by scraper code to satisfy `typescript/prefer-readonly-parameter-types`
+// without rewriting the API-shape interfaces with `readonly` everywhere.
+// Recurses into arrays, maps, sets, and plain objects; leaves primitives and
+// functions alone.
+
+type Primitive = string | number | boolean | bigint | symbol | null | undefined;
+
+export type DeepReadonly<T> = T extends Primitive
+  ? T
+  : unknown extends T
+    ? T
+    : // oxlint-disable-next-line typescript/no-explicit-any, typescript/prefer-readonly-parameter-types -- DeepReadonly helper signature must accept any function (DOM lib types include them as fields)
+      T extends (...args: any[]) => unknown
+      ? T
+      : T extends readonly (infer U)[]
+        ? readonly DeepReadonly<U>[]
+        : T extends ReadonlyMap<infer K, infer V>
+          ? ReadonlyMap<DeepReadonly<K>, DeepReadonly<V>>
+          : T extends ReadonlySet<infer U>
+            ? ReadonlySet<DeepReadonly<U>>
+            : { readonly [K in keyof T]: DeepReadonly<T[K]> };
+
 // ── Discovery / search ────────────────────────────────────────────────────────
 
 export interface City {

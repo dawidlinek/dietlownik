@@ -13,15 +13,16 @@
 // known"). Validity from banners and promoDeadline from API both feed in so we
 // can answer "is X still active?" without touching the API.
 
-import { get, HttpError } from "../api.js";
-import { q } from "../db.js";
+import { get, HttpError } from "../api";
+import { q } from "../db";
 import type {
   ActivePromotionInfo,
   Banner,
   CompanySearchItem,
   ConstantResponse,
+  DeepReadonly,
   RecommendedDiet,
-} from "../types.js";
+} from "../types";
 
 interface PromoObservation {
   code: string;
@@ -51,7 +52,7 @@ const fromActivePromo = (
   source: string,
   company_id: string | null,
   city_id: number | null,
-  info: ActivePromotionInfo | null | undefined,
+  info: DeepReadonly<ActivePromotionInfo> | null | undefined,
   raw: unknown
 ): PromoObservation | null => {
   if (info == null) {
@@ -77,7 +78,7 @@ const fromActivePromo = (
 };
 
 const fromBanner = (
-  banner: Banner,
+  banner: DeepReadonly<Banner>,
   city_id: number
 ): PromoObservation | null => {
   if (banner.code === "" || banner.code === null || banner.code === undefined) {
@@ -98,7 +99,9 @@ const fromBanner = (
   };
 };
 
-const insertObservation = async (o: PromoObservation): Promise<void> => {
+const insertObservation = async (
+  o: DeepReadonly<PromoObservation>
+): Promise<void> => {
   // promo_observations.company_id has an FK to companies(company_id).
   // awarded-and-top can run ahead of catalog during a partial scrape,
   // pointing at a company we haven't catalogued yet. Drop the link rather
@@ -139,7 +142,9 @@ const insertObservation = async (o: PromoObservation): Promise<void> => {
  * `company_id` NULL means "global / cross-company". The composite unique
  * index in v4 lets us conflict-update.
  */
-const upsertCampaign = async (o: PromoObservation): Promise<void> => {
+const upsertCampaign = async (
+  o: DeepReadonly<PromoObservation>
+): Promise<void> => {
   let companyId = o.company_id;
   if (companyId !== null && companyId !== "") {
     const exists = await q<{ exists: boolean }>(
@@ -188,7 +193,9 @@ const upsertCampaign = async (o: PromoObservation): Promise<void> => {
   );
 };
 
-const persist = async (observations: PromoObservation[]): Promise<void> => {
+const persist = async (
+  observations: readonly DeepReadonly<PromoObservation>[]
+): Promise<void> => {
   for (const o of observations) {
     await insertObservation(o);
     await upsertCampaign(o);
@@ -199,7 +206,7 @@ const persist = async (observations: PromoObservation[]): Promise<void> => {
 
 const fromAwardedAndTop = (
   cityId: number,
-  companies: CompanySearchItem[]
+  companies: readonly DeepReadonly<CompanySearchItem>[]
 ): PromoObservation[] => {
   const out: PromoObservation[] = [];
   for (const c of companies) {
@@ -222,7 +229,7 @@ const fromAwardedAndTop = (
 
 const fromConstantHeaders = (
   cityId: number,
-  companies: CompanySearchItem[]
+  companies: readonly DeepReadonly<CompanySearchItem>[]
 ): PromoObservation[] => {
   // We don't want to refetch /constant for every company — catalog already
   // ran. Instead, surface promos from the awarded-and-top response as the
@@ -241,7 +248,10 @@ const fromConstantHeaders = (
  */
 export const recordPromosFromConstants = async (
   cityId: number,
-  entries: { companyId: string; constant: ConstantResponse }[]
+  entries: readonly Readonly<{
+    companyId: string;
+    constant: DeepReadonly<ConstantResponse>;
+  }>[]
 ): Promise<void> => {
   const obs: PromoObservation[] = [];
   for (const { companyId, constant } of entries) {
@@ -260,8 +270,11 @@ const fetchBanners = async (cityId: number): Promise<PromoObservation[]> => {
       `/api/open/mobile/banners?cId=${cityId}`
     );
     return (banners ?? [])
-      .map((b) => fromBanner(b, cityId))
-      .filter((b): b is PromoObservation => b !== null);
+      .map((b: DeepReadonly<Banner>) => fromBanner(b, cityId))
+      .filter(
+        (b: Readonly<PromoObservation> | null): b is PromoObservation =>
+          b !== null
+      );
   } catch (error) {
     if (error instanceof HttpError) {
       console.warn(`[promotions] /banners failed: ${error.status}`);
@@ -307,7 +320,7 @@ const fetchRecommended = async (
 
 export const scrapePromotions = async (
   cityId: number,
-  companies: CompanySearchItem[]
+  companies: readonly DeepReadonly<CompanySearchItem>[]
 ): Promise<void> => {
   const t0 = Date.now();
   console.log(

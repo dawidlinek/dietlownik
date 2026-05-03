@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 
-import { tokenize, parseCurl } from "../scripts/cf-session.js";
+import { tokenize, parseCurl } from "../scripts/cf-session";
 
 describe("tokenize", () => {
   it("splits on whitespace, preserves single-quoted strings as one token", () => {

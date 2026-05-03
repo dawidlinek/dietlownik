@@ -28,9 +28,14 @@ import {
   parseGrams,
   nextNDates,
   HttpError,
-} from "../api.js";
-import { q } from "../db.js";
-import type { MealDetails, MealOption, MenuResponse } from "../types.js";
+} from "../api";
+import { q } from "../db";
+import type {
+  DeepReadonly,
+  MealDetails,
+  MealOption,
+  MenuResponse,
+} from "../types";
 
 const MAX_PARALLEL_FETCHES = 8;
 const DEFAULT_MENU_DAYS = 7;
@@ -109,11 +114,19 @@ const loadMenuTargets = async (companyId: string): Promise<MenuTarget[]> => {
      ORDER BY tier_id NULLS FIRST, diet_calories_id`,
     [companyId]
   );
-  return res.rows.map((r) => ({
-    diet_calories_id: r.diet_calories_id,
-    is_menu_configuration: r.is_menu_configuration ?? false,
-    tier_id: r.tier_id,
-  }));
+  return res.rows.map(
+    (
+      r: Readonly<{
+        diet_calories_id: number;
+        tier_id: number | null;
+        is_menu_configuration: boolean | null;
+      }>
+    ) => ({
+      diet_calories_id: r.diet_calories_id,
+      is_menu_configuration: r.is_menu_configuration ?? false,
+      tier_id: r.tier_id,
+    })
+  );
 };
 
 // ── meal field extraction ─────────────────────────────────────────────────────
@@ -140,7 +153,9 @@ interface MealFields {
   fingerprint: string;
 }
 
-const extractAllergens = (details: MealDetails | undefined): string[] => {
+const extractAllergens = (
+  details: DeepReadonly<MealDetails> | undefined
+): string[] => {
   const raw = details?.allergensWithExcluded ?? [];
   const seen = new Set<string>();
   for (const a of raw) {
@@ -153,7 +168,7 @@ const extractAllergens = (details: MealDetails | undefined): string[] => {
 };
 
 const extractIngredients = (
-  details: MealDetails | undefined
+  details: DeepReadonly<MealDetails> | undefined
 ): string | null => {
   const raw = details?.ingredients ?? [];
   const parts: string[] = [];
@@ -166,15 +181,17 @@ const extractIngredients = (
   return parts.length > 0 ? parts.join("; ") : null;
 };
 
-const fingerprintOf = (fields: {
-  name: string | null;
-  kcal: number | null;
-  protein_g: number | null;
-  carbs_g: number | null;
-  fat_g: number | null;
-  reviews_score: number | null;
-  reviews_number: number | null;
-}): string => {
+const fingerprintOf = (
+  fields: Readonly<{
+    name: string | null;
+    kcal: number | null;
+    protein_g: number | null;
+    carbs_g: number | null;
+    fat_g: number | null;
+    reviews_score: number | null;
+    reviews_number: number | null;
+  }>
+): string => {
   // Stable JSON for stable hash. Numbers serialised with their natural repr.
   const payload = JSON.stringify([
     fields.name ?? "",
@@ -196,7 +213,7 @@ interface ParsedMacros {
 }
 
 const parseMacros = (
-  details: MealDetails | undefined,
+  details: DeepReadonly<MealDetails> | undefined,
   info: string | null
 ): ParsedMacros => {
   const fromDetails = {
@@ -214,7 +231,7 @@ const parseMacros = (
   };
 };
 
-const mealFieldsFromOption = (option: MealOption): MealFields => {
+const mealFieldsFromOption = (option: DeepReadonly<MealOption>): MealFields => {
   const { details } = option;
   const macros = parseMacros(details, option.info);
   const name = option.name ?? details.name ?? null;
@@ -264,7 +281,7 @@ const mealFieldsFromOption = (option: MealOption): MealFields => {
  */
 const upsertMeal = async (
   companyId: string,
-  m: MealFields
+  m: DeepReadonly<MealFields>
 ): Promise<{ meal_id: number | null; touched: boolean }> => {
   const trimmed = m.name?.trim() ?? "";
   if (trimmed === "") {
@@ -391,7 +408,9 @@ interface DailyMenuRow {
  * 9 fields × N rows = 9N parameters. With ~25 rows per menu fetch that's ~225
  * parameters per call — well under PG's 65k limit.
  */
-const bulkInsertDailyMenu = async (rows: DailyMenuRow[]): Promise<void> => {
+const bulkInsertDailyMenu = async (
+  rows: readonly Readonly<DailyMenuRow>[]
+): Promise<void> => {
   if (rows.length === 0) {
     return;
   }
@@ -436,7 +455,7 @@ interface FetchResult {
 const processOneMenu = async (
   companyId: string,
   cityId: number,
-  target: MenuTarget,
+  target: Readonly<MenuTarget>,
   date: string
 ): Promise<FetchResult> => {
   const tierQs =
@@ -505,7 +524,7 @@ const processOneMenu = async (
 // ── concurrency cap ──────────────────────────────────────────────────────────
 
 const runWithCap = async <T, R>(
-  items: T[],
+  items: readonly T[],
   cap: number,
   fn: (item: T) => Promise<R>
 ): Promise<R[]> => {
@@ -589,7 +608,10 @@ export const scrapeMenus = async (
   const results = await runWithCap(
     work,
     MAX_PARALLEL_FETCHES,
-    async ({ target, date }) => {
+    async ({
+      target,
+      date,
+    }: DeepReadonly<{ target: MenuTarget; date: string }>) => {
       try {
         return await processOneMenu(companyId, cityId, target, date);
       } catch (error) {

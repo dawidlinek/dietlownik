@@ -16,25 +16,31 @@ const outputSchema = z.object({
   total: z.number(),
 });
 
+interface EnrichedRow extends SearchRow {
+  readonly avg_score_num: number | null;
+  readonly price_per_day_num: number | null;
+  readonly promo_discount_num: number | null;
+}
+
 interface SearchRow {
-  awarded: boolean | null;
-  avg_score: string | number | null;
-  calories: number | null;
-  company_id: string;
-  company_name: string | null;
-  diet_calories_id: number;
-  diet_name: string | null;
-  diet_tag: string | null;
-  is_menu_configuration: boolean | null;
-  order_days: number | null;
-  price_category: string | null;
-  price_per_day: string | number | null;
-  promo_code: string | null;
-  promo_deadline: string | null;
-  promo_discount: string | number | null;
-  tier_diet_option_id: string | null;
-  tier_id: number | null;
-  tier_name: string | null;
+  readonly awarded: boolean | null;
+  readonly avg_score: string | number | null;
+  readonly calories: number | null;
+  readonly company_id: string;
+  readonly company_name: string | null;
+  readonly diet_calories_id: number;
+  readonly diet_name: string | null;
+  readonly diet_tag: string | null;
+  readonly is_menu_configuration: boolean | null;
+  readonly order_days: number | null;
+  readonly price_category: string | null;
+  readonly price_per_day: string | number | null;
+  readonly promo_code: string | null;
+  readonly promo_deadline: string | null;
+  readonly promo_discount: string | number | null;
+  readonly tier_diet_option_id: string | null;
+  readonly tier_id: number | null;
+  readonly tier_name: string | null;
 }
 
 const SEARCH_SQL = `
@@ -122,46 +128,56 @@ export const search_caterings = defineTool({
     "`get_meal_options` and `place_order` require. No live API call.",
   execute: async (input) => {
     const result = await q<SearchRow>(SEARCH_SQL, [input.city_id]);
-    let rows = result.rows.map((row) => ({
-      ...row,
-      avg_score_num: toNumber(row.avg_score),
-      price_per_day_num: toNumber(row.price_per_day),
-      promo_discount_num: toNumber(row.promo_discount),
-    }));
+    let rows: readonly EnrichedRow[] = result.rows.map(
+      (row: Readonly<SearchRow>): EnrichedRow => ({
+        ...row,
+        avg_score_num: toNumber(row.avg_score),
+        price_per_day_num: toNumber(row.price_per_day),
+        promo_discount_num: toNumber(row.promo_discount),
+      })
+    );
 
     if (input.diet_tag !== undefined && input.diet_tag !== "") {
-      rows = rows.filter((row) => row.diet_tag === input.diet_tag);
+      rows = rows.filter(
+        (row: Readonly<EnrichedRow>) => row.diet_tag === input.diet_tag
+      );
     }
     if (typeof input.max_price_per_day === "number") {
       const cap = input.max_price_per_day;
       rows = rows.filter(
-        (row) => row.price_per_day_num !== null && row.price_per_day_num <= cap
+        (row: Readonly<EnrichedRow>) =>
+          row.price_per_day_num !== null && row.price_per_day_num <= cap
       );
     }
     if (typeof input.min_score === "number") {
       const floor = input.min_score;
       rows = rows.filter(
-        (row) => row.avg_score_num !== null && row.avg_score_num >= floor
+        (row: Readonly<EnrichedRow>) =>
+          row.avg_score_num !== null && row.avg_score_num >= floor
       );
     }
     if (input.with_promo_only === true) {
-      rows = rows.filter((row) => Boolean(row.promo_code));
+      rows = rows.filter((row: Readonly<EnrichedRow>) =>
+        Boolean(row.promo_code)
+      );
     }
 
-    rows.sort((a, b) => {
-      if (a.price_per_day_num == null && b.price_per_day_num == null) {
-        return 0;
+    const sorted = rows.toSorted(
+      (a: Readonly<EnrichedRow>, b: Readonly<EnrichedRow>) => {
+        if (a.price_per_day_num == null && b.price_per_day_num == null) {
+          return 0;
+        }
+        if (a.price_per_day_num == null) {
+          return 1;
+        }
+        if (b.price_per_day_num == null) {
+          return -1;
+        }
+        return a.price_per_day_num - b.price_per_day_num;
       }
-      if (a.price_per_day_num == null) {
-        return 1;
-      }
-      if (b.price_per_day_num == null) {
-        return -1;
-      }
-      return a.price_per_day_num - b.price_per_day_num;
-    });
+    );
 
-    const caterings = rows.slice(0, 50);
+    const caterings = sorted.slice(0, 50);
     return { caterings, total: caterings.length };
   },
   inputSchema,

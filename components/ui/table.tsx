@@ -2,6 +2,8 @@ import * as React from "react";
 
 import { cn } from "@/lib/utils";
 
+/* oxlint-disable typescript/prefer-readonly-parameter-types -- shadcn-generated component shape; React.HTMLAttributes/Ref include mutable DOM event handlers that cannot be deeply readonly */
+
 const Table = React.forwardRef<
   HTMLTableElement,
   React.HTMLAttributes<HTMLTableElement>
@@ -67,5 +69,7 @@ const TableCell = React.forwardRef<
   <td ref={ref} className={cn("align-middle", className)} {...props} />
 ));
 TableCell.displayName = "TableCell";
+
+/* oxlint-enable typescript/prefer-readonly-parameter-types */
 
 export { Table, TableHeader, TableBody, TableRow, TableHead, TableCell };

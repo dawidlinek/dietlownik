@@ -48,8 +48,8 @@ const slotRank = (name: string): number => {
 };
 
 const groupMealsBySlot = (
-  meals: VariantMealRow[]
-): { slot: string; meals: VariantMealRow[] }[] => {
+  meals: readonly VariantMealRow[]
+): { readonly slot: string; readonly meals: readonly VariantMealRow[] }[] => {
   const buckets = new Map<string, VariantMealRow[]>();
   for (const m of meals) {
     const list = buckets.get(m.slot_name) ?? [];
@@ -75,9 +75,9 @@ const groupMealsBySlot = (
 const DEFAULT_VISIBLE_COLLAPSED = 5;
 
 interface PromoChip {
-  code: string;
-  discountPct: number | null;
-  scope: "company" | "global";
+  readonly code: string;
+  readonly discountPct: number | null;
+  readonly scope: "company" | "global";
 }
 
 // Polish pluralization (1 / 2..4 / 5+).
@@ -98,13 +98,14 @@ const leafKey = (l: LeafRow): string =>
 
 // ── small leaf renderers ─────────────────────────────────────────────────────
 
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- React.ReactNode union recursively includes mutable Iterable<ReactNode>; cannot be made deeply readonly
 const Th = ({
   children,
   className,
-}: {
+}: Readonly<{
   children: React.ReactNode;
   className?: string;
-}) => (
+}>) => (
   <th
     className={cn(
       "text-left text-[10px] uppercase tracking-[0.08em] text-[var(--color-ink-3)] font-medium py-2 px-3",
@@ -115,7 +116,7 @@ const Th = ({
   </th>
 );
 
-const Chip = ({ chip }: { chip: PromoChip }) => {
+const Chip = ({ chip }: Readonly<{ chip: PromoChip }>) => {
   const isCompany = chip.scope === "company";
   return (
     <span
@@ -142,7 +143,7 @@ const Chip = ({ chip }: { chip: PromoChip }) => {
   );
 };
 
-const MealLine = ({ meal }: { meal: VariantMealRow }) => {
+const MealLine = ({ meal }: Readonly<{ meal: VariantMealRow }>) => {
   const fullTitle =
     meal.label === null || meal.label === ""
       ? meal.name
@@ -180,11 +181,13 @@ const MealLine = ({ meal }: { meal: VariantMealRow }) => {
 };
 
 type MealsState =
-  | { kind: "loading" }
-  | { kind: "ready"; meals: VariantMealRow[] }
-  | { kind: "error" };
+  | { readonly kind: "loading" }
+  | { readonly kind: "ready"; readonly meals: readonly VariantMealRow[] }
+  | { readonly kind: "error" };
 
-const MealsBySlot = ({ state }: { state: MealsState | undefined }) => {
+const MealsBySlot = ({
+  state,
+}: Readonly<{ state: MealsState | undefined }>) => {
   if (state === undefined || state.kind === "loading") {
     return (
       <div className="space-y-2">
@@ -231,7 +234,9 @@ const MealsBySlot = ({ state }: { state: MealsState | undefined }) => {
   );
 };
 
-const LeafMealsInline = ({ state }: { state: MealsState | undefined }) => {
+const LeafMealsInline = ({
+  state,
+}: Readonly<{ state: MealsState | undefined }>) => {
   if (state === undefined || state.kind === "loading") {
     return (
       <div className="space-y-2">
@@ -256,12 +261,12 @@ const LeafRowDisplay = ({
   leaf,
   onToggle,
   open,
-}: {
+}: Readonly<{
   leaf: LeafRow;
   highlight: boolean;
   open: boolean;
   onToggle: () => void;
-}) => {
+}>) => {
   const dietLine = [leaf.diet_name, leaf.tier_name, leaf.diet_option_name]
     .filter(Boolean)
     .join(" · ");
@@ -274,12 +279,15 @@ const LeafRowDisplay = ({
         open && "bg-[var(--color-amber-tint)]/55"
       )}
       onClick={onToggle}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onToggle();
+      onKeyDown={
+        // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- React.KeyboardEvent has methods (preventDefault) and DOM refs that cannot be deeply readonly
+        (e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onToggle();
+          }
         }
-      }}
+      }
       role="button"
       tabIndex={0}
     >
@@ -308,19 +316,20 @@ const LeafRowDisplay = ({
 
 // ── pagination ───────────────────────────────────────────────────────────────
 
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- React.ReactNode union recursively includes mutable Iterable<ReactNode>; cannot be made deeply readonly
 const PageLink = ({
   active,
   ariaLabel,
   children,
   disabled,
   href,
-}: {
+}: Readonly<{
   href: string;
   children: React.ReactNode;
   active?: boolean;
   disabled?: boolean;
   ariaLabel?: string;
-}) => {
+}>) => {
   if (disabled === true) {
     return (
       <span
@@ -352,10 +361,10 @@ const PageLink = ({
 const Pagination = ({
   page,
   totalPages,
-}: {
+}: Readonly<{
   page: number;
   totalPages: number;
-}) => {
+}>) => {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -451,13 +460,13 @@ const CateringDrilldown = ({
   dietlyUrl,
   id,
   tile,
-}: {
+}: Readonly<{
   id: string;
   tile: CateringTile;
   cityId: number;
   days: number;
   dietlyUrl: string;
-}) => {
+}>) => {
   // Always-visible: the leaf table. Lazy-loaded: history for the cheapest leaf.
   const [historyState, setHistoryState] = React.useState<{
     history: HistoryPoint[] | null;
@@ -522,7 +531,10 @@ const CateringDrilldown = ({
     mealsAbortRef.current?.abort();
     const ctrl = new AbortController();
     mealsAbortRef.current = ctrl;
-    setMealsCache((prev) => new Map([...prev, [key, { kind: "loading" }]]));
+    setMealsCache(
+      // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- React useState callback receives the typed state; ReadonlyMap<string, MealsState> still fails this rule's deep traversal over union value types
+      (prev) => new Map([...prev, [key, { kind: "loading" }]])
+    );
     void (async () => {
       try {
         const u = new URL("/api/variant-meals", window.location.origin);
@@ -543,6 +555,7 @@ const CateringDrilldown = ({
           return;
         }
         setMealsCache(
+          // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- React useState callback receives the typed state; ReadonlyMap<string, MealsState> still fails this rule's deep traversal over union value types
           (prev) =>
             new Map([...prev, [key, { kind: "ready", meals: data.meals }]])
         );
@@ -550,7 +563,10 @@ const CateringDrilldown = ({
         if (isAbortError(error)) {
           return;
         }
-        setMealsCache((prev) => new Map([...prev, [key, { kind: "error" }]]));
+        setMealsCache(
+          // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- React useState callback receives the typed state; ReadonlyMap<string, MealsState> still fails this rule's deep traversal over union value types
+          (prev) => new Map([...prev, [key, { kind: "error" }]])
+        );
         // Allow retry on error.
         requestedRef.current.delete(key);
       }
@@ -746,7 +762,7 @@ const CateringDrilldown = ({
 
 const pickPrimaryChip = (
   appliedCode: string | null,
-  chips: PromoChip[]
+  chips: readonly PromoChip[]
 ): PromoChip | null => {
   if (appliedCode !== null && appliedCode !== "") {
     const match = chips.find((x) => x.code === appliedCode);
@@ -775,14 +791,14 @@ const CateringTileRow = ({
   initiallyOpen,
   rank,
   tile,
-}: {
+}: Readonly<{
   tile: CateringTile;
   rank: number;
-  chips: PromoChip[];
+  chips: readonly PromoChip[];
   cityId: number;
   days: number;
   initiallyOpen: boolean;
-}) => {
+}>) => {
   const [open, setOpen] = React.useState(initiallyOpen);
   const c = tile.cheapest;
   const isTop = rank === 1;
@@ -931,8 +947,11 @@ const CateringTileRow = ({
 };
 
 const buildPromoMaps = (
-  campaigns: CampaignRow[]
-): { byCompany: Map<string, PromoChip[]>; globals: PromoChip[] } => {
+  campaigns: readonly CampaignRow[]
+): {
+  readonly byCompany: ReadonlyMap<string, readonly PromoChip[]>;
+  readonly globals: readonly PromoChip[];
+} => {
   const byCompany = new Map<string, PromoChip[]>();
   const globals: PromoChip[] = [];
   for (const c of campaigns) {
@@ -975,12 +994,12 @@ export const CateringList = ({
   rangeMin,
   tiles,
   total,
-}: {
-  tiles: CateringTile[];
+}: Readonly<{
+  tiles: readonly CateringTile[];
   total: number;
   page: number;
   pageSize: number;
-  campaigns: CampaignRow[];
+  campaigns: readonly CampaignRow[];
   cityId: number;
   days: number;
   kcalMin: number;
@@ -989,7 +1008,7 @@ export const CateringList = ({
   rangeMin: number | null;
   rangeMax: number | null;
   latestCaptureAt: string | null;
-}) => {
+}>) => {
   // Build per-company promo chips and the global chips list once.
   const { byCompany, globals } = React.useMemo(
     () => buildPromoMaps(campaigns),

@@ -1,108 +1,108 @@
 import { query } from "./db";
 
 export interface CityRow {
-  city_id: number;
-  name: string;
+  readonly city_id: number;
+  readonly name: string;
 }
 export interface KcalRow {
-  calories: number;
+  readonly calories: number;
 }
 export interface DaysRow {
-  order_days: number;
+  readonly order_days: number;
 }
 
 export interface CompanyRow {
-  company_id: string;
-  name: string | null;
+  readonly company_id: string;
+  readonly name: string | null;
 }
 
 /** One leaf row — a single (company, diet, tier, option, kcal) price observation. */
 export interface LeafRow {
-  company_id: string;
-  diet_id: number;
-  diet_name: string | null;
-  diet_tag: string | null;
-  diet_description: string | null;
-  tier_id: number | null;
-  tier_name: string | null;
-  diet_option_id: number | null;
-  diet_option_name: string | null;
-  diet_calories_id: number;
-  calories: number | null;
-  per_day_cost: string | null;
-  per_day_cost_with_discounts: string | null;
-  total_cost: string | null;
-  total_cost_without_discounts: string | null;
-  total_delivery_cost: string | null;
-  total_promo_code_discount: string | null;
-  total_order_length_discount: string | null;
-  promo_codes: string[] | null;
-  applied_promo_codes: string[] | null;
-  effective_per_day: string | null;
-  captured_at: string;
-  prev_per_day: string | null;
+  readonly company_id: string;
+  readonly diet_id: number;
+  readonly diet_name: string | null;
+  readonly diet_tag: string | null;
+  readonly diet_description: string | null;
+  readonly tier_id: number | null;
+  readonly tier_name: string | null;
+  readonly diet_option_id: number | null;
+  readonly diet_option_name: string | null;
+  readonly diet_calories_id: number;
+  readonly calories: number | null;
+  readonly per_day_cost: string | null;
+  readonly per_day_cost_with_discounts: string | null;
+  readonly total_cost: string | null;
+  readonly total_cost_without_discounts: string | null;
+  readonly total_delivery_cost: string | null;
+  readonly total_promo_code_discount: string | null;
+  readonly total_order_length_discount: string | null;
+  readonly promo_codes: readonly string[] | null;
+  readonly applied_promo_codes: readonly string[] | null;
+  readonly effective_per_day: string | null;
+  readonly captured_at: string;
+  readonly prev_per_day: string | null;
 }
 
 /** A catering "tile" — one company, with its cheapest leaf surfaced. */
 export interface CateringTile {
-  company_id: string;
-  company_name: string | null;
-  awarded: boolean | null;
-  feedback_value: string | null;
-  feedback_number: number | null;
+  readonly company_id: string;
+  readonly company_name: string | null;
+  readonly awarded: boolean | null;
+  readonly feedback_value: string | null;
+  readonly feedback_number: number | null;
   /** The single cheapest leaf for this company in the kcal range. */
-  cheapest: LeafRow;
+  readonly cheapest: LeafRow;
   /** All leaves for this company in the kcal range, sorted asc by price. */
-  leaves: LeafRow[];
+  readonly leaves: readonly LeafRow[];
 }
 
 export interface CateringPage {
-  tiles: CateringTile[];
+  readonly tiles: readonly CateringTile[];
   /** total number of companies that have at least one leaf in range */
-  total: number;
+  readonly total: number;
   /** 1-indexed */
-  page: number;
-  pageSize: number;
+  readonly page: number;
+  readonly pageSize: number;
   /** cheapest per-day price across ALL pages, for the header summary */
-  rangeMin: number | null;
+  readonly rangeMin: number | null;
   /** costliest per-day price across ALL pages */
-  rangeMax: number | null;
+  readonly rangeMax: number | null;
 }
 
 export interface CampaignRow {
-  id: number;
-  code: string | null;
-  title: string | null;
-  starts_at: string | null;
-  ends_at: string | null;
-  discount_percent: string | null;
-  is_active: boolean;
-  first_seen_at: string | null;
-  last_seen_at: string | null;
-  company_id: string | null;
+  readonly id: number;
+  readonly code: string | null;
+  readonly title: string | null;
+  readonly starts_at: string | null;
+  readonly ends_at: string | null;
+  readonly discount_percent: string | null;
+  readonly is_active: boolean;
+  readonly first_seen_at: string | null;
+  readonly last_seen_at: string | null;
+  readonly company_id: string | null;
 }
 
 export interface PriceHistoryPoint {
   /** ISO date */
-  bucket: string;
-  price: number;
-  promo_codes: string[] | null;
+  readonly bucket: string;
+  readonly price: number;
+  readonly promo_codes: readonly string[] | null;
 }
 
 export interface VariantMealRow {
-  slot_name: string;
-  meal_id: number;
-  name: string;
-  label: string | null;
-  kcal: number | null;
-  protein_g: number | null;
-  fat_g: number | null;
-  carbs_g: number | null;
-  image_url: string | null;
-  allergens: string[] | null;
+  readonly slot_name: string;
+  readonly meal_id: number;
+  readonly name: string;
+  readonly label: string | null;
+  readonly kcal: number | null;
+  readonly protein_g: number | null;
+  readonly fat_g: number | null;
+  readonly carbs_g: number | null;
+  readonly image_url: string | null;
+  readonly allergens: readonly string[] | null;
   /** YYYY-MM-DD */
-  last_seen_date: string;
-  occurrences: number;
+  readonly last_seen_date: string;
+  readonly occurrences: number;
 }
 
 // ── 1. Cities ───────────────────────────────────────────────────────────────
@@ -145,7 +145,7 @@ export const getKcalBounds = async (cityId: number): Promise<KcalBounds> => {
   );
 
   // Which presets actually have data in this city?
-  const hits = await query<{ calories: number }>(
+  const hits = await query<{ readonly calories: number }>(
     `SELECT DISTINCT dc.calories
      FROM diet_calories dc
      JOIN company_cities cc ON cc.company_id = dc.company_id
@@ -188,15 +188,17 @@ export const getDayOptions = async (cityId: number): Promise<number[]> => {
 const PAGE_SIZE = 25;
 const MAX_PAGE_SIZE = 200;
 
-export const getCateringPage = async (args: {
-  cityId: number;
-  kcalMin: number;
-  kcalMax: number;
-  days: number;
-  /** 1-indexed */
-  page: number;
-  pageSize?: number;
-}): Promise<CateringPage> => {
+export const getCateringPage = async (
+  args: Readonly<{
+    cityId: number;
+    kcalMin: number;
+    kcalMax: number;
+    days: number;
+    /** 1-indexed */
+    page: number;
+    pageSize?: number;
+  }>
+): Promise<CateringPage> => {
   const { cityId, kcalMin, kcalMax, days } = args;
   const page = Math.max(1, args.page);
   const pageSize = Math.min(
@@ -210,18 +212,18 @@ export const getCateringPage = async (args: {
   // multiple tiers — verified live: different prices). Then we filter by
   // calories range, group per company, sort ascending by cheapest.
   interface PageRow {
-    company_id: string;
-    company_name: string | null;
-    awarded: boolean | null;
-    feedback_value: string | null;
-    feedback_number: number | null;
+    readonly company_id: string;
+    readonly company_name: string | null;
+    readonly awarded: boolean | null;
+    readonly feedback_value: string | null;
+    readonly feedback_number: number | null;
     /** numeric cast — comparable for ordering */
-    cheapest: string;
+    readonly cheapest: string;
     /** jsonb agg */
-    leaves: string;
-    total_companies: number;
-    overall_min: string | null;
-    overall_max: string | null;
+    readonly leaves: string;
+    readonly total_companies: number;
+    readonly overall_min: string | null;
+    readonly overall_max: string | null;
   }
 
   const rows = await query<PageRow>(
@@ -470,11 +472,13 @@ export const getActiveCampaigns = async (): Promise<CampaignRow[]> => {
 
 // ── 7. Variant meals — what's been on the menu in the last 14 days ─────────
 
-export const getVariantMeals = async (args: {
-  companyId: string;
-  dietCaloriesId: number;
-  tierId: number | null;
-}): Promise<VariantMealRow[]> => {
+export const getVariantMeals = async (
+  args: Readonly<{
+    companyId: string;
+    dietCaloriesId: number;
+    tierId: number | null;
+  }>
+): Promise<VariantMealRow[]> => {
   const { companyId, dietCaloriesId, tierId } = args;
   // The menu scraper writes a single canonical menu per (tier_id, diet_option_id),
   // typically at the LOWEST kcal in that group. Sibling leaves (same option,
@@ -527,12 +531,14 @@ export const getVariantMeals = async (args: {
   return rows;
 };
 
-export const getPriceHistory = async (args: {
-  companyId: string;
-  dietCaloriesId: number;
-  cityId: number;
-  days: number;
-}): Promise<PriceHistoryPoint[]> => {
+export const getPriceHistory = async (
+  args: Readonly<{
+    companyId: string;
+    dietCaloriesId: number;
+    cityId: number;
+    days: number;
+  }>
+): Promise<PriceHistoryPoint[]> => {
   const { companyId, dietCaloriesId, cityId, days } = args;
   const rows = await query<PriceHistoryPoint>(
     `

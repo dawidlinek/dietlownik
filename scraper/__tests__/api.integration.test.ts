@@ -16,16 +16,17 @@
 
 import { describe, it, expect } from "vitest";
 
-import { get, post, HttpError } from "../api.js";
+import { get, post, HttpError } from "../api";
 import type {
   AwardedAndTopResponse,
   Banner,
+  City,
   CityResponse,
   ConstantResponse,
   MenuResponse,
   PriceResponse,
   TopSearchResponse,
-} from "../types.js";
+} from "../types";
 
 // Stable test target: Wrocław (cityId 986283) + robinfood (one of the most
 // active companies, large catalog, supports menu).
@@ -44,7 +45,7 @@ describe.runIf(RUN)("integration: aplikacja.dietly.pl mobile API", () => {
     );
     expect(Array.isArray(data.cities)).toBe(true);
     expect(data.cities.length).toBeGreaterThan(0);
-    const city = data.cities.find((c) => c.cityId === CITY_ID);
+    const city = data.cities.find((c: Readonly<City>) => c.cityId === CITY_ID);
     expect(city).toBeDefined();
     expect(city?.name).toBe(CITY);
     expect(typeof city?.numberOfCompanies).toBe("number");

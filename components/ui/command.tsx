@@ -5,6 +5,8 @@ import * as React from "react";
 
 import { cn } from "@/lib/utils";
 
+/* oxlint-disable typescript/prefer-readonly-parameter-types -- shadcn-generated component shape; cmdk + React prop types include DOM refs and event handlers that cannot be deeply readonly */
+
 const Command = React.forwardRef<
   React.ComponentRef<typeof CommandPrimitive>,
   React.ComponentPropsWithoutRef<typeof CommandPrimitive>
@@ -90,6 +92,8 @@ const CommandItem = React.forwardRef<
   />
 ));
 CommandItem.displayName = CommandPrimitive.Item.displayName;
+
+/* oxlint-enable typescript/prefer-readonly-parameter-types */
 
 export {
   Command,

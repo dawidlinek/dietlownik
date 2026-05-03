@@ -1,9 +1,5 @@
-import { get } from "../api.js";
-import type {
-  AwardedAndTopResponse,
-  City,
-  CompanySearchItem,
-} from "../types.js";
+import { get } from "../api";
+import type { AwardedAndTopResponse, City, CompanySearchItem } from "../types";
 
 const PAGE_SIZE = 50;
 
@@ -17,7 +13,7 @@ const PAGE_SIZE = 50;
  * delivery flags without a per-company fetch).
  */
 export const listCompanies = async (
-  city: City
+  city: Readonly<City>
 ): Promise<CompanySearchItem[]> => {
   console.log(
     `[companies] listing ${city.name} (cityId=${city.cityId}) via awarded-and-top...`

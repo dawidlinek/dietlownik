@@ -24,6 +24,7 @@ export const metadata: Metadata = {
   title: "dietlownik",
 };
 
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- React.ReactNode union recursively includes mutable Iterable<ReactNode>; cannot be made deeply readonly
 export default function RootLayout({
   children,
 }: Readonly<{

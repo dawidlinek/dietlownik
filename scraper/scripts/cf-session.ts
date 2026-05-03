@@ -16,7 +16,7 @@
 // up automatically. `cf_clearance` is bound to {IP, User-Agent} — if your
 // public IP changes, refresh the session.
 
-import { writeCfSession } from "../cf-shared.js";
+import { writeCfSession } from "../cf-shared";
 
 interface ParsedCurl {
   cookie?: string;
@@ -114,7 +114,7 @@ export const parseCurl = (input: string): ParsedCurl => {
 };
 
 const parseFlags = (
-  argv: string[]
+  argv: readonly string[]
 ): {
   cookie?: string;
   ua?: string;

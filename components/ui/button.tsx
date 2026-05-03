@@ -40,6 +40,7 @@ export interface ButtonProps
 }
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- shadcn-generated component shape; React.ButtonHTMLAttributes contains DOM event handler types and Ref objects that cannot be deeply readonly
   ({ className, variant, size, asChild = false, ...props }, ref) => {
     const Comp = asChild ? Slot : "button";
     return (

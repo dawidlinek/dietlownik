@@ -39,7 +39,7 @@ const REQUEST_TIMEOUT_MS = Number(process.env.REQUEST_TIMEOUT_MS ?? 25_000);
 
 interface FetchOptions extends Omit<RequestInit, "headers" | "body"> {
   companyId?: string;
-  headers?: Record<string, string>;
+  headers?: Readonly<Record<string, string>>;
   body?: unknown;
   /** Skip retries on 4xx (default true) — set false to retry 4xx too. */
   retry4xx?: boolean;
@@ -182,7 +182,8 @@ const buildBaseInit = (
   method: string,
   companyId: string | undefined,
   body: unknown,
-  headers: Record<string, string>,
+  headers: Readonly<Record<string, string>>,
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- RequestInit (DOM lib) carries a mutable AbortSignal; we forward into another RequestInit
   rest: Omit<RequestInit, "headers" | "body" | "method">
 ): RequestInit => {
   const hasBody = body !== undefined;
@@ -229,7 +230,9 @@ interface AttemptRetry {
   waitMs: number;
 }
 
-const isAbortOrNetworkError = (e: Error & { name?: string }): boolean => {
+const isAbortOrNetworkError = (
+  e: Readonly<Error & { name?: string }>
+): boolean => {
   if (e.name === "AbortError") {
     return true;
   }
@@ -244,6 +247,7 @@ const performAttempt = async <T>(
   url: string,
   method: string,
   path: string,
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- spread into a new RequestInit before use; baseInit is the DOM RequestInit type with a mutable signal
   baseInit: RequestInit,
   attempt: number,
   retry4xx: boolean
@@ -302,6 +306,7 @@ const performAttempt = async <T>(
 
 const apiFetch = async <T>(
   path: string,
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- FetchOptions extends DOM RequestInit which carries mutable AbortSignal/headers
   options: FetchOptions = {}
 ): Promise<T> => {
   const { companyId, headers = {}, body, retry4xx = false, ...rest } = options;
@@ -341,13 +346,17 @@ const apiFetch = async <T>(
 // ── public api ───────────────────────────────────────────────────────────────
 
 // oxlint-disable-next-line typescript/promise-function-async -- thin forwarder; adding async would force return-await dance
-export const get = <T>(path: string, options: FetchOptions = {}): Promise<T> =>
-  apiFetch<T>(path, options);
+export const get = <T>(
+  path: string,
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- FetchOptions extends DOM RequestInit (mutable AbortSignal/headers)
+  options: FetchOptions = {}
+): Promise<T> => apiFetch<T>(path, options);
 
 // oxlint-disable-next-line typescript/promise-function-async -- thin forwarder; adding async would force return-await dance
 export const post = <T>(
   path: string,
   body: unknown,
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- FetchOptions extends DOM RequestInit (mutable AbortSignal/headers)
   options: FetchOptions = {}
 ): Promise<T> => apiFetch<T>(path, { ...options, body, method: "POST" });
 
@@ -438,7 +447,15 @@ export const parseGrams = (val?: string | number | null): number | null => {
 
 export const futureWeekdays = (
   count: number,
-  { includeSaturday = false, includeSunday = false, fromDaysOffset = 1 } = {}
+  {
+    includeSaturday = false,
+    includeSunday = false,
+    fromDaysOffset = 1,
+  }: Readonly<{
+    includeSaturday?: boolean;
+    includeSunday?: boolean;
+    fromDaysOffset?: number;
+  }> = {}
 ): string[] => {
   const dates: string[] = [];
   const d = new Date();

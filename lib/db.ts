@@ -39,9 +39,9 @@ export const getPool = (): Pool => {
 
 export const query = async <T extends QueryResultRow = QueryResultRow>(
   text: string,
-  params: unknown[] = []
+  params: readonly unknown[] = []
 ) => {
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- pg's overload requires array; unknown[] is structurally compatible
-  const res = await getPool().query<T>(text, params as never[]);
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- pg's overload requires mutable array; copy the readonly input to a local array
+  const res = await getPool().query<T>(text, [...params] as never[]);
   return res.rows;
 };

@@ -66,7 +66,9 @@ export const formatInt = (
   return intFormatter.format(n);
 };
 
-export const formatDate = (value: string | Date | null | undefined): string => {
+export const formatDate = (
+  value: string | Readonly<Date> | null | undefined
+): string => {
   if (value === null || value === undefined || value === "") {
     return "—";
   }
@@ -78,7 +80,7 @@ export const formatDate = (value: string | Date | null | undefined): string => {
 };
 
 export const formatDateShort = (
-  value: string | Date | null | undefined
+  value: string | Readonly<Date> | null | undefined
 ): string => {
   if (value === null || value === undefined || value === "") {
     return "—";

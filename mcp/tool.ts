@@ -18,6 +18,7 @@ export const defineTool = <
   TInput extends z.ZodType,
   TOutput extends z.ZodType | undefined = undefined,
 >(
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- ToolDefinition embeds Zod class instances (inputSchema/outputSchema) with mutable internals; this identity helper only forwards the literal through for inference
   def: ToolDefinition<TName, TInput, TOutput>
 ): ToolDefinition<TName, TInput, TOutput> => def;
 
@@ -33,9 +34,11 @@ const errorResult = (message: string): CallToolResult => ({
   isError: true,
 });
 
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- z.ZodError is a Zod class instance with mutable members; we only read .issues
 const formatZodIssues = (error: z.ZodError): string =>
   error.issues
     .map(
+      // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- z.core.$ZodIssue is a Zod-internal union with non-readonly path arrays; read-only access is enforced by usage, not the type
       (i) =>
         `${i.path.length === 0 ? "<root>" : i.path.join(".")}: ${i.message}`
     )
@@ -89,8 +92,10 @@ const toErrorResult = (err: unknown): CallToolResult => {
  * issue list.
  */
 export const callTool = async (
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- AnyToolDefinition embeds Zod class instances (inputSchema/outputSchema) with mutable internals; dispatcher only reads from `tool`
   tool: AnyToolDefinition,
   args: unknown,
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- SDK contract: ctx.extra/ctx.server expose mutable SDK members; we forward ctx untouched
   ctx: ToolContext
 ): Promise<CallToolResult> => {
   const parsed = tool.inputSchema.safeParse(args ?? {});
@@ -99,7 +104,8 @@ export const callTool = async (
   }
   let result: unknown;
   try {
-    result = await tool.execute(parsed.data, ctx);
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- `Readonly<unknown>` is structurally `unknown`; the cast satisfies TS without changing runtime behavior
+    result = await tool.execute(parsed.data as Readonly<unknown>, ctx);
   } catch (error) {
     return toErrorResult(error);
   }
@@ -150,6 +156,7 @@ export const callTool = async (
  * `toJSONSchema`. `unrepresentable: "any"` keeps schemas with refinements
  * from throwing — the runtime Zod check still enforces them.
  */
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- AnyToolDefinition embeds Zod class instances; projector only reads from `tool`
 export const toMcpTool = (tool: AnyToolDefinition): McpTool => ({
   ...(tool.annotations === undefined ? {} : { annotations: tool.annotations }),
   description: tool.description,

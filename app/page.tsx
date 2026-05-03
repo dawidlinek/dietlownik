@@ -19,15 +19,17 @@ const DEFAULT_DAYS = 10;
 const DEFAULT_PAGE_SIZE = 25;
 
 interface PageProps {
-  searchParams: Promise<{
-    city?: string;
-    /** legacy: single value → kcal_min=kcal_max=kcal */
-    kcal?: string;
-    kcal_min?: string;
-    kcal_max?: string;
-    days?: string;
-    page?: string;
-  }>;
+  readonly searchParams: Promise<
+    Readonly<{
+      city?: string;
+      /** legacy: single value → kcal_min=kcal_max=kcal */
+      kcal?: string;
+      kcal_min?: string;
+      kcal_max?: string;
+      days?: string;
+      page?: string;
+    }>
+  >;
 }
 
 const parseIntOr = (raw: string | undefined, fallback: number): number => {
@@ -38,7 +40,8 @@ const parseIntOr = (raw: string | undefined, fallback: number): number => {
   return Number.isFinite(n) ? n : fallback;
 };
 
-const Page = async ({ searchParams }: PageProps) => {
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- Next.js page props expose searchParams as a Promise (has .then/.catch methods); cannot be made deeply readonly
+const Page = async ({ searchParams }: Readonly<PageProps>) => {
   const params = await searchParams;
 
   const cityId = parseIntOr(params.city, DEFAULT_CITY_ID);

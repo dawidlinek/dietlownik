@@ -23,10 +23,10 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 interface SessionBinding {
-  client: DietlyClient;
+  readonly client: DietlyClient;
   // eslint-disable-next-line @typescript-eslint/no-deprecated -- see import
-  server: Server;
-  transport: WebStandardStreamableHTTPServerTransport;
+  readonly server: Server;
+  readonly transport: WebStandardStreamableHTTPServerTransport;
 }
 
 const sessions = new Map<string, SessionBinding>();
@@ -65,6 +65,7 @@ const createSessionBinding = async (): Promise<SessionBinding> => {
 };
 
 const resolveBinding = async (
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- Web standard Request has methods (.json/.text) and Headers; cannot be made deeply readonly
   request: Request,
   parsedBody: unknown
 ): Promise<SessionBinding | Response> => {
@@ -92,6 +93,7 @@ const resolveBinding = async (
   );
 };
 
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- Web standard Request has methods (.json/.text) and Headers; cannot be made deeply readonly
 const handleRequest = async (request: Request): Promise<Response> => {
   let parsedBody: unknown;
   if (request.method === "POST") {
@@ -124,16 +126,19 @@ const handleRequest = async (request: Request): Promise<Response> => {
   }
 };
 
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- Next.js route handler signature requires Web standard Request; cannot be made deeply readonly
 export const GET = async (request: Request) => {
   const response = await handleRequest(request);
   return response;
 };
 
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- Next.js route handler signature requires Web standard Request; cannot be made deeply readonly
 export const POST = async (request: Request) => {
   const response = await handleRequest(request);
   return response;
 };
 
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- Next.js route handler signature requires Web standard Request; cannot be made deeply readonly
 export const DELETE = async (request: Request) => {
   const response = await handleRequest(request);
   return response;

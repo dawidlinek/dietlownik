@@ -1,6 +1,11 @@
-import { post, futureWeekdays } from "../api.js";
-import { q } from "../db.js";
-import type { PriceRequestBody, PriceResponse, PriceLeaf } from "../types.js";
+import { post, futureWeekdays } from "../api";
+import { q } from "../db";
+import type {
+  DeepReadonly,
+  PriceRequestBody,
+  PriceResponse,
+  PriceLeaf,
+} from "../types";
 
 const ORDER_DAY_TIERS = [5, 10, 20];
 const CONCURRENCY = 8;
@@ -91,7 +96,7 @@ interface PriceJob {
  * PriceJob, so its outcome is independent.
  */
 export const fetchAndInsert = async (
-  job: PriceJob,
+  job: DeepReadonly<PriceJob>,
   companyId: string,
   cityId: number
 ): Promise<boolean> => {
@@ -102,9 +107,9 @@ export const fetchAndInsert = async (
     leaf.is_menu_configuration && tdoId !== null && tdoId !== "";
   const body: PriceRequestBody = {
     cityId,
-    deliveryDates,
+    deliveryDates: [...deliveryDates],
     dietCaloriesId: leaf.diet_calories_id,
-    promoCodes,
+    promoCodes: [...promoCodes],
     testOrder: false,
     ...(includeTdo && tdoId !== null ? { tierDietOptionId: tdoId } : {}),
   };
@@ -158,7 +163,7 @@ export const fetchAndInsert = async (
 };
 
 const runConcurrent = async (
-  jobs: PriceJob[],
+  jobs: readonly DeepReadonly<PriceJob>[],
   companyId: string,
   cityId: number,
   concurrency: number = CONCURRENCY
@@ -217,13 +222,13 @@ export const scrapePrices = async (
   // The dashboard's cheapest-pick per (company, leaf, days) takes care of
   // selecting the winning row downstream.
   const promoVariants: string[][] = [[], ...codes.map((c) => [c])];
-  const jobs: PriceJob[] = leaves.flatMap((leaf) =>
+  const jobs: PriceJob[] = leaves.flatMap((leaf: DeepReadonly<PriceLeaf>) =>
     ORDER_DAY_TIERS.flatMap((days) =>
-      promoVariants.map((promoCodes) => ({
+      promoVariants.map((promoCodes: readonly string[]) => ({
         days,
         deliveryDates: datesByDays[days],
         leaf,
-        promoCodes,
+        promoCodes: [...promoCodes],
       }))
     )
   );

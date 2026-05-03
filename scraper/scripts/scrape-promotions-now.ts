@@ -3,14 +3,19 @@
 // you don't want to wait for the full scrape to finish before refreshing
 // the campaigns table.
 
-import { get } from "../api.js";
-import { pool } from "../db.js";
-import { listCompanies } from "../scrapers/companies.js";
+import { get } from "../api";
+import { pool } from "../db";
+import { listCompanies } from "../scrapers/companies";
 import {
   scrapePromotions,
   recordPromosFromConstants,
-} from "../scrapers/promotions.js";
-import type { City, ConstantResponse } from "../types.js";
+} from "../scrapers/promotions";
+import type {
+  City,
+  CompanySearchItem,
+  ConstantResponse,
+  DeepReadonly,
+} from "../types";
 
 const CITY_NAME = process.env.CITY ?? "Wrocław";
 
@@ -26,8 +31,9 @@ const resolveCity = async (name: string): Promise<City> => {
     `/api/open/search/top-search?query=${encodeURIComponent(name)}&citiesSize=10&companiesSize=0`
   );
   const c =
-    data.cities.find((x) => x.name.toLowerCase() === name.toLowerCase()) ??
-    data.cities[0];
+    data.cities.find(
+      (x: Readonly<City>) => x.name.toLowerCase() === name.toLowerCase()
+    ) ?? data.cities[0];
   if (c === undefined) {
     throw new Error(`No city matched "${name}"`);
   }
@@ -52,7 +58,7 @@ const run = async (): Promise<void> => {
   const constants: { companyId: string; constant: ConstantResponse }[] = [];
   let done = 0;
   await Promise.all(
-    companies.map(async (c) => {
+    companies.map(async (c: DeepReadonly<CompanySearchItem>) => {
       const companyId = c.companyId ?? c.name;
       try {
         const constant = await get<ConstantResponse>(

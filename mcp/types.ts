@@ -24,6 +24,23 @@ export interface ToolAnnotations {
 }
 
 /**
+ * Recursive readonly. Used to type `execute(input, ctx)` so tools cannot
+ * mutate the parsed Zod payload (which would corrupt the dispatcher's
+ * caller-side data).
+ */
+export type DeepReadonly<T> = T extends (...args: readonly never[]) => unknown
+  ? T
+  : T extends readonly (infer U)[]
+    ? readonly DeepReadonly<U>[]
+    : T extends Map<infer K, infer V>
+      ? ReadonlyMap<DeepReadonly<K>, DeepReadonly<V>>
+      : T extends Set<infer U>
+        ? ReadonlySet<DeepReadonly<U>>
+        : T extends object
+          ? { readonly [K in keyof T]: DeepReadonly<T[K]> }
+          : T;
+
+/**
  * Per-call context passed into every tool's `execute`.
  *
  * - `extra` is the SDK's `RequestHandlerExtra` — has `signal`, `sessionId`, etc.
@@ -34,11 +51,11 @@ export interface ToolAnnotations {
  * to plumb them.
  */
 export interface ToolContext {
-  client: DietlyClient;
+  readonly client: DietlyClient;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- mirrors the SDK's own generic defaults
-  extra?: RequestHandlerExtra<any, any>;
+  readonly extra?: RequestHandlerExtra<any, any>;
   // oxlint-disable-next-line typescript/no-deprecated -- intentional low-level API
-  server?: Server;
+  readonly server?: Server;
 }
 
 /**
@@ -57,7 +74,8 @@ export interface ToolDefinition<
   annotations?: ToolAnnotations;
   description: string;
   execute: (
-    input: z.infer<TInput>,
+    input: DeepReadonly<z.infer<TInput>>,
+    // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- SDK contract: RequestHandlerExtra (in `ctx.extra`) and the deprecated low-level Server (in `ctx.server`) ship with mutable members; tools never mutate ctx, so this is safe in practice
     ctx: ToolContext
   ) => Promise<
     (TOutput extends z.ZodType ? z.infer<TOutput> : unknown) | CallToolResult

@@ -15,7 +15,7 @@ const outputSchema = z.object({
 });
 
 interface ProfileShape {
-  profileAddresses?: { profileAddressId?: number }[];
+  readonly profileAddresses?: readonly { readonly profileAddressId?: number }[];
 }
 
 const hasProfileField = (value: unknown): value is { profile?: unknown } =>
@@ -38,9 +38,10 @@ export const login = defineTool({
     "server-side keyed by email. Returns profile data with " +
     "`profileAddressId` values needed by `place_order`. Skip if you " +
     "have already called this in the current process.",
-  execute: async (input, { client }) => {
-    await client.login(input.email, input.password);
-    const profileResponse = await client.authGet<unknown>(
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- ctx (ToolContext) embeds the DietlyClient class instance; tool only invokes its public methods
+  execute: async (input, ctx) => {
+    await ctx.client.login(input.email, input.password);
+    const profileResponse = await ctx.client.authGet<unknown>(
       input.email,
       "/api/profile"
     );

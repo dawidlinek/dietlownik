@@ -13,8 +13,8 @@ import { HttpError } from "@/scraper/api";
 // --- Public types ---
 
 export interface DietlySession {
-  rememberMe: string;
-  sessionCookie: string;
+  readonly rememberMe: string;
+  readonly sessionCookie: string;
 }
 
 // --- Helpers ---
@@ -176,6 +176,7 @@ export class DietlyClient {
   private refreshSessionFromResponse(
     email: string,
     currentSession: DietlySession,
+    // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- Headers is a built-in DOM/Node class with mutating methods; we only call .get/.getSetCookie on it
     headers: Headers
   ): void {
     const setCookie = getSetCookieValues(headers);
@@ -196,14 +197,16 @@ export class DietlyClient {
 
   private static authHeaders(
     session: DietlySession,
-    extras: Record<string, string> = {}
+    extras: Readonly<Record<string, string>> = {}
   ): Headers {
     const headers = new Headers({ ...MOBILE_HEADERS, ...extras });
     headers.set("cookie", buildAuthCookie(session));
     return headers;
   }
 
-  private static anonHeaders(extras: Record<string, string> = {}): Headers {
+  private static anonHeaders(
+    extras: Readonly<Record<string, string>> = {}
+  ): Headers {
     return new Headers({ ...MOBILE_HEADERS, ...extras });
   }
 }

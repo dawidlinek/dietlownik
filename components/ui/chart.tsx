@@ -17,7 +17,7 @@ export type ChartConfig = Record<
 >;
 
 interface ChartContextProps {
-  config: ChartConfig;
+  readonly config: ChartConfig;
 }
 
 const ChartContext = React.createContext<ChartContextProps | null>(null);
@@ -32,20 +32,28 @@ const useChart = () => {
 
 // ── ChartStyle: emits CSS variables `--color-{key}` from the config ────────
 
-const ChartStyle = ({ config, id }: { id: string; config: ChartConfig }) => {
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- ChartConfig contains React.ComponentType (callable function type) that cannot be made deeply readonly
+const ChartStyle = ({
+  config,
+  id,
+}: Readonly<{ id: string; config: ChartConfig }>) => {
   const colorConfig = Object.entries(config).filter(
+    // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- Object.entries returns mutable tuples; we only read from them
     ([, c]) => c.color !== undefined && c.color !== ""
   );
   if (!colorConfig.length) {
     return null;
   }
   const css = `[data-chart=${id}] {\n${colorConfig
+    // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- Object.entries returns mutable tuples; we only read from them
     .map(([key, item]) => `  --color-${key}: ${item.color};`)
     .join("\n")}\n}`;
   return <style dangerouslySetInnerHTML={{ __html: css }} />;
 };
 
 // ── ChartContainer ──────────────────────────────────────────────────────────
+
+/* oxlint-disable typescript/prefer-readonly-parameter-types -- shadcn-generated component shape; React/Recharts prop types include DOM refs, ReactNode children, and event handlers that cannot be deeply readonly */
 
 const ChartContainer = React.forwardRef<
   HTMLDivElement,
@@ -94,11 +102,11 @@ ChartContainer.displayName = "Chart";
 const ChartTooltip = RechartsPrimitive.Tooltip;
 
 interface PayloadItem {
-  value?: number | string;
-  name?: string;
-  dataKey?: string | number;
-  payload?: Record<string, unknown>;
-  color?: string;
+  readonly value?: number | string;
+  readonly name?: string;
+  readonly dataKey?: string | number;
+  readonly payload?: Readonly<Record<string, unknown>>;
+  readonly color?: string;
 }
 
 const ChartTooltipContent = React.forwardRef<
@@ -223,6 +231,8 @@ const ChartLegendContent = React.forwardRef<
   );
 });
 ChartLegendContent.displayName = "ChartLegendContent";
+
+/* oxlint-enable typescript/prefer-readonly-parameter-types */
 
 export {
   ChartContainer,

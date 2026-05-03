@@ -12,12 +12,25 @@ const inputSchema = z
     is_menu_configuration: z.boolean(),
     tier_id: z.number().int().positive().optional(),
   })
-  .refine((v) => !v.is_menu_configuration || v.tier_id !== undefined, {
-    message: "tier_id is required when is_menu_configuration is true",
-    path: ["tier_id"],
-  })
   .refine(
-    (v) =>
+    (
+      v: Readonly<{
+        readonly is_menu_configuration: boolean;
+        readonly tier_id?: number;
+      }>
+    ) => !v.is_menu_configuration || v.tier_id !== undefined,
+    {
+      message: "tier_id is required when is_menu_configuration is true",
+      path: ["tier_id"],
+    }
+  )
+  .refine(
+    (
+      v: Readonly<{
+        readonly base_meal_ids?: readonly number[];
+        readonly is_menu_configuration: boolean;
+      }>
+    ) =>
       !v.is_menu_configuration ||
       (v.base_meal_ids !== undefined && v.base_meal_ids.length > 0),
     {
@@ -34,47 +47,49 @@ const outputSchema = z.object({
 });
 
 interface MealOptionShape {
-  dietCaloriesMealId?: number;
-  info?: string | null;
-  label?: string | null;
-  name?: string;
-  reviewsNumber?: number | null;
-  reviewsScore?: number | null;
-  thermo?: string | null;
+  readonly dietCaloriesMealId?: number;
+  readonly info?: string | null;
+  readonly label?: string | null;
+  readonly name?: string;
+  readonly reviewsNumber?: number | null;
+  readonly reviewsScore?: number | null;
+  readonly thermo?: string | null;
 }
 
 interface MealShape {
-  baseDietCaloriesMealId?: number;
-  name?: string;
-  options?: MealOptionShape[];
+  readonly baseDietCaloriesMealId?: number;
+  readonly name?: string;
+  readonly options?: readonly MealOptionShape[];
 }
 
 interface MealApiResponse {
-  calories?: number;
-  date?: string;
-  meals?: MealShape[];
+  readonly calories?: number;
+  readonly date?: string;
+  readonly meals?: readonly MealShape[];
 }
 
 const normalizeMealsResponse = (
   response: MealApiResponse,
   fallbackDate: string
 ) => {
-  const meals = Array.isArray(response.meals) ? response.meals : [];
+  const meals: readonly MealShape[] = response.meals ?? [];
   return {
     calories: response.calories ?? null,
     date: response.date ?? fallbackDate,
-    meals: meals.map((meal) => ({
+    meals: meals.map((meal: Readonly<MealShape>) => ({
       base_diet_calories_meal_id: meal.baseDietCaloriesMealId ?? null,
       name: meal.name ?? null,
-      options: (meal.options ?? []).map((option) => ({
-        diet_calories_meal_id: option.dietCaloriesMealId ?? null,
-        info: option.info ?? null,
-        label: option.label ?? null,
-        name: option.name ?? null,
-        reviews_number: option.reviewsNumber ?? null,
-        reviews_score: option.reviewsScore ?? null,
-        thermo: option.thermo ?? null,
-      })),
+      options: (meal.options ?? []).map(
+        (option: Readonly<MealOptionShape>) => ({
+          diet_calories_meal_id: option.dietCaloriesMealId ?? null,
+          info: option.info ?? null,
+          label: option.label ?? null,
+          name: option.name ?? null,
+          reviews_number: option.reviewsNumber ?? null,
+          reviews_score: option.reviewsScore ?? null,
+          thermo: option.thermo ?? null,
+        })
+      ),
     })),
   };
 };
@@ -88,7 +103,8 @@ export const get_meal_options = defineTool({
     "the `base_meal_ids` from a prior call. Use the returned " +
     "`diet_calories_meal_id` values when building `place_order`'s " +
     "`meal_selections`.",
-  execute: async (input, { client }) => {
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- ctx (ToolContext) embeds the DietlyClient class instance; tool only invokes its public methods
+  execute: async (input, ctx) => {
     let response: MealApiResponse;
     if (input.is_menu_configuration) {
       // Schema refinements above guarantee tier_id + base_meal_ids are set.
@@ -104,7 +120,7 @@ export const get_meal_options = defineTool({
         dietCaloriesMealIds: input.base_meal_ids.join(","),
         tierId: String(input.tier_id),
       });
-      response = await client.anonGet<MealApiResponse>(
+      response = await ctx.client.anonGet<MealApiResponse>(
         `/api/mobile/open/order-form/steps/menu-configuration/meals?${params.toString()}`,
         input.company_id
       );
@@ -112,7 +128,10 @@ export const get_meal_options = defineTool({
       const path = `/api/mobile/open/company-card/${encodeURIComponent(
         input.company_id
       )}/menu/${input.diet_calories_id}/city/${input.city_id}/date/${input.date}`;
-      response = await client.anonGet<MealApiResponse>(path, input.company_id);
+      response = await ctx.client.anonGet<MealApiResponse>(
+        path,
+        input.company_id
+      );
     }
     return normalizeMealsResponse(response, input.date);
   },

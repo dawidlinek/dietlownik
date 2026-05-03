@@ -1,12 +1,15 @@
-import { get, parsePrice } from "../api.js";
-import { q } from "../db.js";
+import { get, parsePrice } from "../api";
+import { q } from "../db";
 import type {
   ConstantResponse,
   CityResponse,
+  DeepReadonly,
   Diet,
-  Tier,
+  DietCaloriesItem,
   DietOption,
-} from "../types.js";
+  DietPriceInfo,
+  Tier,
+} from "../types";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -31,8 +34,8 @@ interface CompanyRow {
 
 const projectCompanyRow = (
   companyId: string,
-  constant: ConstantResponse,
-  cityData: CityResponse
+  constant: DeepReadonly<ConstantResponse>,
+  cityData: DeepReadonly<CityResponse>
 ): CompanyRow => {
   const h = constant.companyHeader;
   const p = constant.companyParams;
@@ -56,8 +59,8 @@ const projectCompanyRow = (
 
 const upsertCompany = async (
   companyId: string,
-  constant: ConstantResponse,
-  cityData: CityResponse
+  constant: DeepReadonly<ConstantResponse>,
+  cityData: DeepReadonly<CityResponse>
 ): Promise<void> => {
   const r = projectCompanyRow(companyId, constant, cityData);
   await q(
@@ -116,7 +119,7 @@ const upsertCompany = async (
 const upsertCompanyCity = async (
   companyId: string,
   cityId: number,
-  cityData: CityResponse
+  cityData: DeepReadonly<CityResponse>
 ): Promise<void> => {
   const lp = cityData.lowestPrice;
   await q(
@@ -137,7 +140,10 @@ const upsertCompanyCity = async (
   );
 };
 
-const upsertDiet = async (companyId: string, diet: Diet): Promise<void> => {
+const upsertDiet = async (
+  companyId: string,
+  diet: DeepReadonly<Diet>
+): Promise<void> => {
   await q(
     `INSERT INTO diets
        (diet_id, company_id, name, description, image_url, awarded, avg_score,
@@ -185,7 +191,7 @@ const upsertDiet = async (companyId: string, diet: Diet): Promise<void> => {
 const upsertTier = async (
   companyId: string,
   dietId: number,
-  tier: Tier
+  tier: DeepReadonly<Tier>
 ): Promise<void> => {
   await q(
     `INSERT INTO tiers (tier_id, diet_id, company_id, name, min_price, meals_number, default_option_change, tag, valid_from)
@@ -253,7 +259,7 @@ const upsertOption = async (
   companyId: string,
   dietId: number,
   tierId: number,
-  opt: DietOption
+  opt: DeepReadonly<DietOption>
 ): Promise<void> => {
   await q(
     `INSERT INTO diet_options
@@ -313,7 +319,10 @@ export const scrapeCatalog = async (
 
   // dietPriceInfo gives kcal IDs for all diets (used for "ready"/non-tiered diets)
   const dietPriceMap = new Map(
-    (cityData.dietPriceInfo ?? []).map((p) => [p.dietId, p.dietCaloriesIds])
+    (cityData.dietPriceInfo ?? []).map((p: DeepReadonly<DietPriceInfo>) => [
+      p.dietId,
+      [...p.dietCaloriesIds],
+    ])
   );
 
   const activeDietIds: number[] = [];
@@ -335,11 +344,12 @@ export const scrapeCatalog = async (
     } else {
       // Ready / flat diet: prefer /constant dietOptions (has calories number),
       // fall back to /city dietPriceInfo (id list only).
-      const fromConstant = (diet.dietOptions ?? []).flatMap((o) =>
-        (o.dietCalories ?? []).map((c) => ({
-          calories: c.calories,
-          id: c.dietCaloriesId,
-        }))
+      const fromConstant = (diet.dietOptions ?? []).flatMap(
+        (o: DeepReadonly<DietOption>) =>
+          (o.dietCalories ?? []).map((c: DeepReadonly<DietCaloriesItem>) => ({
+            calories: c.calories,
+            id: c.dietCaloriesId,
+          }))
       );
       const fromCity = (dietPriceMap.get(diet.dietId) ?? []).map((id) => ({
         calories: null as number | null,

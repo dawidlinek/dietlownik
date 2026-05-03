@@ -26,7 +26,7 @@ import {
   launchCfBrowser,
   waitForChallengeCleared,
   writeCfSession,
-} from "../cf-shared.js";
+} from "../cf-shared";
 
 const TIMEOUT_MS = Number(process.env.CF_TIMEOUT_MS ?? 120_000);
 const HEADLESS = process.env.CF_HEADLESS === "1";
@@ -101,15 +101,22 @@ const main = async (): Promise<void> => {
     }
 
     const allCookies = await ctx.cookies();
-    const cookies = allCookies.filter((c) => c.domain.endsWith("dietly.pl"));
+    const cookies = allCookies.filter(
+      // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- patchright Cookie is a third-party type with no readonly variant
+      (c) => c.domain.endsWith("dietly.pl")
+    );
     if (cookies.length === 0) {
       throw new Error(
         "no *.dietly.pl cookies captured — chrome session is empty"
       );
     }
-    const cookieStr = cookies.map((c) => `${c.name}=${c.value}`).join("; ");
+    const cookieStr = cookies
+      // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- patchright Cookie is a third-party type with no readonly variant
+      .map((c) => `${c.name}=${c.value}`)
+      .join("; ");
     const userAgent = await page.evaluate(() => navigator.userAgent);
     log(
+      // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- patchright Cookie is a third-party type with no readonly variant
       `captured ${cookies.length} cookies: ${cookies.map((c) => c.name).join(", ")}`
     );
 

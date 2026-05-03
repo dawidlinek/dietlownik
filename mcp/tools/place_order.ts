@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import type { DietlyClient } from "@/mcp/client";
 import { defineTool } from "@/mcp/tool";
+import type { DeepReadonly } from "@/mcp/types";
 
 const inputSchema = z.object({
   company_id: z.string().min(1),
@@ -48,9 +49,10 @@ interface PlaceOrderResponse {
   };
 }
 
-const summarizeOrder = (input: PlaceOrderInput): string => {
+const summarizeOrder = (input: DeepReadonly<PlaceOrderInput>): string => {
   const totalMeals = input.meal_selections.reduce(
-    (sum, sel) => sum + sel.meals.length,
+    (sum: number, sel: Readonly<{ readonly meals: readonly unknown[] }>) =>
+      sum + sel.meals.length,
     0
   );
   const days = input.delivery_dates.length;
@@ -82,7 +84,11 @@ const jsonResult = (data: unknown): CallToolResult => ({
       : undefined,
 });
 
-const executeOrder = async (input: PlaceOrderInput, client: DietlyClient) => {
+const executeOrder = async (
+  input: DeepReadonly<PlaceOrderInput>,
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- DietlyClient is a class with public methods (authPost) intentionally invoked here
+  client: DietlyClient
+) => {
   const customDeliveryMeals: Record<string, DeliveryMealPayload[]> = {};
   for (const selection of input.meal_selections) {
     customDeliveryMeals[selection.date] = selection.meals.map((m) => ({
@@ -169,13 +175,14 @@ export const place_order = defineTool({
     "First call shows a summary and asks for confirmation; " +
     "re-call with `confirmed: true` to actually place. Returns " +
     "payment URL + order ID.",
-  execute: async (input, { client, server }) => {
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- ctx (ToolContext) embeds the DietlyClient class instance and the SDK Server (used for elicitation); tool only invokes their public methods
+  execute: async (input, ctx) => {
     if (!input.confirmed) {
       const summary = summarizeOrder(input);
       // Try elicitation if the host advertises support; otherwise return a
       // text fallback that asks the agent to re-call with confirmed:true.
-      if (server?.getClientCapabilities()?.elicitation) {
-        const r = await server.elicitInput({
+      if (ctx.server?.getClientCapabilities()?.elicitation) {
+        const r = await ctx.server.elicitInput({
           message: `Place this order?\n\n${summary}`,
           requestedSchema: {
             properties: {
@@ -206,7 +213,7 @@ export const place_order = defineTool({
         });
       }
     }
-    return executeOrder(input, client);
+    return executeOrder(input, ctx.client);
   },
   inputSchema,
   name: "place_order",

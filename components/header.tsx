@@ -19,14 +19,14 @@ import {
 import { cn } from "@/lib/utils";
 
 export interface CityOption {
-  city_id: number;
-  name: string;
+  readonly city_id: number;
+  readonly name: string;
 }
 
 export interface HeaderProps {
-  cities: CityOption[];
-  activeCityId: number;
-  activeCityName: string;
+  readonly cities: readonly CityOption[];
+  readonly activeCityId: number;
+  readonly activeCityName: string;
 }
 
 const useUrlSetter = () => {
@@ -34,7 +34,7 @@ const useUrlSetter = () => {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   return React.useCallback(
-    (patch: Record<string, string | number | undefined>) => {
+    (patch: Readonly<Record<string, string | number | undefined>>) => {
       const sp = new URLSearchParams(searchParams.toString());
       for (const [k, v] of Object.entries(patch)) {
         if (v === undefined) {
@@ -54,12 +54,12 @@ const CityPicker = ({
   cities,
   onPick,
   onSelect,
-}: {
-  cities: CityOption[];
+}: Readonly<{
+  cities: readonly CityOption[];
   activeId: number;
   onSelect: (id: number) => void;
   onPick?: () => void;
-}) => (
+}>) => (
   <Command>
     <CommandInput placeholder="Szukaj miasta..." />
     <CommandList>
@@ -86,17 +86,18 @@ const CityPicker = ({
   </Command>
 );
 
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- React.ReactNode union recursively includes mutable Iterable<ReactNode>; cannot be made deeply readonly
 const PickerButton = ({
   children,
   contentClassName,
   label,
   value,
-}: {
+}: Readonly<{
   label: string;
   value: string;
   children: React.ReactNode;
   contentClassName?: string;
-}) => {
+}>) => {
   const [open, setOpen] = React.useState(false);
   return (
     <Popover onOpenChange={setOpen} open={open}>
@@ -138,7 +139,7 @@ export const Header = ({
   activeCityId,
   activeCityName,
   cities,
-}: HeaderProps) => {
+}: Readonly<HeaderProps>) => {
   const setUrl = useUrlSetter();
 
   return (

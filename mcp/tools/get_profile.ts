@@ -13,7 +13,7 @@ const outputSchema = z.object({
 });
 
 interface ProfileShape {
-  profileAddresses?: { profileAddressId?: number }[];
+  readonly profileAddresses?: readonly { readonly profileAddressId?: number }[];
 }
 
 const hasProfileField = (value: unknown): value is { profile?: unknown } =>
@@ -35,8 +35,9 @@ export const get_profile = defineTool({
     "Fetch profile details (incl. `profileAddressId` values) for an " +
     "already-logged-in email. Use this when the cached session is still " +
     "valid; if the email isn't logged in yet, call `login` first.",
-  execute: async (input, { client }) => {
-    const profileResponse = await client.authGet<unknown>(
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- ctx (ToolContext) embeds the DietlyClient class instance; tool only invokes its public methods
+  execute: async (input, ctx) => {
+    const profileResponse = await ctx.client.authGet<unknown>(
       input.email,
       "/api/profile"
     );

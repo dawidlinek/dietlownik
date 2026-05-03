@@ -15,17 +15,17 @@
 // Tunables: MAX_IN_FLIGHT (api.ts) governs the global concurrency cap;
 // CITY (default Wrocław) selects the city used in calculate-price calls.
 
-import { get, futureWeekdays } from "../api.js";
-import { pool, q } from "../db.js";
+import { get, futureWeekdays } from "../api";
+import { pool, q } from "../db";
 import {
   getLeaves,
   getActivePromoCodes,
   fetchAndInsert,
   runConcurrent,
   ORDER_DAY_TIERS,
-} from "../scrapers/prices.js";
-import type { PriceJob } from "../scrapers/prices.js";
-import type { City } from "../types.js";
+} from "../scrapers/prices";
+import type { PriceJob } from "../scrapers/prices";
+import type { City, DeepReadonly, PriceLeaf } from "../types";
 
 const CITY_NAME = process.env.CITY ?? "Wrocław";
 const COMPANY_FILTER = process.env.COMPANY ?? null;
@@ -48,8 +48,9 @@ const resolveCity = async (name: string): Promise<City> => {
     `/api/open/search/top-search?query=${encodeURIComponent(name)}&citiesSize=10&companiesSize=0`
   );
   const c =
-    data.cities.find((x) => x.name.toLowerCase() === name.toLowerCase()) ??
-    data.cities[0];
+    data.cities.find(
+      (x: Readonly<City>) => x.name.toLowerCase() === name.toLowerCase()
+    ) ?? data.cities[0];
   if (c === undefined) {
     throw new Error(`No city matched "${name}"`);
   }
@@ -74,8 +75,14 @@ const listTargets = async (): Promise<CompanyTarget[]> => {
   );
   const filterStr = COMPANY_FILTER ?? "";
   return rows
-    .map((r) => ({ codes: r.codes ?? [], companyId: r.company_id }))
-    .filter((t) => filterStr === "" || t.companyId === filterStr);
+    .map((r: Readonly<{ company_id: string; codes: readonly string[] }>) => ({
+      codes: [...(r.codes ?? [])],
+      companyId: r.company_id,
+    }))
+    .filter(
+      (t: DeepReadonly<CompanyTarget>) =>
+        filterStr === "" || t.companyId === filterStr
+    );
 };
 
 interface CompanyResult {
@@ -88,7 +95,7 @@ interface CompanyResult {
 }
 
 const processCompany = async (
-  target: CompanyTarget,
+  target: DeepReadonly<CompanyTarget>,
   cityId: number
 ): Promise<CompanyResult> => {
   const { companyId } = target;
@@ -149,7 +156,7 @@ const processCompany = async (
   );
 
   // With-code only: skip promoCodes=[].
-  const jobs: PriceJob[] = leaves.flatMap((leaf) =>
+  const jobs: PriceJob[] = leaves.flatMap((leaf: DeepReadonly<PriceLeaf>) =>
     ORDER_DAY_TIERS.flatMap((days) =>
       codes.map((code) => ({
         days,
@@ -230,9 +237,18 @@ const run = async (): Promise<void> => {
     }
   }
 
-  const totalLeaves = results.reduce((s, r) => s + r.leavesQuoted, 0);
-  const totalInserted = results.reduce((s, r) => s + r.rowsInserted, 0);
-  const totalJobs = results.reduce((s, r) => s + r.jobs, 0);
+  const totalLeaves = results.reduce(
+    (s, r: DeepReadonly<CompanyResult>) => s + r.leavesQuoted,
+    0
+  );
+  const totalInserted = results.reduce(
+    (s, r: DeepReadonly<CompanyResult>) => s + r.rowsInserted,
+    0
+  );
+  const totalJobs = results.reduce(
+    (s, r: DeepReadonly<CompanyResult>) => s + r.jobs,
+    0
+  );
   const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
 
   console.log("\n[promo-prices] ── summary ──");
@@ -245,7 +261,9 @@ const run = async (): Promise<void> => {
   console.log(`  elapsed:             ${elapsed}s`);
 
   // Per-company breakdown for the few that failed every job.
-  const allFailed = results.filter((r) => r.jobs > 0 && r.rowsInserted === 0);
+  const allFailed = results.filter(
+    (r: DeepReadonly<CompanyResult>) => r.jobs > 0 && r.rowsInserted === 0
+  );
   if (allFailed.length > 0) {
     console.log(
       "\n[promo-prices] companies with 0 inserts (likely rejected codes):"

@@ -20,18 +20,24 @@ const chartConfig = {
 
 export interface HistoryPoint {
   /** ISO yyyy-mm-dd */
-  bucket: string;
-  price: number;
-  promo_codes: string[] | null;
+  readonly bucket: string;
+  readonly price: number;
+  readonly promo_codes: readonly string[] | null;
 }
 
-export const PriceHistoryChart = ({ history }: { history: HistoryPoint[] }) => {
+export const PriceHistoryChart = ({
+  history,
+}: Readonly<{ history: readonly HistoryPoint[] }>) => {
   const data = history.map((h) => ({
     date: h.bucket,
     price: h.price,
   }));
 
-  const promos = history
+  const promos: readonly Readonly<{
+    code: string;
+    date: string;
+    price: number;
+  }>[] = history
     .filter((h) => Array.isArray(h.promo_codes) && h.promo_codes.length > 0)
     .map((h) => ({
       code: (h.promo_codes ?? []).join(","),

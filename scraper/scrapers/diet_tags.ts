@@ -1,6 +1,6 @@
-import { get } from "../api.js";
-import { q } from "../db.js";
-import type { DietTag } from "../types.js";
+import { get } from "../api";
+import { q } from "../db";
+import type { DietTag } from "../types";
 
 export const scrapeDietTags = async (): Promise<void> => {
   console.log("[diet_tags] fetching...");

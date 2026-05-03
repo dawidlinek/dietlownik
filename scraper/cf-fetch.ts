@@ -79,6 +79,7 @@ const getCtx = (): Promise<{
 let challengeSolveLock: Promise<void> = Promise.resolve();
 
 const solveChallengeInPage = async (
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- patchright BrowserContext is a third-party class; we call ctx.newPage() (mutates internal page list)
   ctx: BrowserContext,
   url: string
 ): Promise<void> => {
@@ -129,8 +130,10 @@ const solveChallengeInPage = async (
 };
 
 const rawFetch = async (
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- patchright APIRequestContext is a third-party class
   req: APIRequestContext,
   url: string,
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- RequestInit is a DOM lib type with mutable signal/headers fields
   init: RequestInit,
   timeoutMs: number
 ): Promise<{ status: number; headers: Headers; body: string }> => {
@@ -156,6 +159,7 @@ const rawFetch = async (
  */
 export const cfFetch = async (
   url: string,
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- RequestInit is a DOM lib type with mutable signal/headers fields
   init: RequestInit = {},
   timeoutMs = 25_000
 ): Promise<Response> => {

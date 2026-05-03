@@ -27,6 +27,7 @@ export const buildUrl = (path: string): string => {
   return `${BASE}/${path}`;
 };
 
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- Headers is a built-in DOM/Node class with mutating methods; we only call .get/.getSetCookie on it
 export const getSetCookieValues = (headers: Headers): string[] => {
   const h = headers as Headers & { getSetCookie?: () => string[] };
   if (typeof h.getSetCookie === "function") {
@@ -38,7 +39,7 @@ export const getSetCookieValues = (headers: Headers): string[] => {
 };
 
 export const readCookieValue = (
-  setCookieHeaders: string[],
+  setCookieHeaders: readonly string[],
   cookieName: string
 ): string | null => {
   const joined = setCookieHeaders.join(", ");
@@ -51,6 +52,7 @@ export const readCookieValue = (
 
 export const fetchWithRetry = async (
   url: string,
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- RequestInit is the built-in fetch options bag (can hold AbortSignal, FormData, ReadableStream, Headers); we forward it untouched to fetch()
   init: RequestInit
 ): Promise<Response> => {
   const RETRY_MAX = 3;
@@ -102,6 +104,7 @@ export const fetchWithRetry = async (
 };
 
 export const parseResponse = async <T>(
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- Response is a built-in fetch class; we only call .text() (consumes the body once, by design)
   res: Response,
   method: string,
   path: string

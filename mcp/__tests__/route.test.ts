@@ -10,6 +10,7 @@ const jsonRpc = (id: number, method: string, params: unknown = {}) => ({
 });
 
 const readSseJson = async (
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- Response is a built-in fetch class; we only call .text() (consumes the body once, by design)
   res: Response
 ): Promise<{ id?: number; result?: unknown; error?: unknown }> => {
   // Streamable-HTTP wraps single responses as a one-line SSE `data:` event.
@@ -89,7 +90,9 @@ describe("MCP route", () => {
     const listJson = await readSseJson(listRes);
     expect(listJson.error).toBeUndefined();
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- test-only narrowing of the JSON-RPC result envelope to the expected MCP tools/list shape
-    const result = listJson.result as { tools: { name: string }[] };
+    const result = listJson.result as {
+      readonly tools: readonly { readonly name: string }[];
+    };
     const names = result.tools.map((t) => t.name).toSorted();
     expect(names).toEqual([
       "get_meal_options",

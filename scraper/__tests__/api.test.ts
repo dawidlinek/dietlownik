@@ -8,7 +8,7 @@ import {
   futureWeekdays,
   nextNDates,
   newLimiterForTests,
-} from "../api.js";
+} from "../api";
 
 describe("parsePrice", () => {
   it("strips zł and parses dot decimals", () => {

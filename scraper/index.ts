@@ -1,10 +1,10 @@
-import { pool } from "./db.js";
-import { scrapeCatalog } from "./scrapers/catalog.js";
-import { scrapeCity } from "./scrapers/city.js";
-import { listCompanies } from "./scrapers/companies.js";
-import { scrapeDietTags } from "./scrapers/diet_tags.js";
-import { scrapePrices } from "./scrapers/prices.js";
-import type { CompanySearchItem } from "./types.js";
+import { pool } from "./db";
+import { scrapeCatalog } from "./scrapers/catalog";
+import { scrapeCity } from "./scrapers/city";
+import { listCompanies } from "./scrapers/companies";
+import { scrapeDietTags } from "./scrapers/diet_tags";
+import { scrapePrices } from "./scrapers/prices";
+import type { CompanySearchItem, DeepReadonly } from "./types";
 
 const CITY = process.env.CITY ?? "Wrocław";
 // e.g. "robinfood" — skip company-list, scrape just this one
@@ -51,7 +51,7 @@ const processCompany = async (
 };
 
 const runPool = async <T>(
-  items: T[],
+  items: readonly T[],
   n: number,
   fn: (item: T) => Promise<void>
 ): Promise<{ ok: number; fail: number }> => {
@@ -111,7 +111,7 @@ const run = async (): Promise<void> => {
     const { ok, fail } = await runPool(
       slice,
       COMPANY_CONCURRENCY,
-      async (c) => {
+      async (c: DeepReadonly<CompanySearchItem>) => {
         const companyId = c.companyId ?? c.name;
         if (companyId === undefined || companyId === "") {
           console.warn("[run] company missing companyId, skipping");

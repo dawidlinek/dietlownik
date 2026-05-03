@@ -1,6 +1,6 @@
-import { get } from "../api.js";
-import { q } from "../db.js";
-import type { City, TopSearchResponse } from "../types.js";
+import { get } from "../api";
+import { q } from "../db";
+import type { City, TopSearchResponse } from "../types";
 
 export const scrapeCity = async (cityName = "Wrocław"): Promise<City> => {
   console.log(`[city] resolving "${cityName}"...`);
@@ -10,8 +10,9 @@ export const scrapeCity = async (cityName = "Wrocław"): Promise<City> => {
 
   const city =
     data.cities.find(
-      (c) => c.cityStatus && c.name.toLowerCase() === cityName.toLowerCase()
-    ) ?? data.cities.find((c) => c.cityStatus);
+      (c: Readonly<City>) =>
+        c.cityStatus && c.name.toLowerCase() === cityName.toLowerCase()
+    ) ?? data.cities.find((c: Readonly<City>) => c.cityStatus);
 
   if (!city) {
     throw new Error(`City not found: ${cityName}`);

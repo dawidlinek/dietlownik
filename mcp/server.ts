@@ -12,6 +12,7 @@ import type { AnyToolDefinition } from "./types";
 
 const MCP_TOOL_LIST = ALL_TOOLS.map(toMcpTool);
 const TOOLS_BY_NAME: ReadonlyMap<string, AnyToolDefinition> = new Map(
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- ALL_TOOLS items embed Zod class instances; this map projector only reads `t.name`
   ALL_TOOLS.map((t) => [t.name, t])
 );
 
@@ -36,7 +37,7 @@ const INSTRUCTIONS =
  * request. The shared `DietlyClient` is reused across builds, so per-request
  * construction is cheap.
  */
-// eslint-disable-next-line @typescript-eslint/no-deprecated -- see import comment
+// oxlint-disable-next-line typescript/no-deprecated, typescript/prefer-readonly-parameter-types -- Server is the low-level API (see import comment); DietlyClient is a class with public methods (login/authGet/authPost) the server intentionally invokes
 export const buildServer = (client: DietlyClient): Server => {
   // eslint-disable-next-line @typescript-eslint/no-deprecated -- see import comment
   const server = new Server(SERVER_INFO, {
@@ -49,6 +50,7 @@ export const buildServer = (client: DietlyClient): Server => {
     return { tools: MCP_TOOL_LIST };
   });
 
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- SDK contract: setRequestHandler's callback receives `req` and `extra` typed by the SDK as mutable; we only read from both
   server.setRequestHandler(CallToolRequestSchema, async (req, extra) => {
     const tool = TOOLS_BY_NAME.get(req.params.name);
     if (tool === undefined) {
