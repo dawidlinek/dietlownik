@@ -45,6 +45,13 @@ interface FetchOptions extends Omit<RequestInit, "headers" | "body"> {
   retry4xx?: boolean;
 }
 
+export const sleep = async (ms: number): Promise<void> => {
+  // oxlint-disable-next-line promise/avoid-new -- low-level sleep primitive
+  await new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
+  });
+};
+
 // ── In-flight semaphore + min-interval pacer ─────────────────────────────────
 //
 // Two independent limits:
@@ -59,14 +66,17 @@ class Limiter {
   private inFlight = 0;
   private readonly waiters: (() => void)[] = [];
   private nextSlot = 0;
+  private readonly maxInFlight: number;
+  private readonly minIntervalMs: number;
 
-  constructor(
-    private readonly maxInFlight: number,
-    private readonly minIntervalMs: number
-  ) {}
+  public constructor(maxInFlight: number, minIntervalMs: number) {
+    this.maxInFlight = maxInFlight;
+    this.minIntervalMs = minIntervalMs;
+  }
 
-  async acquire(): Promise<void> {
+  public async acquire(): Promise<void> {
     while (this.inFlight >= this.maxInFlight) {
+      // oxlint-disable-next-line promise/avoid-new -- low-level synchronization waiter
       await new Promise<void>((resolve) => {
         this.waiters.push(resolve);
       });
@@ -78,23 +88,17 @@ class Limiter {
       const wait = Math.max(0, this.nextSlot - now);
       this.nextSlot = Math.max(now, this.nextSlot) + this.minIntervalMs;
       if (wait > 0) {
-        await new Promise<void>((r) => {
-          setTimeout(r, wait);
-        });
+        await sleep(wait);
       }
     }
   }
 
-  release(): void {
+  public release(): void {
     this.inFlight = Math.max(0, this.inFlight - 1);
     const w = this.waiters.shift();
-    if (w) {
+    if (w !== undefined) {
       w();
     }
-  }
-
-  get stats() {
-    return { inFlight: this.inFlight, waiting: this.waiters.length };
   }
 }
 
@@ -105,17 +109,38 @@ const limiter = new Limiter(MAX_IN_FLIGHT, MIN_INTERVAL_MS);
 const cfSession = loadCfSession();
 
 // Exposed for tests.
-export function _newLimiterForTests(
+export const newLimiterForTests = (
   maxInFlight: number,
   minIntervalMs: number
-): Limiter {
-  return new Limiter(maxInFlight, minIntervalMs);
-}
+): Limiter => new Limiter(maxInFlight, minIntervalMs);
+
 export type { Limiter };
+
+// oxlint-disable-next-line max-classes-per-file -- HttpError + Limiter are tightly coupled to apiFetch; keep colocated
+export class HttpError extends Error {
+  public method: string;
+  public path: string;
+  public status: number;
+  public bodySnippet: string;
+
+  public constructor(
+    method: string,
+    path: string,
+    status: number,
+    bodySnippet: string
+  ) {
+    super(`${method} ${path} → ${status}: ${bodySnippet.slice(0, 300)}`);
+    this.name = "HttpError";
+    this.method = method;
+    this.path = path;
+    this.status = status;
+    this.bodySnippet = bodySnippet;
+  }
+}
 
 // ── retry helpers ─────────────────────────────────────────────────────────────
 
-function isRetryable(status: number, retry4xx: boolean): boolean {
+const isRetryable = (status: number, retry4xx: boolean): boolean => {
   if (status >= 500) {
     return true;
   }
@@ -126,41 +151,52 @@ function isRetryable(status: number, retry4xx: boolean): boolean {
     return true;
   }
   return false;
-}
+};
 
-function backoffMs(attempt: number): number {
+const backoffMs = (attempt: number): number => {
   const base = RETRY_BASE_MS * 2 ** (attempt - 1);
-  return base + Math.random() * base * 0.5; // up to +50% jitter
-}
+  // up to +50% jitter
+  return base + Math.random() * base * 0.5;
+};
 
 /** Cloudflare challenge: long, jittered backoffs because CF needs idle time. */
-function cfBackoffMs(attempt: number): number {
-  const base = 5000 * 2 ** (attempt - 1); // 5s, 10s, 20s, 40s
+const cfBackoffMs = (attempt: number): number => {
+  // 5s, 10s, 20s, 40s
+  const base = 5000 * 2 ** (attempt - 1);
   return base + Math.random() * base * 0.5;
-}
+};
 
-function cfChallengeHint(): string {
+const cfChallengeHint = (): string => {
   if (USE_PATCHRIGHT) {
     return "[cloudflare-challenge: chrome was rate-limited — lower MAX_IN_FLIGHT or set MIN_INTERVAL_MS]";
   }
-  if (cfSession.cookie) {
+  if (cfSession.cookie !== undefined && cfSession.cookie !== "") {
     return "[cloudflare-challenge: session expired — refresh via `bun scraper/scripts/cf-session.ts`]";
   }
   return "[cloudflare-challenge: no DIETLY_COOKIE / .cf-session.json — see scraper/api.ts header]";
-}
+};
 
 // ── core fetcher ──────────────────────────────────────────────────────────────
 
-async function apiFetch<T>(
-  path: string,
-  options: FetchOptions = {}
-): Promise<T> {
-  const { companyId, headers = {}, body, retry4xx = false, ...rest } = options;
-  const method = (rest.method ?? "GET").toUpperCase();
-  const url = `${BASE}${path}`;
+const buildBaseInit = (
+  method: string,
+  companyId: string | undefined,
+  body: unknown,
+  headers: Record<string, string>,
+  rest: Omit<RequestInit, "headers" | "body" | "method">
+): RequestInit => {
+  const hasBody = body !== undefined;
+  const useLegacyUa =
+    !USE_PATCHRIGHT &&
+    cfSession.userAgent !== undefined &&
+    cfSession.userAgent !== "";
+  const useLegacyCookie =
+    !USE_PATCHRIGHT &&
+    cfSession.cookie !== undefined &&
+    cfSession.cookie !== "";
+  const hasCompanyId = companyId !== undefined && companyId !== "";
 
-  // Static across retry attempts; only `signal` is per-attempt.
-  const baseInit: RequestInit = {
+  return {
     ...rest,
     headers: {
       accept: "application/json",
@@ -169,72 +205,130 @@ async function apiFetch<T>(
       "x-mobile-version": "4.0.0",
       // Patchright drives a real chrome that manages its own cookie jar +
       // sends a real chrome UA — overriding either confuses CF.
-      ...(!USE_PATCHRIGHT && cfSession.userAgent
-        ? { "user-agent": cfSession.userAgent }
-        : {}),
-      ...(!USE_PATCHRIGHT && cfSession.cookie
-        ? { cookie: cfSession.cookie }
-        : {}),
-      ...(companyId ? { "company-id": companyId } : {}),
-      ...(body !== undefined ? { "content-type": "application/json" } : {}),
+      ...(useLegacyUa ? { "user-agent": cfSession.userAgent } : {}),
+      ...(useLegacyCookie ? { cookie: cfSession.cookie } : {}),
+      ...(hasCompanyId ? { "company-id": companyId } : {}),
+      ...(hasBody ? { "content-type": "application/json" } : {}),
       ...headers,
     },
     method,
-    ...(body !== undefined
+    ...(hasBody
       ? { body: typeof body === "string" ? body : JSON.stringify(body) }
       : {}),
   };
+};
+
+interface AttemptResult<T> {
+  done: true;
+  value: T;
+}
+
+interface AttemptRetry {
+  done: false;
+  err: Error;
+  waitMs: number;
+}
+
+const isAbortOrNetworkError = (e: Error & { name?: string }): boolean => {
+  if (e.name === "AbortError") {
+    return true;
+  }
+  const msg = e.message;
+  if (msg === undefined || msg === "") {
+    return false;
+  }
+  return msg.includes("fetch failed") || msg.includes("ECONN");
+};
+
+const performAttempt = async <T>(
+  url: string,
+  method: string,
+  path: string,
+  baseInit: RequestInit,
+  attempt: number,
+  retry4xx: boolean
+): Promise<AttemptResult<T> | AttemptRetry> => {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => {
+    ctrl.abort();
+  }, REQUEST_TIMEOUT_MS);
+  const init: RequestInit = { ...baseInit, signal: ctrl.signal };
+  try {
+    const res = USE_PATCHRIGHT
+      ? await cfFetch(url, init, REQUEST_TIMEOUT_MS)
+      : await fetch(url, init);
+    if (!res.ok) {
+      let text = "";
+      try {
+        text = await res.text();
+      } catch {
+        text = "";
+      }
+      const cfChallenge = isCloudflareChallenge(res.status, text);
+      const snippet = cfChallenge ? cfChallengeHint() : text;
+      const err = new HttpError(method, path, res.status, snippet);
+      if (
+        attempt < RETRY_MAX &&
+        (cfChallenge || isRetryable(res.status, retry4xx))
+      ) {
+        const waitMs = cfChallenge ? cfBackoffMs(attempt) : backoffMs(attempt);
+        return { done: false, err, waitMs };
+      }
+      throw err;
+    }
+    const ct = res.headers.get("content-type") ?? "";
+    if (!ct.includes("application/json")) {
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- non-JSON response: caller asked for T but server returned nothing parseable
+      return { done: true, value: undefined as T };
+    }
+    // oxlint-disable-next-line typescript/no-unsafe-assignment -- res.json() returns any; caller is responsible for shape
+    const json = await res.json();
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- response shape is the caller's contract
+    return { done: true, value: json as T };
+  } catch (error) {
+    if (error instanceof HttpError) {
+      throw error;
+    }
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- catch param is unknown; we care about Error shape
+    const e = error as Error & { name?: string };
+    if (isAbortOrNetworkError(e) && attempt < RETRY_MAX) {
+      return { done: false, err: e, waitMs: backoffMs(attempt) };
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
+const apiFetch = async <T>(
+  path: string,
+  options: FetchOptions = {}
+): Promise<T> => {
+  const { companyId, headers = {}, body, retry4xx = false, ...rest } = options;
+  const method = (rest.method ?? "GET").toUpperCase();
+  const url = `${BASE}${path}`;
+
+  // Static across retry attempts; only `signal` is per-attempt.
+  const baseInit = buildBaseInit(method, companyId, body, headers, rest);
 
   let lastErr: Error | undefined;
-  for (let attempt = 1; attempt <= RETRY_MAX; attempt++) {
+  for (let attempt = 1; attempt <= RETRY_MAX; attempt += 1) {
     await limiter.acquire();
-
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => {
-      ctrl.abort();
-    }, REQUEST_TIMEOUT_MS);
-    const init: RequestInit = { ...baseInit, signal: ctrl.signal };
     try {
-      const res = USE_PATCHRIGHT
-        ? await cfFetch(url, init, REQUEST_TIMEOUT_MS)
-        : await fetch(url, init);
-      if (!res.ok) {
-        const text = await res.text().catch(() => "");
-        const cfChallenge = isCloudflareChallenge(res.status, text);
-        const snippet = cfChallenge ? cfChallengeHint() : text;
-        const err = new HttpError(method, path, res.status, snippet);
-        if (
-          attempt < RETRY_MAX &&
-          (cfChallenge || isRetryable(res.status, retry4xx))
-        ) {
-          lastErr = err;
-          const wait = cfChallenge ? cfBackoffMs(attempt) : backoffMs(attempt);
-          await sleep(wait);
-          continue;
-        }
-        throw err;
+      const result = await performAttempt<T>(
+        url,
+        method,
+        path,
+        baseInit,
+        attempt,
+        retry4xx
+      );
+      if (result.done) {
+        return result.value;
       }
-      const ct = res.headers.get("content-type") ?? "";
-      if (!ct.includes("application/json")) {
-        return undefined as T;
-      }
-      return (await res.json()) as T;
-    } catch (error) {
-      const e = error as Error & { name?: string };
-      if (
-        e.name === "AbortError" ||
-        e.message?.includes("fetch failed") ||
-        e.message?.includes("ECONN")
-      ) {
-        lastErr = e;
-        if (attempt < RETRY_MAX) {
-          await sleep(backoffMs(attempt));
-          continue;
-        }
-      }
-      throw error;
+      lastErr = result.err;
+      await sleep(result.waitMs);
     } finally {
-      clearTimeout(timer);
       limiter.release();
     }
   }
@@ -242,46 +336,24 @@ async function apiFetch<T>(
     lastErr ??
     new Error(`apiFetch fell through without result: ${method} ${path}`)
   );
-}
-
-export class HttpError extends Error {
-  constructor(
-    public method: string,
-    public path: string,
-    public status: number,
-    public bodySnippet: string
-  ) {
-    super(`${method} ${path} → ${status}: ${bodySnippet.slice(0, 300)}`);
-    this.name = "HttpError";
-  }
-}
-
-export function sleep(ms: number): Promise<void> {
-  return new Promise<void>((resolve) => {
-    setTimeout(resolve, ms);
-  });
-}
+};
 
 // ── public api ───────────────────────────────────────────────────────────────
 
-export async function get<T>(
-  path: string,
-  options: FetchOptions = {}
-): Promise<T> {
-  return apiFetch<T>(path, options);
-}
+// oxlint-disable-next-line typescript/promise-function-async -- thin forwarder; adding async would force return-await dance
+export const get = <T>(path: string, options: FetchOptions = {}): Promise<T> =>
+  apiFetch<T>(path, options);
 
-export async function post<T>(
+// oxlint-disable-next-line typescript/promise-function-async -- thin forwarder; adding async would force return-await dance
+export const post = <T>(
   path: string,
   body: unknown,
   options: FetchOptions = {}
-): Promise<T> {
-  return apiFetch<T>(path, { ...options, body, method: "POST" });
-}
+): Promise<T> => apiFetch<T>(path, { ...options, body, method: "POST" });
 
 // ── pure utilities ───────────────────────────────────────────────────────────
 
-export function parsePrice(val?: string | number | null): number | null {
+export const parsePrice = (val?: string | number | null): number | null => {
   if (val == null) {
     return null;
   }
@@ -295,26 +367,28 @@ export function parsePrice(val?: string | number | null): number | null {
     .replace(",", ".");
   const n = Number.parseFloat(cleaned.replaceAll(/[^\d.-]/g, ""));
   return Number.isNaN(n) ? null : n;
-}
+};
 
 /**
  * Parse the per-meal "info" string returned by the menu endpoint.
  * Format: "300 kcal • B:19g • W:30g • T:11g"
  *   B = Białka (protein), W = Węglowodany (carbs), T = Tłuszcze (fat)
  */
-export function parseInfoMacros(info: string | null | undefined): {
+export const parseInfoMacros = (
+  info: string | null | undefined
+): {
   kcal: number | null;
   protein_g: number | null;
   carbs_g: number | null;
   fat_g: number | null;
-} {
+} => {
   const out = {
     carbs_g: null as number | null,
     fat_g: null as number | null,
     kcal: null as number | null,
     protein_g: null as number | null,
   };
-  if (!info) {
+  if (info === null || info === undefined || info === "") {
     return out;
   }
   const kcalMatch = /(\d+(?:[.,]\d+)?)\s*kcal/i.exec(info);
@@ -334,10 +408,12 @@ export function parseInfoMacros(info: string | null | undefined): {
     out.fat_g = Number.parseFloat(tMatch[1].replace(",", "."));
   }
   return out;
-}
+};
 
 /** Parse strings like "300.45 kcal / 1257 kJ" to a number. */
-export function parseKcalNumber(val?: string | number | null): number | null {
+export const parseKcalNumber = (
+  val?: string | number | null
+): number | null => {
   if (val == null) {
     return null;
   }
@@ -346,10 +422,10 @@ export function parseKcalNumber(val?: string | number | null): number | null {
   }
   const m = /(\d+(?:[.,]\d+)?)/.exec(val);
   return m ? Number.parseFloat(m[1].replace(",", ".")) : null;
-}
+};
 
 /** Parse strings like "18.87g" → 18.87. */
-export function parseGrams(val?: string | number | null): number | null {
+export const parseGrams = (val?: string | number | null): number | null => {
   if (val == null) {
     return null;
   }
@@ -358,17 +434,18 @@ export function parseGrams(val?: string | number | null): number | null {
   }
   const m = /(\d+(?:[.,]\d+)?)/.exec(val);
   return m ? Number.parseFloat(m[1].replace(",", ".")) : null;
-}
+};
 
-export function futureWeekdays(
+export const futureWeekdays = (
   count: number,
   { includeSaturday = false, includeSunday = false, fromDaysOffset = 1 } = {}
-): string[] {
+): string[] => {
   const dates: string[] = [];
   const d = new Date();
   d.setDate(d.getDate() + fromDaysOffset);
   while (dates.length < count) {
-    const day = d.getDay(); // 0 = Sun, 6 = Sat
+    // 0 = Sun, 6 = Sat
+    const day = d.getDay();
     const skip =
       (day === 0 && !includeSunday) || (day === 6 && !includeSaturday);
     if (!skip) {
@@ -377,16 +454,16 @@ export function futureWeekdays(
     d.setDate(d.getDate() + 1);
   }
   return dates;
-}
+};
 
 /** Inclusive range of N future calendar dates (no weekend filtering). */
-export function nextNDates(count: number, fromDaysOffset = 0): string[] {
+export const nextNDates = (count: number, fromDaysOffset = 0): string[] => {
   const out: string[] = [];
   const d = new Date();
   d.setDate(d.getDate() + fromDaysOffset);
-  for (let i = 0; i < count; i++) {
+  for (let i = 0; i < count; i += 1) {
     out.push(d.toISOString().slice(0, 10));
     d.setDate(d.getDate() + 1);
   }
   return out;
-}
+};

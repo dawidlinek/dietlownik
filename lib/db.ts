@@ -2,13 +2,13 @@ import { Pool } from "pg";
 import type { QueryResultRow } from "pg";
 
 declare global {
-  // eslint-disable-next-line no-var
+  // oxlint-disable-next-line no-underscore-dangle, no-var -- HMR-safe singleton on globalThis; double-underscore avoids collisions with user code
   var __dietlownikPool: Pool | undefined;
 }
 
-function makePool(): Pool {
+const makePool = (): Pool => {
   const url = process.env.DATABASE_URL;
-  if (!url) {
+  if (url === undefined || url === "") {
     throw new Error(
       "DATABASE_URL is not set. Provide it via .env (dev) or environment (prod)."
     );
@@ -19,24 +19,29 @@ function makePool(): Pool {
     idleTimeoutMillis: 30_000,
     max: 5,
   });
-}
+};
 
 // Lazy: pool is created on first call, then cached on globalThis so HMR
 // doesn't leak connections in dev. Module load must NOT throw — Next collects
-// page data at build time without env vars set.
-function getPool(): Pool {
+// page data at build time without env vars set, and the MCP test suite
+// imports the module without DATABASE_URL.
+export const getPool = (): Pool => {
+  // oxlint-disable-next-line no-underscore-dangle -- HMR-safe singleton key on globalThis
   if (global.__dietlownikPool) {
+    // oxlint-disable-next-line no-underscore-dangle -- HMR-safe singleton key on globalThis
     return global.__dietlownikPool;
   }
   const pool = makePool();
+  // oxlint-disable-next-line no-underscore-dangle -- HMR-safe singleton key on globalThis
   global.__dietlownikPool = pool;
   return pool;
-}
+};
 
-export async function query<T extends QueryResultRow = QueryResultRow>(
+export const query = async <T extends QueryResultRow = QueryResultRow>(
   text: string,
   params: unknown[] = []
-) {
+) => {
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- pg's overload requires array; unknown[] is structurally compatible
   const res = await getPool().query<T>(text, params as never[]);
   return res.rows;
-}
+};

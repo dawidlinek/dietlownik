@@ -22,13 +22,28 @@ interface ChartContextProps {
 
 const ChartContext = React.createContext<ChartContextProps | null>(null);
 
-function useChart() {
+const useChart = () => {
   const ctx = React.useContext(ChartContext);
   if (!ctx) {
     throw new Error("useChart must be used within <ChartContainer>");
   }
   return ctx;
-}
+};
+
+// ── ChartStyle: emits CSS variables `--color-{key}` from the config ────────
+
+const ChartStyle = ({ config, id }: { id: string; config: ChartConfig }) => {
+  const colorConfig = Object.entries(config).filter(
+    ([, c]) => c.color !== undefined && c.color !== ""
+  );
+  if (!colorConfig.length) {
+    return null;
+  }
+  const css = `[data-chart=${id}] {\n${colorConfig
+    .map(([key, item]) => `  --color-${key}: ${item.color};`)
+    .join("\n")}\n}`;
+  return <style dangerouslySetInnerHTML={{ __html: css }} />;
+};
 
 // ── ChartContainer ──────────────────────────────────────────────────────────
 
@@ -40,15 +55,13 @@ const ChartContainer = React.forwardRef<
       typeof RechartsPrimitive.ResponsiveContainer
     >["children"];
   }
->(({ id, className, children, config, ...props }, ref) => {
+>(({ children, className, config, id, ...props }, ref) => {
   const uniqueId = React.useId();
   const chartId = `chart-${id ?? uniqueId.replaceAll(":", "")}`;
 
   return (
     <ChartContext.Provider value={{ config }}>
       <div
-        data-chart={chartId}
-        ref={ref}
         className={cn(
           "flex aspect-video justify-center text-xs",
           // Recharts internal styling overrides — keep it quiet.
@@ -62,9 +75,11 @@ const ChartContainer = React.forwardRef<
           "[&_.recharts-surface]:outline-none",
           className
         )}
+        data-chart={chartId}
+        ref={ref}
         {...props}
       >
-        <ChartStyle id={chartId} config={config} />
+        <ChartStyle config={config} id={chartId} />
         <RechartsPrimitive.ResponsiveContainer>
           {children}
         </RechartsPrimitive.ResponsiveContainer>
@@ -73,19 +88,6 @@ const ChartContainer = React.forwardRef<
   );
 });
 ChartContainer.displayName = "Chart";
-
-// ── ChartStyle: emits CSS variables `--color-{key}` from the config ────────
-
-const ChartStyle = ({ id, config }: { id: string; config: ChartConfig }) => {
-  const colorConfig = Object.entries(config).filter(([, c]) => c.color);
-  if (!colorConfig.length) {
-    return null;
-  }
-  const css = `[data-chart=${id}] {\n${colorConfig
-    .map(([key, item]) => `  --color-${key}: ${item.color};`)
-    .join("\n")}\n}`;
-  return <style dangerouslySetInnerHTML={{ __html: css }} />;
-};
 
 // ── Tooltip ─────────────────────────────────────────────────────────────────
 
@@ -128,17 +130,18 @@ const ChartTooltipContent = React.forwardRef<
     ref
   ) => {
     const { config } = useChart();
-    if (!active || !payload?.length) {
+    if (active !== true || payload === undefined || payload.length === 0) {
       return null;
     }
 
-    const tooltipLabel = !hideLabel ? (
+    const tooltipLabel = hideLabel ? null : (
       <div className="text-[11px] uppercase tracking-[0.08em] text-[var(--color-ink-3)] mb-1.5">
         {labelFormatter
           ? labelFormatter(label, payload)
-          : (label as React.ReactNode)}
+          : // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- recharts label is unknown at runtime; consumers pass renderable nodes
+            (label as React.ReactNode)}
       </div>
-    ) : null;
+    );
 
     return (
       <div
@@ -196,7 +199,7 @@ const ChartLegendContent = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement> & { payload?: PayloadItem[] }
 >(({ className, payload }, ref) => {
-  if (!payload?.length) {
+  if (payload === undefined || payload.length === 0) {
     return null;
   }
   return (

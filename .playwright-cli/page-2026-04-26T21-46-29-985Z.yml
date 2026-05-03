@@ -1,0 +1,293 @@
+- generic [active] [ref=e1]:
+    - main [ref=e3]:
+        - region "Notifications Alt+T"
+        - generic:
+            - generic:
+                - list
+        - generic [ref=e5]:
+            - generic [ref=e6]:
+                - link [ref=e7] [cursor=pointer]:
+                    - /url: /
+                    - img [ref=e8]
+                - generic [ref=e10]:
+                    - img
+                    - generic [ref=e11]:
+                        - combobox "Miasto"
+                    - img
+                    - listbox
+                - generic [ref=e12]:
+                    - generic [ref=e14]:
+                        - img [ref=e15]
+                        - combobox "Nazwa cateringu" [ref=e17]
+                    - listbox
+            - generic [ref=e18]:
+                - generic [ref=e19]:
+                    - button "Zaloguj się" [ref=e20] [cursor=pointer]:
+                        - generic [ref=e21]: Zaloguj się
+                        - img [ref=e23]
+                    - button "Załóż konto" [ref=e25] [cursor=pointer]:
+                        - generic [ref=e26]: Załóż konto
+                        - img [ref=e28]
+                - button [ref=e31] [cursor=pointer]:
+                    - button [ref=e32]:
+                        - img [ref=e33]
+        - generic [ref=e35]:
+            - generic [ref=e37]:
+                - generic [ref=e38]:
+                    - link "Strona główna >" [ref=e39] [cursor=pointer]:
+                        - /url: /
+                    - link "Cateringi >" [ref=e40] [cursor=pointer]:
+                        - /url: /catering-dietetyczny/undefined
+                - generic [ref=e41]:
+                    - img "background" [ref=e44]
+                    - generic [ref=e45]:
+                        - generic [ref=e47]:
+                            - generic [ref=e48]:
+                                - heading [level=1]
+                                - generic [ref=e52]:
+                                    - img [ref=e53]
+                                    - img [ref=e55]
+                                    - img [ref=e57]
+                            - generic:
+                                - button
+                        - generic [ref=e59]:
+                            - button "Miasto nieobsługiwane" [disabled] [ref=e60]:
+                                - generic [ref=e61]: Miasto nieobsługiwane
+                            - img [ref=e63]
+            - generic [ref=e73]:
+                - generic [ref=e74]:
+                    - navigation [ref=e75]:
+                        - generic [ref=e76]:
+                            - button "Oferta" [ref=e77] [cursor=pointer]:
+                                - paragraph [ref=e78]: Oferta
+                            - button "Dodatki" [ref=e79] [cursor=pointer]:
+                                - paragraph [ref=e80]: Dodatki
+                            - button "Pełna oferta Cateringu" [ref=e81] [cursor=pointer]:
+                                - paragraph [ref=e82]: Pełna oferta Cateringu
+                            - button "Opinie" [ref=e83] [cursor=pointer]:
+                                - paragraph [ref=e84]: Opinie
+                            - button "Galeria" [ref=e85] [cursor=pointer]:
+                                - paragraph [ref=e86]: Galeria
+                            - button "Dostawa" [ref=e87] [cursor=pointer]:
+                                - paragraph [ref=e88]: Dostawa
+                            - button "O nas" [ref=e89] [cursor=pointer]:
+                                - paragraph [ref=e90]: O nas
+                            - button "Kontakt" [ref=e91] [cursor=pointer]:
+                                - paragraph [ref=e92]: Kontakt
+                    - generic [ref=e93]:
+                        - generic [ref=e95]:
+                            - generic [ref=e96]:
+                                - paragraph [ref=e97]: Dostępne warianty
+                                - img [ref=e100]
+                            - paragraph [ref=e102]: Dostępne kaloryczności
+                        - heading "Podgląd menu" [level=3] [ref=e103]
+                        - generic [ref=e104]:
+                            - generic [ref=e107]:
+                                - button [ref=e108] [cursor=pointer]:
+                                    - img [ref=e110]
+                                - button [disabled] [ref=e113]:
+                                    - img [ref=e115]
+                            - generic [ref=e117]:
+                                - img [ref=e118]
+                                - heading "Menu niedostępne" [level=3] [ref=e126]
+                                - paragraph [ref=e127]: Catering nie opublikował jeszcze menu na wybrany dzień
+                        - button "Dodaj do porównania" [ref=e128] [cursor=pointer]:
+                            - generic [ref=e129]: Dodaj do porównania
+                            - img [ref=e131]
+                    - generic [ref=e134]:
+                        - heading "Dodatki" [level=2] [ref=e135]
+                        - paragraph [ref=e136]: Catering nie posiada dodatków w ofercie.
+                    - heading "Pełna oferta cateringu" [level=2] [ref=e138]
+                    - generic [ref=e139]:
+                        - generic [ref=e140]:
+                            - heading "Opinie" [level=2] [ref=e141]
+                            - button "Jak działają opinie?" [ref=e142] [cursor=pointer]:
+                                - generic [ref=e143]: Jak działają opinie?
+                                - img [ref=e145]
+                        - generic [ref=e147]:
+                            - img [ref=e149]
+                            - paragraph [ref=e159]: Wygląda na to, że catering nie ma jeszcze wystawionych opinii w systemie Dietly
+                    - generic [ref=e160]:
+                        - heading "Galeria" [level=2] [ref=e161]
+                        - button [ref=e163] [cursor=pointer]
+                    - generic [ref=e169]:
+                        - heading "Dostawa" [level=2] [ref=e170]
+                        - paragraph [ref=e171]: Sprawdź czy dowozimy do Ciebie
+                        - button "Wszystkie obsługiwane miasta (0)" [ref=e173] [cursor=pointer]:
+                            - generic [ref=e174]: Wszystkie obsługiwane miasta (0)
+                    - generic [ref=e175]:
+                        - heading "O nas" [level=2] [ref=e176]
+                        - paragraph [ref=e178]:
+                            - text: Dietly.pl to największa, najdokładniejsza i najbardziej aktualna porównywarka cateringów dietetycznych w Polsce. Do tej pory, odchudzając się na dietach pudełkowych, byliśmy skazani na monotonne poszukiwanie stron cateringów dietetycznych. Musieliśmy znaleźć catering, upewnić się, że ma w ofercie odpowiadającą nam dietę, sprawdzić czy zostanie dowieziona do naszej miejscowości, a na końcu poczytać opinie - czy to w wyszukiwarce, czy na Facebooku. Proces poszukiwania cateringu dietetycznego dostosowanego do naszych potrzeb był długi i monotonny. Ponadto, do momentu spróbowania, nie byliśmy pewni tego, co otrzymamy, ani jaka będzie jakość pudełek dietetycznych.
+                            - button "Zobacz więcej" [ref=e179] [cursor=pointer]
+                    - generic [ref=e180]:
+                        - heading "Kontakt" [level=2] [ref=e181]
+                        - generic [ref=e182]:
+                            - link [ref=e183] [cursor=pointer]:
+                                - /url: "tel:"
+                                - button [ref=e184]:
+                                    - img [ref=e186]
+                            - link [ref=e188] [cursor=pointer]:
+                                - /url: "mailto:"
+                                - button [ref=e189]:
+                                    - img [ref=e191]
+                - generic [ref=e195]:
+                    - img [ref=e197]
+                    - img "Wczytywanie" [ref=e198]
+        - generic [ref=e199]:
+            - generic [ref=e200]:
+                - generic [ref=e201]:
+                    - generic [ref=e202]:
+                        - link "Diety pudełkowe" [ref=e203] [cursor=pointer]:
+                            - /url: /dieta-pudelkowa/wszystkie-diety
+                        - list
+                    - list [ref=e205]:
+                        - listitem [ref=e206]:
+                            - link "Wszystkie diety" [ref=e207] [cursor=pointer]:
+                                - /url: /dieta-pudelkowa/wszystkie-diety
+                    - generic [ref=e208]:
+                        - link "Popularne miasta" [ref=e209] [cursor=pointer]:
+                            - /url: /catering-dietetyczny
+                        - list [ref=e210]:
+                            - listitem [ref=e211]:
+                                - link "Catering dietetyczny Warszawa" [ref=e212] [cursor=pointer]:
+                                    - /url: /catering-dietetyczny/warszawa
+                            - listitem [ref=e213]:
+                                - link "Catering dietetyczny Gdańsk" [ref=e214] [cursor=pointer]:
+                                    - /url: /catering-dietetyczny/gdansk
+                            - listitem [ref=e215]:
+                                - link "Catering dietetyczny Gdynia" [ref=e216] [cursor=pointer]:
+                                    - /url: /catering-dietetyczny/gdynia
+                            - listitem [ref=e217]:
+                                - link "Catering dietetyczny Łódź" [ref=e218] [cursor=pointer]:
+                                    - /url: /catering-dietetyczny/lodz
+                            - listitem [ref=e219]:
+                                - link "Catering dietetyczny Poznań" [ref=e220] [cursor=pointer]:
+                                    - /url: /catering-dietetyczny/poznan
+                            - listitem [ref=e221]:
+                                - link "Catering dietetyczny Wrocław" [ref=e222] [cursor=pointer]:
+                                    - /url: /catering-dietetyczny/wroclaw
+                            - listitem [ref=e223]:
+                                - link "Catering dietetyczny Kraków" [ref=e224] [cursor=pointer]:
+                                    - /url: /catering-dietetyczny/krakow
+                            - listitem [ref=e225]:
+                                - link "Catering dietetyczny Katowice" [ref=e226] [cursor=pointer]:
+                                    - /url: /catering-dietetyczny/katowice
+                            - listitem [ref=e227]:
+                                - link "Catering dietetyczny Toruń" [ref=e228] [cursor=pointer]:
+                                    - /url: /catering-dietetyczny/torun
+                            - listitem [ref=e229]:
+                                - link "Catering dietetyczny Białystok" [ref=e230] [cursor=pointer]:
+                                    - /url: /catering-dietetyczny/bialystok
+                            - listitem [ref=e231]:
+                                - link "Catering dietetyczny Szczecin" [ref=e232] [cursor=pointer]:
+                                    - /url: /catering-dietetyczny/szczecin
+                    - generic [ref=e233]:
+                        - generic [ref=e234]:
+                            - link "Kalkulatory dietetyczne" [ref=e235] [cursor=pointer]:
+                                - /url: /kalkulatory-dietetyczne
+                            - list [ref=e236]:
+                                - listitem [ref=e237]:
+                                    - link "Kalkulator BMI" [ref=e238] [cursor=pointer]:
+                                        - /url: /kalkulatory-dietetyczne/kalkulator-bmi
+                                - listitem [ref=e239]:
+                                    - link "Kalkulator kaloryczny PPM" [ref=e240] [cursor=pointer]:
+                                        - /url: /kalkulatory-dietetyczne/kalkulator-ppm
+                                - listitem [ref=e241]:
+                                    - link "Kalkulator kaloryczny CPM" [ref=e242] [cursor=pointer]:
+                                        - /url: /kalkulatory-dietetyczne/kalkulator-cpm
+                                - listitem [ref=e243]:
+                                    - link "Dopasuj idealną dietę" [ref=e244] [cursor=pointer]:
+                                        - /url: /dobierz-diete
+                        - link "Cateringi z Wyborem Menu" [ref=e246] [cursor=pointer]:
+                            - /url: /wybor-menu
+                        - link "Paczki niespodzianki" [ref=e248] [cursor=pointer]:
+                            - /url: https://paczki.dietly.pl/
+                        - link "Newsletter" [ref=e250] [cursor=pointer]:
+                            - /url: https://newsletter.dietly.pl/
+                - generic [ref=e251]:
+                    - heading "Bezpieczne płatności" [level=3] [ref=e252]
+                    - paragraph [ref=e253]: Wszystkie płatności na platformie Dietly trafiają bezpośrednio do cateringu, w którym jest składane zamówienie.
+                    - img "Tpay - zaufane płatności" [ref=e254]
+            - generic [ref=e256]:
+                - generic [ref=e257]:
+                    - generic [ref=e258]:
+                        - link [ref=e259] [cursor=pointer]:
+                            - /url: /
+                            - img [ref=e260]
+                        - generic [ref=e265]:
+                            - generic [ref=e266]: jest częścią
+                            - link [ref=e267] [cursor=pointer]:
+                                - /url: https://zabkagroup.com/
+                                - img [ref=e268]
+                    - img "Food & Retail Start-up Star 2019" [ref=e276]
+                - generic [ref=e277]:
+                    - generic [ref=e278]:
+                        - link "Facebook" [ref=e279] [cursor=pointer]:
+                            - /url: https://www.facebook.com/dietlypl/
+                            - img "Facebook" [ref=e280]
+                        - link "Instagram" [ref=e281] [cursor=pointer]:
+                            - /url: https://www.instagram.com/dietlypl
+                            - img "Instagram" [ref=e282]
+                        - link "Youtube" [ref=e283] [cursor=pointer]:
+                            - /url: https://www.youtube.com/channel/UCXoP16ki7_tj2fl2Y7S9L1Q
+                            - img "Youtube" [ref=e284]
+                        - link "Linkedin" [ref=e285] [cursor=pointer]:
+                            - /url: https://www.linkedin.com/company/dieltypl/
+                            - img "Linkedin" [ref=e286]
+                    - generic [ref=e288]:
+                        - img "QR code" [ref=e289]
+                        - generic [ref=e290]:
+                            - link "Appstore" [ref=e291] [cursor=pointer]:
+                                - /url: https://apps.apple.com/app/apple-store/id1642713520?pt=122174107&ct=www_dietly_footer&mt=8
+                                - img "Appstore" [ref=e292]
+                            - link "GooglePlay" [ref=e293] [cursor=pointer]:
+                                - /url: https://play.google.com/store/apps/details?id=com.dietly.panel&referrer=utm_source%3Ddietly%26utm_medium%3Dnonpaid%26utm_campaign%3Dftu_acq_evergreen_dietlyapp_footer
+                                - img "GooglePlay" [ref=e294]
+            - generic [ref=e296]:
+                - list [ref=e297]:
+                    - listitem [ref=e298]:
+                        - link "Dodaj swój catering" [ref=e299] [cursor=pointer]:
+                            - /url: /nowa-firma
+                            - img [ref=e300]
+                            - text: Dodaj swój catering
+                    - listitem [ref=e302]:
+                        - link "Program Partnerski" [ref=e303] [cursor=pointer]:
+                            - /url: https://programpartnerski.dietly.pl/
+                    - listitem [ref=e304]:
+                        - link "Blog" [ref=e305] [cursor=pointer]:
+                            - /url: /blog
+                    - listitem [ref=e306]:
+                        - link "Kariera w Dietly" [ref=e307] [cursor=pointer]:
+                            - /url: https://kariera.dietly.pl
+                    - listitem [ref=e308]:
+                        - link "kontakt@dietly.pl" [ref=e309] [cursor=pointer]:
+                            - /url: mailto:kontakt@dietly.pl
+                            - img [ref=e310]
+                            - text: kontakt@dietly.pl
+                    - listitem [ref=e312]:
+                        - link "Zgłoszenia dla Sygnalistów" [ref=e313] [cursor=pointer]:
+                            - /url: https://report.whistleb.com/masterlife-solutions-dietly
+                            - img [ref=e314]
+                            - text: Zgłoszenia dla Sygnalistów
+                - separator
+                - list [ref=e316]:
+                    - listitem [ref=e317]:
+                        - link "©Dietly. 2026" [ref=e318] [cursor=pointer]:
+                            - /url: /
+                    - listitem [ref=e319]:
+                        - link "Regulamin Dietly.pl" [ref=e320] [cursor=pointer]:
+                            - /url: /regulamin-dietly
+                    - listitem [ref=e321]:
+                        - link "Regulaminy" [ref=e322] [cursor=pointer]:
+                            - /url: /regulaminy
+                    - listitem [ref=e323]:
+                        - link "Ochrona danych osobowych" [ref=e324] [cursor=pointer]:
+                            - /url: /ochrona-danych-osobowych
+                    - listitem [ref=e325]:
+                        - link "Deklaracja dostępności" [ref=e326] [cursor=pointer]:
+                            - /url: /deklaracja-dostepnosci
+                    - listitem [ref=e327]:
+                        - link "Procedura zgłoszeń dla sygnalistów" [ref=e328] [cursor=pointer]:
+                            - /url: https://masterlifecrm.com/wp-content/uploads/2025/11/Procedura-zgloszen-wewnetrznych-10.2025-v.-2.0.pdf
+    - alert [ref=e329]

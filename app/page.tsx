@@ -2,16 +2,17 @@ import { CateringList } from "@/components/catering-list";
 import { Header } from "@/components/header";
 import { KcalRangeFilter } from "@/components/kcal-range-filter";
 import {
-  getCities,
-  getKcalBounds,
-  getDayOptions,
-  getCateringPage,
   getActiveCampaigns,
+  getCateringPage,
+  getCities,
+  getDayOptions,
+  getKcalBounds,
 } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
 
-const DEFAULT_CITY_ID = 986_283; // Wrocław
+// Wrocław
+const DEFAULT_CITY_ID = 986_283;
 const DEFAULT_KCAL_MIN = 1500;
 const DEFAULT_KCAL_MAX = 2000;
 const DEFAULT_DAYS = 10;
@@ -20,7 +21,8 @@ const DEFAULT_PAGE_SIZE = 25;
 interface PageProps {
   searchParams: Promise<{
     city?: string;
-    kcal?: string; // legacy: single value → kcal_min=kcal_max=kcal
+    /** legacy: single value → kcal_min=kcal_max=kcal */
+    kcal?: string;
     kcal_min?: string;
     kcal_max?: string;
     days?: string;
@@ -28,15 +30,24 @@ interface PageProps {
   }>;
 }
 
-export default async function Page({ searchParams }: PageProps) {
+const parseIntOr = (raw: string | undefined, fallback: number): number => {
+  if (raw === undefined || raw === "") {
+    return fallback;
+  }
+  const n = Number.parseInt(raw, 10);
+  return Number.isFinite(n) ? n : fallback;
+};
+
+const Page = async ({ searchParams }: PageProps) => {
   const params = await searchParams;
 
   const cityId = parseIntOr(params.city, DEFAULT_CITY_ID);
 
   // Legacy ?kcal=X support: collapse to a single-value range.
-  const legacyKcal = params.kcal
-    ? parseIntOr(params.kcal, Number.NaN)
-    : Number.NaN;
+  const legacyKcal =
+    params.kcal === undefined || params.kcal === ""
+      ? Number.NaN
+      : parseIntOr(params.kcal, Number.NaN);
   let kcalMin = parseIntOr(
     params.kcal_min,
     Number.isFinite(legacyKcal) ? legacyKcal : DEFAULT_KCAL_MIN
@@ -82,21 +93,22 @@ export default async function Page({ searchParams }: PageProps) {
     ),
   ]);
 
-  const activeCity =
-    cities.find((c) => c.city_id === cityId) ??
-    ({ city_id: cityId, name: "Wrocław" } as const);
+  const activeCity = cities.find((c) => c.city_id === cityId) ?? {
+    city_id: cityId,
+    name: "Wrocław",
+  };
 
   // Latest capture across visible tiles for the freshness footer.
-  const latestCaptureAt = pageData.tiles.reduce<string | null>((acc, t) => {
+  let latestCaptureAt: string | null = null;
+  for (const t of pageData.tiles) {
     const cap = t.cheapest.captured_at;
-    if (!cap) {
-      return acc;
+    if (cap === null || cap === undefined || cap === "") {
+      continue;
     }
-    if (!acc) {
-      return cap;
+    if (latestCaptureAt === null || cap > latestCaptureAt) {
+      latestCaptureAt = cap;
     }
-    return cap > acc ? cap : acc;
-  }, null);
+  }
 
   // Don't silently clamp the requested range — if a user asked for 9000-10000
   // we want to render the empty state, not pretend they asked for 4000. The
@@ -109,36 +121,36 @@ export default async function Page({ searchParams }: PageProps) {
   return (
     <>
       <Header
-        cities={cities}
         activeCityId={activeCity.city_id}
         activeCityName={activeCity.name}
+        cities={cities}
       />
 
       <KcalRangeFilter
-        dataMin={bounds.min}
-        dataMax={bounds.max}
-        presets={bounds.presets}
-        activeMin={safeMin}
-        activeMax={safeMax}
-        dayOptions={dayOptions.length ? dayOptions : [DEFAULT_DAYS]}
         activeDays={safeDays}
+        activeMax={safeMax}
+        activeMin={safeMin}
+        dataMax={bounds.max}
+        dataMin={bounds.min}
+        dayOptions={dayOptions.length ? dayOptions : [DEFAULT_DAYS]}
+        presets={bounds.presets}
       />
 
       <main className="flex-1">
         <CateringList
-          tiles={pageData.tiles}
-          total={pageData.total}
-          page={pageData.page}
-          pageSize={pageData.pageSize}
           campaigns={campaigns}
           cityId={cityId}
-          days={safeDays}
-          kcalMin={safeMin}
-          kcalMax={safeMax}
           cityName={activeCity.name}
-          rangeMin={pageData.rangeMin}
-          rangeMax={pageData.rangeMax}
+          days={safeDays}
+          kcalMax={safeMax}
+          kcalMin={safeMin}
           latestCaptureAt={latestCaptureAt}
+          page={pageData.page}
+          pageSize={pageData.pageSize}
+          rangeMax={pageData.rangeMax}
+          rangeMin={pageData.rangeMin}
+          tiles={pageData.tiles}
+          total={pageData.total}
         />
       </main>
 
@@ -147,12 +159,6 @@ export default async function Page({ searchParams }: PageProps) {
       </footer>
     </>
   );
-}
+};
 
-function parseIntOr(raw: string | undefined, fallback: number): number {
-  if (!raw) {
-    return fallback;
-  }
-  const n = Number.parseInt(raw, 10);
-  return Number.isFinite(n) ? n : fallback;
-}
+export default Page;

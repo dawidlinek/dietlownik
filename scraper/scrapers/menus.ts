@@ -48,9 +48,12 @@ interface CompanyMenuConfig {
   menu_days_ahead: number;
 }
 
-async function loadCompanyConfig(
+const errMessage = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error);
+
+const loadCompanyConfig = async (
   companyId: string
-): Promise<CompanyMenuConfig | null> {
+): Promise<CompanyMenuConfig | null> => {
   const res = await q<{
     menu_enabled: boolean | null;
     menu_days_ahead: number | null;
@@ -61,12 +64,13 @@ async function loadCompanyConfig(
   if (res.rowCount === 0) {
     return null;
   }
-  const row = res.rows[0];
+  const [row] = res.rows;
   return {
-    menu_enabled: row.menu_enabled !== false, // null treated as enabled (catalog runs first)
+    // null treated as enabled (catalog runs first)
     menu_days_ahead: row.menu_days_ahead ?? DEFAULT_MENU_DAYS,
+    menu_enabled: row.menu_enabled !== false,
   };
-}
+};
 
 /**
  * One canonical (tier, option) representative per company. For each group we
@@ -74,7 +78,7 @@ async function loadCompanyConfig(
  * sibling kcal level. Ready diets have NULL tier/option and collapse into a
  * single representative per (company, diet) — also fine.
  */
-async function loadMenuTargets(companyId: string): Promise<MenuTarget[]> {
+const loadMenuTargets = async (companyId: string): Promise<MenuTarget[]> => {
   const res = await q<{
     diet_calories_id: number;
     tier_id: number | null;
@@ -110,7 +114,7 @@ async function loadMenuTargets(companyId: string): Promise<MenuTarget[]> {
     is_menu_configuration: r.is_menu_configuration ?? false,
     tier_id: r.tier_id,
   }));
-}
+};
 
 // ── meal field extraction ─────────────────────────────────────────────────────
 
@@ -136,31 +140,33 @@ interface MealFields {
   fingerprint: string;
 }
 
-function extractAllergens(details: MealDetails | undefined): string[] {
+const extractAllergens = (details: MealDetails | undefined): string[] => {
   const raw = details?.allergensWithExcluded ?? [];
   const seen = new Set<string>();
   for (const a of raw) {
-    const name = a.dietlyAllergenName?.trim();
-    if (name) {
+    const name = a.dietlyAllergenName.trim();
+    if (name !== "") {
       seen.add(name);
     }
   }
   return [...seen].toSorted();
-}
+};
 
-function extractIngredients(details: MealDetails | undefined): string | null {
+const extractIngredients = (
+  details: MealDetails | undefined
+): string | null => {
   const raw = details?.ingredients ?? [];
   const parts: string[] = [];
   for (const i of raw) {
-    const n = i?.name?.trim();
-    if (n) {
+    const n = i.name.trim();
+    if (n !== "") {
       parts.push(n);
     }
   }
   return parts.length > 0 ? parts.join("; ") : null;
-}
+};
 
-function fingerprintOf(fields: {
+const fingerprintOf = (fields: {
   name: string | null;
   kcal: number | null;
   protein_g: number | null;
@@ -168,7 +174,7 @@ function fingerprintOf(fields: {
   fat_g: number | null;
   reviews_score: number | null;
   reviews_number: number | null;
-}): string {
+}): string => {
   // Stable JSON for stable hash. Numbers serialised with their natural repr.
   const payload = JSON.stringify([
     fields.name ?? "",
@@ -180,54 +186,70 @@ function fingerprintOf(fields: {
     fields.reviews_number,
   ]);
   return createHash("sha1").update(payload).digest("hex");
+};
+
+interface ParsedMacros {
+  kcal: number | null;
+  protein_g: number | null;
+  carbs_g: number | null;
+  fat_g: number | null;
 }
 
-function mealFieldsFromOption(option: MealOption): MealFields {
-  const { details } = option;
+const parseMacros = (
+  details: MealDetails | undefined,
+  info: string | null
+): ParsedMacros => {
   const fromDetails = {
     carbs_g: parseGrams(details?.carbohydrate),
     fat_g: parseGrams(details?.fat),
     kcal: parseKcalNumber(details?.calories),
     protein_g: parseGrams(details?.protein),
   };
-  const fromInfo = parseInfoMacros(option.info);
+  const fromInfo = parseInfoMacros(info);
+  return {
+    carbs_g: fromDetails.carbs_g ?? fromInfo.carbs_g,
+    fat_g: fromDetails.fat_g ?? fromInfo.fat_g,
+    kcal: fromDetails.kcal ?? fromInfo.kcal,
+    protein_g: fromDetails.protein_g ?? fromInfo.protein_g,
+  };
+};
 
-  const kcal = fromDetails.kcal ?? fromInfo.kcal;
-  const protein_g = fromDetails.protein_g ?? fromInfo.protein_g;
-  const carbs_g = fromDetails.carbs_g ?? fromInfo.carbs_g;
-  const fat_g = fromDetails.fat_g ?? fromInfo.fat_g;
-
-  const name = option.name ?? details?.name ?? null;
+const mealFieldsFromOption = (option: MealOption): MealFields => {
+  const { details } = option;
+  const macros = parseMacros(details, option.info);
+  const name = option.name ?? details.name ?? null;
+  const reviews_number = option.reviewsNumber ?? null;
+  const reviews_score = option.reviewsScore ?? null;
 
   return {
     allergens: extractAllergens(details),
     api_meal_slot_id: option.dietCaloriesMealId,
-    carbs_g,
-    fat_g,
-    fiber_g: parseGrams(details?.dietaryFiber),
+    carbs_g: macros.carbs_g,
+    fat_g: macros.fat_g,
+    fiber_g: parseGrams(details.dietaryFiber),
     fingerprint: fingerprintOf({
-      carbs_g,
-      fat_g,
-      kcal,
+      carbs_g: macros.carbs_g,
+      fat_g: macros.fat_g,
+      kcal: macros.kcal,
       name,
-      protein_g,
-      reviews_number: option.reviewsNumber ?? null,
-      reviews_score: option.reviewsScore ?? null,
+      protein_g: macros.protein_g,
+      reviews_number,
+      reviews_score,
     }),
-    image_url: details?.imageUrl ?? null,
+    image_url: details.imageUrl ?? null,
     ingredients: extractIngredients(details),
-    kcal,
+    kcal: macros.kcal,
     label: option.label ?? null,
     name,
-    protein_g,
-    reviews_number: option.reviewsNumber ?? null,
-    reviews_score: option.reviewsScore ?? null,
-    salt_g: parseGrams(details?.salt),
-    saturated_fat_g: parseGrams(details?.saturatedFattyAcids),
-    sugar_g: parseGrams(details?.sugar),
-    thermo: option.thermo ?? details?.thermo ?? null,
+    protein_g: macros.protein_g,
+    reviews_number,
+    reviews_score,
+    salt_g: parseGrams(details.salt),
+    saturated_fat_g: parseGrams(details.saturatedFattyAcids),
+    sugar_g: parseGrams(details.sugar),
+    thermo: option.thermo ?? details.thermo ?? null,
   };
-}
+};
 
 // ── DB writes ─────────────────────────────────────────────────────────────────
 
@@ -240,14 +262,15 @@ function mealFieldsFromOption(option: MealOption): MealFields {
  * Names are trimmed; empty names are rejected. Within a single response the
  * same name shouldn't appear twice across slots, but we don't rely on that.
  */
-async function upsertMeal(
+const upsertMeal = async (
   companyId: string,
   m: MealFields
-): Promise<{ meal_id: number | null; touched: boolean }> {
-  if (!m.name || !m.name.trim()) {
+): Promise<{ meal_id: number | null; touched: boolean }> => {
+  const trimmed = m.name?.trim() ?? "";
+  if (trimmed === "") {
     return { meal_id: null, touched: false };
   }
-  const name = m.name.trim();
+  const name = trimmed;
 
   const res = await q<{
     id: number;
@@ -319,8 +342,8 @@ async function upsertMeal(
     ]
   );
 
-  const row = res.rows[0];
-  if (!row) {
+  const [row] = res.rows;
+  if (row === undefined) {
     return { meal_id: null, touched: false };
   }
 
@@ -349,7 +372,7 @@ async function upsertMeal(
   }
 
   return { meal_id: row.id, touched: wasInsert || drifted };
-}
+};
 
 interface DailyMenuRow {
   company_id: string;
@@ -368,14 +391,14 @@ interface DailyMenuRow {
  * 9 fields × N rows = 9N parameters. With ~25 rows per menu fetch that's ~225
  * parameters per call — well under PG's 65k limit.
  */
-async function bulkInsertDailyMenu(rows: DailyMenuRow[]): Promise<void> {
+const bulkInsertDailyMenu = async (rows: DailyMenuRow[]): Promise<void> => {
   if (rows.length === 0) {
     return;
   }
   const FIELDS = 9;
   const placeholders: string[] = [];
   const params: unknown[] = [];
-  for (let i = 0; i < rows.length; i++) {
+  for (let i = 0; i < rows.length; i += 1) {
     const base = i * FIELDS;
     placeholders.push(
       `($${base + 1},$${base + 2},$${base + 3},$${base + 4},$${base + 5},$${base + 6},$${base + 7},$${base + 8},$${base + 9})`
@@ -399,7 +422,7 @@ async function bulkInsertDailyMenu(rows: DailyMenuRow[]): Promise<void> {
      VALUES ${placeholders.join(",")}`,
     params
   );
-}
+};
 
 // ── per-fetch processor ───────────────────────────────────────────────────────
 
@@ -407,16 +430,17 @@ interface FetchResult {
   mealsTouched: number;
   dailyMenuRows: number;
   fetched: boolean;
+  errored?: boolean;
 }
 
-async function processOneMenu(
+const processOneMenu = async (
   companyId: string,
   cityId: number,
   target: MenuTarget,
   date: string
-): Promise<FetchResult> {
+): Promise<FetchResult> => {
   const tierQs =
-    target.is_menu_configuration && target.tier_id != null
+    target.is_menu_configuration && target.tier_id !== null
       ? `?tierId=${target.tier_id}`
       : "";
   const path = `/api/mobile/open/company-card/${companyId}/menu/${target.diet_calories_id}/city/${cityId}/date/${date}${tierQs}`;
@@ -438,7 +462,7 @@ async function processOneMenu(
     throw error;
   }
 
-  if (!response || !Array.isArray(response.meals)) {
+  if (!Array.isArray(response.meals)) {
     return { dailyMenuRows: 0, fetched: true, mealsTouched: 0 };
   }
 
@@ -448,11 +472,11 @@ async function processOneMenu(
   let mealsTouched = 0;
 
   for (const slot of response.meals) {
-    if (!slot || !Array.isArray(slot.options)) {
+    if (!Array.isArray(slot.options)) {
       continue;
     }
     for (const option of slot.options) {
-      if (!option || option.dietCaloriesMealId == null) {
+      if (option.dietCaloriesMealId == null) {
         continue;
       }
       const fields = mealFieldsFromOption(option);
@@ -476,15 +500,15 @@ async function processOneMenu(
 
   await bulkInsertDailyMenu(dailyRows);
   return { dailyMenuRows: dailyRows.length, fetched: true, mealsTouched };
-}
+};
 
 // ── concurrency cap ──────────────────────────────────────────────────────────
 
-async function runWithCap<T, R>(
+const runWithCap = async <T, R>(
   items: T[],
   cap: number,
   fn: (item: T) => Promise<R>
-): Promise<R[]> {
+): Promise<R[]> => {
   const results: R[] = Array.from({ length: items.length });
   let cursor = 0;
   const workers = Array.from(
@@ -502,18 +526,18 @@ async function runWithCap<T, R>(
   );
   await Promise.all(workers);
   return results;
-}
+};
 
 // ── main export ───────────────────────────────────────────────────────────────
 
-export async function scrapeMenus(
+export const scrapeMenus = async (
   companyId: string,
   cityId: number
-): Promise<void> {
+): Promise<void> => {
   const t0 = Date.now();
 
   const cfg = await loadCompanyConfig(companyId);
-  if (!cfg) {
+  if (cfg === null) {
     console.warn(
       `[menus] ${companyId}: no companies row, skipping (run catalog first)`
     );
@@ -524,9 +548,10 @@ export async function scrapeMenus(
     return;
   }
 
-  const envCap = process.env.MENU_DAYS
-    ? Number(process.env.MENU_DAYS)
-    : DEFAULT_MENU_DAYS;
+  const envCap =
+    process.env.MENU_DAYS !== undefined && process.env.MENU_DAYS !== ""
+      ? Number(process.env.MENU_DAYS)
+      : DEFAULT_MENU_DAYS;
   const days = Math.max(
     1,
     Math.min(cfg.menu_days_ahead || DEFAULT_MENU_DAYS, envCap)
@@ -569,14 +594,14 @@ export async function scrapeMenus(
         return await processOneMenu(companyId, cityId, target, date);
       } catch (error) {
         console.warn(
-          `[menus] ${companyId} dc=${target.diet_calories_id} tier=${target.tier_id ?? "-"} @ ${date}: ${(error as Error).message}`
+          `[menus] ${companyId} dc=${target.diet_calories_id} tier=${target.tier_id ?? "-"} @ ${date}: ${errMessage(error)}`
         );
         return {
           dailyMenuRows: 0,
           errored: true,
           fetched: false,
           mealsTouched: 0,
-        } as FetchResult & { errored?: boolean };
+        };
       }
     }
   );
@@ -587,7 +612,7 @@ export async function scrapeMenus(
     if (r.fetched) {
       totalFetched += 1;
     }
-    if ((r as FetchResult & { errored?: boolean }).errored) {
+    if (r.errored === true) {
       totalErrors += 1;
     }
   }
@@ -597,4 +622,4 @@ export async function scrapeMenus(
   console.log(
     `[menus] ✓ ${companyId}: ${totalMeals} meals upserted, ${totalDailyMenu} daily_menu rows, ${totalFetched}/${totalCalls} calls fetched${errSuffix} (${elapsed}s)`
   );
-}
+};

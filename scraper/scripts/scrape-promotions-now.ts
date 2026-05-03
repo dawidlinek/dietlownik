@@ -18,20 +18,23 @@ interface TopSearchResponse {
   cities: City[];
 }
 
-async function resolveCity(name: string): Promise<City> {
+const errMessage = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error);
+
+const resolveCity = async (name: string): Promise<City> => {
   const data = await get<TopSearchResponse>(
     `/api/open/search/top-search?query=${encodeURIComponent(name)}&citiesSize=10&companiesSize=0`
   );
   const c =
     data.cities.find((x) => x.name.toLowerCase() === name.toLowerCase()) ??
     data.cities[0];
-  if (!c) {
+  if (c === undefined) {
     throw new Error(`No city matched "${name}"`);
   }
   return c;
-}
+};
 
-async function run(): Promise<void> {
+const run = async (): Promise<void> => {
   console.log(`[promos-now] resolving city ${CITY_NAME}…`);
   const city = await resolveCity(CITY_NAME);
   console.log(`[promos-now] cityId=${city.cityId}`);
@@ -59,7 +62,7 @@ async function run(): Promise<void> {
         constants.push({ companyId, constant });
       } catch (error) {
         console.warn(
-          `[promos-now] /constant ${companyId}: ${(error as Error).message}`
+          `[promos-now] /constant ${companyId}: ${errMessage(error)}`
         );
       } finally {
         done += 1;
@@ -77,8 +80,9 @@ async function run(): Promise<void> {
 
   console.log(`[promos-now] ✓ done`);
   await pool.end();
-}
+};
 
+// oxlint-disable-next-line promise/prefer-await-to-callbacks, promise/prefer-await-to-then -- top-level entry point
 run().catch((error: unknown) => {
   console.error("[promos-now] fatal:", error);
   process.exit(1);

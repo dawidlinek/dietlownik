@@ -31,7 +31,7 @@ interface SessionBinding {
 
 const sessions = new Map<string, SessionBinding>();
 
-async function createSessionBinding(): Promise<SessionBinding> {
+const createSessionBinding = async (): Promise<SessionBinding> => {
   // Holder so the transport's `onsessioninitialized` callback can reach the
   // binding that we construct *after* the transport (chicken-and-egg: the
   // callback closure is needed at transport construction time).
@@ -62,21 +62,22 @@ async function createSessionBinding(): Promise<SessionBinding> {
 
   holder.current = { client, server, transport };
   return holder.current;
-}
+};
 
-async function resolveBinding(
+const resolveBinding = async (
   request: Request,
   parsedBody: unknown
-): Promise<SessionBinding | Response> {
+): Promise<SessionBinding | Response> => {
   const sessionId = request.headers.get("mcp-session-id");
-  if (sessionId) {
+  if (sessionId !== null && sessionId !== "") {
     const existing = sessions.get(sessionId);
     if (existing) {
       return existing;
     }
   }
   if (request.method === "POST" && isInitializeRequest(parsedBody)) {
-    return createSessionBinding();
+    const binding = await createSessionBinding();
+    return binding;
   }
   return Response.json(
     {
@@ -89,9 +90,9 @@ async function resolveBinding(
     },
     { status: 400 }
   );
-}
+};
 
-async function handleRequest(request: Request): Promise<Response> {
+const handleRequest = async (request: Request): Promise<Response> => {
   let parsedBody: unknown;
   if (request.method === "POST") {
     try {
@@ -121,16 +122,19 @@ async function handleRequest(request: Request): Promise<Response> {
       { status: 500 }
     );
   }
-}
+};
 
-export async function GET(request: Request) {
-  return handleRequest(request);
-}
+export const GET = async (request: Request) => {
+  const response = await handleRequest(request);
+  return response;
+};
 
-export async function POST(request: Request) {
-  return handleRequest(request);
-}
+export const POST = async (request: Request) => {
+  const response = await handleRequest(request);
+  return response;
+};
 
-export async function DELETE(request: Request) {
-  return handleRequest(request);
-}
+export const DELETE = async (request: Request) => {
+  const response = await handleRequest(request);
+  return response;
+};

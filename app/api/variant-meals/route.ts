@@ -4,7 +4,7 @@ import { getVariantMeals } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(request: Request) {
+export const GET = async (request: Request) => {
   const { searchParams } = new URL(request.url);
   const companyId = searchParams.get("company_id");
   const dietCaloriesId = Number(searchParams.get("diet_calories_id"));
@@ -13,7 +13,8 @@ export async function GET(request: Request) {
     tierIdRaw === null || tierIdRaw === "" ? null : Number(tierIdRaw);
 
   if (
-    !companyId ||
+    companyId === null ||
+    companyId === "" ||
     !Number.isFinite(dietCaloriesId) ||
     (tierId !== null && !Number.isFinite(tierId))
   ) {
@@ -31,4 +32,4 @@ export async function GET(request: Request) {
     console.error("[variant-meals] query failed", error);
     return NextResponse.json({ error: "query failed" }, { status: 500 });
   }
-}
+};

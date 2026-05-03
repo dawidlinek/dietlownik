@@ -2,7 +2,7 @@ import { get } from "../api.js";
 import { q } from "../db.js";
 import type { City, TopSearchResponse } from "../types.js";
 
-export async function scrapeCity(cityName = "Wrocław"): Promise<City> {
+export const scrapeCity = async (cityName = "Wrocław"): Promise<City> => {
   console.log(`[city] resolving "${cityName}"...`);
   const data = await get<TopSearchResponse>(
     `/api/open/search/top-search?query=${encodeURIComponent(cityName)}&citiesSize=10&companiesSize=0`
@@ -43,4 +43,4 @@ export async function scrapeCity(cityName = "Wrocław"): Promise<City> {
     `[city] ✓ ${city.name} id=${city.cityId} (${city.numberOfCompanies} caterings)`
   );
   return city;
-}
+};

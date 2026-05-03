@@ -5,9 +5,10 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 
+import type { DietlyClient } from "./client";
 import { callTool, toMcpTool } from "./tool";
 import { ALL_TOOLS } from "./tools";
-import type { AnyToolDefinition, DietlyClient } from "./types";
+import type { AnyToolDefinition } from "./types";
 
 const MCP_TOOL_LIST = ALL_TOOLS.map(toMcpTool);
 const TOOLS_BY_NAME: ReadonlyMap<string, AnyToolDefinition> = new Map(
@@ -43,13 +44,15 @@ export const buildServer = (client: DietlyClient): Server => {
     instructions: INSTRUCTIONS,
   });
 
-  server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: MCP_TOOL_LIST,
-  }));
+  server.setRequestHandler(ListToolsRequestSchema, async () => {
+    await Promise.resolve();
+    return { tools: MCP_TOOL_LIST };
+  });
 
   server.setRequestHandler(CallToolRequestSchema, async (req, extra) => {
     const tool = TOOLS_BY_NAME.get(req.params.name);
     if (tool === undefined) {
+      await Promise.resolve();
       return {
         content: [
           { text: `Unknown tool: ${req.params.name}`, type: "text" as const },

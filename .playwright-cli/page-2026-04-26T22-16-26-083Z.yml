@@ -1,0 +1,39 @@
+- generic [active] [ref=e1]:
+    - banner [ref=e2]:
+        - generic [ref=e3]:
+            - link "die tlownik" [ref=e4] [cursor=pointer]:
+                - /url: /
+                - generic [ref=e5]:
+                    - generic [ref=e6]: die
+                    - text: tlownik
+            - button "Miasto Wrocław" [ref=e9]:
+                - generic [ref=e10]: Miasto
+                - generic [ref=e11]: Wrocław
+                - generic [ref=e12]: ↓
+    - generic [ref=e14]:
+        - generic [ref=e15]:
+            - generic [ref=e16]: Kcal
+            - spinbutton "Minimalna kaloryczność" [ref=e17]: "11000"
+            - generic [ref=e18]: –
+            - spinbutton "Maksymalna kaloryczność" [ref=e19]: "12000"
+            - button "cały zakres" [ref=e20]
+        - generic [ref=e21]:
+            - button "1200" [ref=e22]
+            - button "1500" [ref=e23]
+            - button "1800" [ref=e24]
+            - button "2000" [ref=e25]
+            - button "2500" [ref=e26]
+        - generic [ref=e27]:
+            - generic [ref=e28]: Dni
+            - button "1" [ref=e29]
+            - button "5" [ref=e30]
+            - button "10" [pressed] [ref=e31]
+            - button "20" [ref=e32]
+    - main [ref=e33]:
+        - generic [ref=e34]:
+            - paragraph [ref=e35]: Najtaniej dziś · Wrocław · 11000–12000 kcal · 10 dni
+            - paragraph [ref=e36]: Brak ofert dla wybranego zakresu. Spróbuj poszerzyć kalorie albo zmienić długość zamówienia.
+    - contentinfo [ref=e37]: dietlownik · dane z dietly.pl, scrapowane lokalnie.
+    - button "Open Next.js Dev Tools" [ref=e43] [cursor=pointer]:
+        - img [ref=e44]
+    - alert [ref=e47]

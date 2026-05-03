@@ -3,16 +3,20 @@ import { z } from "zod";
 
 import { HttpError } from "@/scraper/api";
 
+import type { DietlyClient } from "../client";
 import { callTool, defineTool, toMcpTool } from "../tool";
-import type { DietlyClient } from "../types";
 
+// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- test stub: tools under test never touch the client; we only need the type slot
 const fakeClient = {} as DietlyClient;
 
 describe("callTool", () => {
   it("returns ok result with structuredContent for plain object", async () => {
     const tool = defineTool({
       description: "test",
-      execute: async () => ({ greeting: "hi" }),
+      execute: async () => {
+        await Promise.resolve();
+        return { greeting: "hi" };
+      },
       inputSchema: z.object({}),
       name: "test_obj",
       outputSchema: z.object({ greeting: z.string() }),
@@ -29,7 +33,10 @@ describe("callTool", () => {
   it("omits structuredContent for array results (spec compliance)", async () => {
     const tool = defineTool({
       description: "test",
-      execute: async () => [1, 2, 3],
+      execute: async () => {
+        await Promise.resolve();
+        return [1, 2, 3];
+      },
       inputSchema: z.object({}),
       name: "test_arr",
     });
@@ -49,6 +56,7 @@ describe("callTool", () => {
     });
     const res = await callTool(tool, {}, { client: fakeClient });
     expect(res.isError).toBe(true);
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- test asserts content shape; CallToolResult content is a discriminated union we narrow to the text variant
     const { text } = res.content[0] as { text: string };
     expect(text).toContain("401");
     expect(text).toContain("call `login` again");
@@ -64,32 +72,41 @@ describe("callTool", () => {
       name: "test_cf",
     });
     const res = await callTool(tool, {}, { client: fakeClient });
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- test asserts content shape; narrow to text variant
     expect((res.content[0] as { text: string }).text).toContain("Cloudflare");
   });
 
   it("returns ZodError as structured error with field paths", async () => {
     const tool = defineTool({
       description: "test",
-      execute: async ({ n }) => ({ doubled: n * 2 }),
+      execute: async ({ n }) => {
+        await Promise.resolve();
+        return { doubled: n * 2 };
+      },
       inputSchema: z.object({ n: z.number().int().positive() }),
       name: "test_zod",
     });
     const res = await callTool(tool, { n: -5 }, { client: fakeClient });
     expect(res.isError).toBe(true);
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- test asserts content shape; narrow to text variant
     expect((res.content[0] as { text: string }).text).toContain("n:");
   });
 
   it("validates output against outputSchema and reports mismatch", async () => {
     const tool = defineTool({
       description: "test",
-      // oxlint-disable-next-line typescript/no-explicit-any, unicorn/no-useless-promise-resolve-reject -- intentional shape mismatch + need a Promise return
-      execute: async () => Promise.resolve({ wrong_field: "oops" } as any),
+      execute: async () => {
+        await Promise.resolve();
+        // oxlint-disable-next-line typescript/no-explicit-any, typescript/no-unsafe-type-assertion, typescript/no-unsafe-return -- intentional shape mismatch to exercise output validation
+        return { wrong_field: "oops" } as any;
+      },
       inputSchema: z.object({}),
       name: "test_out",
       outputSchema: z.object({ ok: z.boolean() }),
     });
     const res = await callTool(tool, {}, { client: fakeClient });
     expect(res.isError).toBe(true);
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- test asserts content shape; narrow to text variant
     expect((res.content[0] as { text: string }).text).toContain(
       "invalid output"
     );
@@ -98,10 +115,13 @@ describe("callTool", () => {
   it("passes through raw CallToolResult (elicitation/multi-block path)", async () => {
     const tool = defineTool({
       description: "test",
-      execute: async () => ({
-        content: [{ text: "raw", type: "text" as const }],
-        isError: false,
-      }),
+      execute: async () => {
+        await Promise.resolve();
+        return {
+          content: [{ text: "raw", type: "text" as const }],
+          isError: false,
+        };
+      },
       inputSchema: z.object({}),
       name: "test_raw",
     });
@@ -116,7 +136,10 @@ describe("toMcpTool", () => {
     const tool = defineTool({
       annotations: { readOnlyHint: true },
       description: "say hi",
-      execute: async ({ name }) => ({ greeting: `hi ${name}` }),
+      execute: async ({ name }) => {
+        await Promise.resolve();
+        return { greeting: `hi ${name}` };
+      },
       inputSchema: z.object({ name: z.string() }),
       name: "greet",
       outputSchema: z.object({ greeting: z.string() }),

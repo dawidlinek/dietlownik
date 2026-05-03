@@ -16,52 +16,9 @@
   },
   "rules": {
     "eqeqeq": ["error", "always", { "null": "ignore" }],
-
-    "func-style": "off",
-    "no-inline-comments": "off",
-    "no-plusplus": "off",
     "no-eq-null": "off",
-    "no-negated-condition": "off",
-    "no-promise-executor-return": "off",
-    "prefer-destructuring": "off",
-    "no-empty-function": "off",
-    "consistent-type-imports": "off",
-    "promise/prefer-await-to-then": "off",
-    "promise/prefer-await-to-callbacks": "off",
-    "promise/avoid-new": "off",
     "unicorn/filename-case": "off",
-
-    "typescript/strict-boolean-expressions": "off",
-    "typescript/no-unsafe-type-assertion": "off",
-    "typescript/no-non-null-assertion": "off",
-    "typescript/parameter-properties": "off",
-
-    "require-await": "off",
-
-    "no-use-before-define": "off",
-
-    "sort-keys": "off",
-    "complexity": "off",
-    "max-classes-per-file": "off",
-    "no-nested-ternary": "off",
-    "no-shadow": "off",
-    "class-methods-use-this": "off",
-    "unicorn/prefer-module": "off",
-    "unicorn/no-array-reduce": "off",
-    "unicorn/prefer-ternary": "off",
-    "unicorn/no-nested-ternary": "off",
-    "unicorn/no-await-expression-member": "off",
-    "unicorn/no-immediate-mutation": "off",
-    "unicorn/no-lonely-if": "off",
-    "promise/param-names": "off",
     "import/no-named-as-default-member": "off",
-
-    "typescript/no-unsafe-return": "off",
-    "typescript/no-unsafe-argument": "off",
-    "typescript/no-unsafe-assignment": "off",
-    "typescript/promise-function-async": "off",
-    "typescript/prefer-readonly-parameter-types": "off",
-    "typescript/explicit-member-accessibility": "off",
-    "no-underscore-dangle": "off"
+    "typescript/prefer-readonly-parameter-types": "off"
   }
 }

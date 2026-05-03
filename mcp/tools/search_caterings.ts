@@ -101,7 +101,7 @@ ORDER BY lp.per_day_cost_with_discounts ASC NULLS LAST
 LIMIT 50
 `;
 
-function toNumber(value: string | number | null): number | null {
+const toNumber = (value: string | number | null): number | null => {
   if (value == null) {
     return null;
   }
@@ -110,7 +110,7 @@ function toNumber(value: string | number | null): number | null {
   }
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
-}
+};
 
 export const search_caterings = defineTool({
   annotations: { openWorldHint: false, readOnlyHint: true },
@@ -129,7 +129,7 @@ export const search_caterings = defineTool({
       promo_discount_num: toNumber(row.promo_discount),
     }));
 
-    if (input.diet_tag) {
+    if (input.diet_tag !== undefined && input.diet_tag !== "") {
       rows = rows.filter((row) => row.diet_tag === input.diet_tag);
     }
     if (typeof input.max_price_per_day === "number") {
@@ -144,7 +144,7 @@ export const search_caterings = defineTool({
         (row) => row.avg_score_num !== null && row.avg_score_num >= floor
       );
     }
-    if (input.with_promo_only) {
+    if (input.with_promo_only === true) {
       rows = rows.filter((row) => Boolean(row.promo_code));
     }
 

@@ -7,7 +7,7 @@ import {
   parseGrams,
   futureWeekdays,
   nextNDates,
-  _newLimiterForTests,
+  newLimiterForTests,
 } from "../api.js";
 
 describe("parsePrice", () => {
@@ -18,7 +18,8 @@ describe("parsePrice", () => {
 
   it("handles Polish thousands separator and comma decimal", () => {
     expect(parsePrice("1 234,50 zł")).toBe(1234.5);
-    expect(parsePrice("1 234,50 zł")).toBe(1234.5); // non-breaking space
+    // non-breaking space
+    expect(parsePrice("1 234,50 zł")).toBe(1234.5);
   });
 
   it("passes numbers through", () => {
@@ -77,9 +78,12 @@ describe("parseInfoMacros", () => {
   it("B/W/T are protein/carbs/fat (Polish letters), not in alpha order", () => {
     // Reality check: Polish "Białka W̨ęglowodany Tłuszcze" map to protein/carbs/fat.
     const r = parseInfoMacros("300 kcal • B:19g • W:30g • T:11g");
-    expect(r.protein_g).toBe(19); // B
-    expect(r.carbs_g).toBe(30); // W
-    expect(r.fat_g).toBe(11); // T
+    // B
+    expect(r.protein_g).toBe(19);
+    // W
+    expect(r.carbs_g).toBe(30);
+    // T
+    expect(r.fat_g).toBe(11);
   });
 });
 
@@ -119,7 +123,7 @@ describe("futureWeekdays", () => {
 
   it("all dates strictly increase", () => {
     const dates = futureWeekdays(10);
-    for (let i = 1; i < dates.length; i++) {
+    for (let i = 1; i < dates.length; i += 1) {
       expect(dates[i] > dates[i - 1]).toBe(true);
     }
   });
@@ -141,7 +145,7 @@ describe("nextNDates", () => {
   it("returns N consecutive calendar days including today", () => {
     const ds = nextNDates(3);
     expect(ds).toHaveLength(3);
-    for (let i = 1; i < ds.length; i++) {
+    for (let i = 1; i < ds.length; i += 1) {
       expect(ds[i] > ds[i - 1]).toBe(true);
     }
   });
@@ -152,7 +156,7 @@ describe("nextNDates", () => {
 
 describe("Limiter (in-flight semaphore)", () => {
   it("caps in-flight at maxInFlight", async () => {
-    const lim = _newLimiterForTests(2, 0);
+    const lim = newLimiterForTests(2, 0);
     let peak = 0;
     let active = 0;
 
@@ -160,8 +164,9 @@ describe("Limiter (in-flight semaphore)", () => {
       await lim.acquire();
       active += 1;
       peak = Math.max(peak, active);
-      await new Promise<void>((r) => {
-        setTimeout(r, 25);
+      // oxlint-disable-next-line promise/avoid-new -- low-level sleep primitive in test
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 25);
       });
       active -= 1;
       lim.release();
@@ -172,9 +177,9 @@ describe("Limiter (in-flight semaphore)", () => {
   });
 
   it("does not deadlock when acquire/release pair always run", async () => {
-    const lim = _newLimiterForTests(1, 0);
+    const lim = newLimiterForTests(1, 0);
     let count = 0;
-    for (let i = 0; i < 50; i++) {
+    for (let i = 0; i < 50; i += 1) {
       await lim.acquire();
       count += 1;
       lim.release();
@@ -183,7 +188,7 @@ describe("Limiter (in-flight semaphore)", () => {
   });
 
   it("with minIntervalMs, total time across N requests >= (N-1)*interval", async () => {
-    const lim = _newLimiterForTests(8, 50);
+    const lim = newLimiterForTests(8, 50);
     const t0 = Date.now();
     const N = 5;
     await Promise.all(
@@ -193,6 +198,7 @@ describe("Limiter (in-flight semaphore)", () => {
       })
     );
     const elapsed = Date.now() - t0;
-    expect(elapsed).toBeGreaterThanOrEqual((N - 1) * 50 - 10); // 10ms slack
+    // 10ms slack
+    expect(elapsed).toBeGreaterThanOrEqual((N - 1) * 50 - 10);
   });
 });

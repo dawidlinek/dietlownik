@@ -17,7 +17,7 @@ export const MOBILE_HEADERS = {
 
 // --- URL + cookie helpers ---
 
-export function buildUrl(path: string): string {
+export const buildUrl = (path: string): string => {
   if (path.startsWith("http://") || path.startsWith("https://")) {
     return path;
   }
@@ -25,44 +25,49 @@ export function buildUrl(path: string): string {
     return `${BASE}${path}`;
   }
   return `${BASE}/${path}`;
-}
+};
 
-export function getSetCookieValues(headers: Headers): string[] {
+export const getSetCookieValues = (headers: Headers): string[] => {
   const h = headers as Headers & { getSetCookie?: () => string[] };
   if (typeof h.getSetCookie === "function") {
     return h.getSetCookie();
   }
 
   const single = headers.get("set-cookie");
-  return single ? [single] : [];
-}
+  return single !== null && single !== "" ? [single] : [];
+};
 
-export function readCookieValue(
+export const readCookieValue = (
   setCookieHeaders: string[],
   cookieName: string
-): string | null {
+): string | null => {
   const joined = setCookieHeaders.join(", ");
   const re = new RegExp(`${cookieName}=([^;,\\s]+)`, "i");
   const match = joined.match(re);
   return match ? match[1] : null;
-}
+};
 
 // --- Fetch + response helpers ---
 
-export async function fetchWithRetry(
+export const fetchWithRetry = async (
   url: string,
   init: RequestInit
-): Promise<Response> {
+): Promise<Response> => {
   const RETRY_MAX = 3;
 
-  for (let attempt = 1; attempt <= RETRY_MAX; attempt++) {
+  for (let attempt = 1; attempt <= RETRY_MAX; attempt += 1) {
     try {
       const res = await fetch(url, init);
-      const cloned = res.clone();
-      const text = await cloned.text().catch(() => "");
 
-      if (!res.ok && isCloudflareChallenge(res.status, text)) {
-        if (attempt < RETRY_MAX) {
+      // Only sniff the body when the response is a failure — cloning + reading
+      // a successful body would materialize it twice (here + at the caller)
+      // for no benefit; success is the hot path.
+      if (!res.ok) {
+        const text = await res
+          .clone()
+          .text()
+          .catch(() => "");
+        if (isCloudflareChallenge(res.status, text) && attempt < RETRY_MAX) {
           const wait = 5000 * 2 ** (attempt - 1) + Math.random() * 2000;
           console.warn(
             `[MCP] Cloudflare blockage on ${url}. Retrying in ${Math.round(wait)}ms`
@@ -70,10 +75,7 @@ export async function fetchWithRetry(
           await sleep(wait);
           continue;
         }
-      }
-
-      if (!res.ok && res.status >= 500) {
-        if (attempt < RETRY_MAX) {
+        if (res.status >= 500 && attempt < RETRY_MAX) {
           const wait = 1000 * attempt;
           console.warn(`[MCP] 5xx error on ${url}. Retrying in ${wait}ms`);
           await sleep(wait);
@@ -97,25 +99,28 @@ export async function fetchWithRetry(
   // Unreachable: every iteration either returns or continues; the final
   // attempt's failure throws.
   throw new Error(`fetchWithRetry exhausted attempts: ${url}`);
-}
+};
 
-export async function parseResponse<T>(
+export const parseResponse = async <T>(
   res: Response,
   method: string,
   path: string
-): Promise<T> {
+): Promise<T> => {
   const text = await res.text();
   if (!res.ok) {
     throw new HttpError(method, path, res.status, text);
   }
 
-  if (!text) {
+  if (text === "") {
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- parseResponse contract: empty body resolves to null cast to T
     return null as T;
   }
 
   try {
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- JSON.parse returns any; caller annotates expected T
     return JSON.parse(text) as T;
   } catch {
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- non-JSON body returned as raw text per contract
     return text as T;
   }
-}
+};

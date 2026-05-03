@@ -29,20 +29,20 @@ interface ParsedCurl {
  * `"..."`), folds `\\\n` line continuations, and otherwise splits on
  * whitespace. Not a full POSIX parser — just enough for "Copy as cURL".
  */
-export function tokenize(input: string): string[] {
+export const tokenize = (input: string): string[] => {
   const out: string[] = [];
   let cur = "";
   let quote: string | null = null;
-  for (let i = 0; i < input.length; i++) {
+  for (let i = 0; i < input.length; i += 1) {
     const ch = input[i];
-    if (quote) {
+    if (quote !== null) {
       if (
         ch === "\\" &&
         i + 1 < input.length &&
         (input[i + 1] === quote || input[i + 1] === "\\")
       ) {
         cur += input[i + 1];
-        i++;
+        i += 1;
         continue;
       }
       if (ch === quote) {
@@ -57,11 +57,11 @@ export function tokenize(input: string): string[] {
       continue;
     }
     if (ch === "\\" && input[i + 1] === "\n") {
-      i++;
+      i += 1;
       continue;
     }
     if (/\s/.test(ch)) {
-      if (cur) {
+      if (cur !== "") {
         out.push(cur);
         cur = "";
       }
@@ -69,20 +69,21 @@ export function tokenize(input: string): string[] {
     }
     cur += ch;
   }
-  if (cur) {
+  if (cur !== "") {
     out.push(cur);
   }
   return out;
-}
+};
 
-export function parseCurl(input: string): ParsedCurl {
+export const parseCurl = (input: string): ParsedCurl => {
   const tokens = tokenize(input);
   const headers: Record<string, string> = {};
-  for (let i = 0; i < tokens.length; i++) {
+  for (let i = 0; i < tokens.length; i += 1) {
     const t = tokens[i];
     if (t === "-H" || t === "--header") {
-      const v = tokens[++i];
-      if (!v) {
+      i += 1;
+      const v = tokens[i];
+      if (v === undefined || v === "") {
         continue;
       }
       const idx = v.indexOf(":");
@@ -92,13 +93,15 @@ export function parseCurl(input: string): ParsedCurl {
       const name = v.slice(0, idx).trim().toLowerCase();
       headers[name] = v.slice(idx + 1).trim();
     } else if (t === "-A" || t === "--user-agent") {
-      const v = tokens[++i];
-      if (v) {
+      i += 1;
+      const v = tokens[i];
+      if (v !== undefined && v !== "") {
         headers["user-agent"] = v;
       }
     } else if (t === "-b" || t === "--cookie") {
-      const v = tokens[++i];
-      if (v) {
+      i += 1;
+      const v = tokens[i];
+      if (v !== undefined && v !== "") {
         headers.cookie = v;
       }
     }
@@ -108,37 +111,42 @@ export function parseCurl(input: string): ParsedCurl {
     headers,
     userAgent: headers["user-agent"],
   };
-}
+};
 
-function parseFlags(argv: string[]): {
+const parseFlags = (
+  argv: string[]
+): {
   cookie?: string;
   ua?: string;
   help: boolean;
-} {
+} => {
   const out: { cookie?: string; ua?: string; help: boolean } = { help: false };
-  for (let i = 0; i < argv.length; i++) {
+  for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === "--cookie") {
-      out.cookie = argv[++i];
+      i += 1;
+      out.cookie = argv[i];
     } else if (a === "--ua" || a === "--user-agent") {
-      out.ua = argv[++i];
+      i += 1;
+      out.ua = argv[i];
     } else if (a === "-h" || a === "--help") {
       out.help = true;
     }
   }
   return out;
-}
+};
 
-async function readStdin(): Promise<string> {
+const readStdin = async (): Promise<string> => {
   if (process.stdin.isTTY) {
     return "";
   }
   const chunks: Buffer[] = [];
   for await (const c of process.stdin) {
+    // oxlint-disable-next-line typescript/no-unsafe-argument -- Buffer.from accepts Uint8Array | string | Buffer; iterator yields Uint8Array
     chunks.push(Buffer.from(c));
   }
   return Buffer.concat(chunks).toString("utf-8");
-}
+};
 
 const HELP = `Usage:
   pbpaste | bun scraper/scripts/cf-session.ts
@@ -147,7 +155,7 @@ const HELP = `Usage:
 
 Writes ./.cf-session.json (gitignored). The scraper reads it on startup.`;
 
-async function main() {
+const main = async (): Promise<void> => {
   const flags = parseFlags(process.argv.slice(2));
   if (flags.help) {
     console.log(HELP);
@@ -157,27 +165,29 @@ async function main() {
   let { cookie } = flags;
   let userAgent = flags.ua;
 
-  if (!cookie || !userAgent) {
+  const cookieMissing = cookie === undefined || cookie === "";
+  const uaMissing = userAgent === undefined || userAgent === "";
+  if (cookieMissing || uaMissing) {
     const stdin = await readStdin();
-    if (stdin.trim()) {
+    if (stdin.trim() !== "") {
       const parsed = parseCurl(stdin);
       cookie ??= parsed.cookie;
       userAgent ??= parsed.userAgent;
     }
   }
 
-  if (!cookie && !userAgent) {
-    console.error("cf-session: no cookie or user-agent found.\n");
-    console.error(HELP);
-    process.exit(1);
-  }
-  if (!cookie) {
+  if (cookie === undefined || cookie === "") {
+    if (userAgent === undefined || userAgent === "") {
+      console.error("cf-session: no cookie or user-agent found.\n");
+      console.error(HELP);
+      process.exit(1);
+    }
     console.error(
       "cf-session: cookie missing — `cf_clearance` is required to bypass the challenge."
     );
     process.exit(1);
   }
-  if (!userAgent) {
+  if (userAgent === undefined || userAgent === "") {
     console.error(
       "cf-session: user-agent missing — cf_clearance is bound to UA, send the same one your browser used."
     );
@@ -194,13 +204,14 @@ async function main() {
   const cookieNames = cookie
     .split(";")
     .map((s) => s.split("=")[0].trim())
-    .filter(Boolean);
+    .filter((s) => s !== "");
   console.log(`wrote ${path}`);
   console.log(`  cookies: ${cookieNames.join(", ")}`);
   console.log(`  user-agent: ${userAgent}`);
-}
+};
 
 if (import.meta.url === `file://${process.argv[1]}`) {
+  // oxlint-disable-next-line promise/prefer-await-to-callbacks, promise/prefer-await-to-then -- top-level entry point
   main().catch((error: unknown) => {
     console.error(error);
     process.exit(1);

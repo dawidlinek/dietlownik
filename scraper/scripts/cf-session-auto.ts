@@ -33,22 +33,27 @@ const HEADLESS = process.env.CF_HEADLESS === "1";
 const KEEP_OPEN = process.env.CF_KEEP_OPEN === "1";
 
 const WARM_URLS = [
-  "https://dietly.pl/", // rich HTML, runs CF JS
-  "https://aplikacja.dietly.pl/api/mobile/open/cities/top-10", // API host CF zone
+  // rich HTML, runs CF JS
+  "https://dietly.pl/",
+  // API host CF zone
+  "https://aplikacja.dietly.pl/api/mobile/open/cities/top-10",
 ];
 const SMOKE_TEST = {
   companyId: "twojemenu",
   path: "/api/mobile/open/company-card/twojemenu/menu/14/city/986283/date/2026-05-07",
 };
 
-function log(msg: string): void {
+const log = (msg: string): void => {
   process.stderr.write(`[cf-session-auto] ${msg}\n`);
-}
+};
 
-async function smokeTestFromBun(
+const errMessage = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error);
+
+const smokeTestFromBun = async (
   cookie: string,
   userAgent: string
-): Promise<{ status: number; body: string }> {
+): Promise<{ status: number; body: string }> => {
   const res = await fetch(`https://aplikacja.dietly.pl${SMOKE_TEST.path}`, {
     headers: {
       accept: "application/json",
@@ -60,10 +65,16 @@ async function smokeTestFromBun(
       "x-mobile-version": "4.0.0",
     },
   });
-  return { body: await res.text().catch(() => ""), status: res.status };
-}
+  let body = "";
+  try {
+    body = await res.text();
+  } catch {
+    body = "";
+  }
+  return { body, status: res.status };
+};
 
-async function main() {
+const main = async (): Promise<void> => {
   log(`launching chrome (headless=${HEADLESS}) profile=${USER_DATA_DIR}`);
   const ctx = await launchCfBrowser({ headless: HEADLESS });
 
@@ -79,7 +90,7 @@ async function main() {
           waitUntil: "domcontentloaded",
         });
       } catch (error) {
-        log(`  (nav: ${(error as Error).message.split("\n")[0]} — continuing)`);
+        log(`  (nav: ${errMessage(error).split("\n")[0]} — continuing)`);
       }
       const cleared = await waitForChallengeCleared(page, deadlineAt);
       if (!cleared) {
@@ -89,9 +100,8 @@ async function main() {
       await page.waitForTimeout(1500);
     }
 
-    const cookies = (await ctx.cookies()).filter((c) =>
-      c.domain.endsWith("dietly.pl")
-    );
+    const allCookies = await ctx.cookies();
+    const cookies = allCookies.filter((c) => c.domain.endsWith("dietly.pl"));
     if (cookies.length === 0) {
       throw new Error(
         "no *.dietly.pl cookies captured — chrome session is empty"
@@ -130,8 +140,9 @@ async function main() {
       await ctx.close();
     }
   }
-}
+};
 
+// oxlint-disable-next-line promise/prefer-await-to-callbacks, promise/prefer-await-to-then -- top-level entry point
 main().catch((error: unknown) => {
   console.error(error);
   process.exit(1);

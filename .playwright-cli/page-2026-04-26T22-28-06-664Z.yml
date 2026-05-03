@@ -1,0 +1,497 @@
+- generic [active] [ref=e1]:
+    - banner [ref=e2]:
+        - generic [ref=e3]:
+            - link "die tlownik" [ref=e4] [cursor=pointer]:
+                - /url: /
+                - generic [ref=e5]:
+                    - generic [ref=e6]: die
+                    - text: tlownik
+            - button "Miasto Wrocław" [ref=e9]:
+                - generic [ref=e10]: Miasto
+                - generic [ref=e11]: Wrocław
+                - generic [ref=e12]: ↓
+    - generic [ref=e14]:
+        - generic [ref=e15]:
+            - generic [ref=e16]: Kcal
+            - spinbutton "Minimalna kaloryczność" [ref=e17]: "2500"
+            - generic [ref=e18]: –
+            - spinbutton "Maksymalna kaloryczność" [ref=e19]: "2500"
+            - button "cały zakres" [ref=e20]
+        - generic [ref=e21]:
+            - button "1200" [ref=e22]
+            - button "1500" [ref=e23]
+            - button "1800" [ref=e24]
+            - button "2000" [ref=e25]
+            - button "2500" [pressed] [ref=e26]
+        - generic [ref=e27]:
+            - generic [ref=e28]: Dni
+            - button "1" [ref=e29]
+            - button "5" [ref=e30]
+            - button "10" [pressed] [ref=e31]
+            - button "20" [ref=e32]
+    - main [ref=e33]:
+        - generic [ref=e34]:
+            - generic [ref=e35]:
+                - generic [ref=e36]:
+                    - paragraph [ref=e37]: Najtaniej · Wrocław · 2500 kcal · 10 dni
+                    - paragraph [ref=e38]: 70 firm w tym przedziale. Pokazujemy 1–25 z 70, posortowane od najtańszej. Kliknij firmę, żeby zobaczyć wszystkie jej diety.
+                - generic [ref=e39]: 56,00 – 107,00 zł / dzień
+            - list [ref=e40]:
+                - listitem [ref=e41]:
+                    - button "1 27 Catering 1 wariant Dieta Sportowa · 2500 kcal 56,00zł / dzień" [expanded] [ref=e43]:
+                        - generic [ref=e44]: "1"
+                        - generic [ref=e45]:
+                            - generic [ref=e46]:
+                                - generic [ref=e47]: 27 Catering
+                                - generic [ref=e48]: 1 wariant
+                            - generic [ref=e49]:
+                                - text: Dieta Sportowa ·
+                                - generic [ref=e50]: 2500 kcal
+                        - generic [ref=e51]: 56,00zł / dzień
+                        - generic [ref=e52]: ▾
+                    - generic [ref=e56]:
+                        - generic [ref=e57]:
+                            - paragraph [ref=e58]: Wszystkie warianty w zakresie
+                            - table [ref=e60]:
+                                - rowgroup [ref=e61]:
+                                    - row "Dieta · Tier · Wariant Kcal Cena / dzień Suma" [ref=e62]:
+                                        - columnheader "Dieta · Tier · Wariant" [ref=e63]
+                                        - columnheader "Kcal" [ref=e64]
+                                        - columnheader "Cena / dzień" [ref=e65]
+                                        - columnheader "Suma" [ref=e66]
+                                - rowgroup [ref=e67]:
+                                    - row "Dieta Sportowa 2500 56,00zł 630,00zł" [ref=e68]:
+                                        - cell "Dieta Sportowa" [ref=e69]
+                                        - cell "2500" [ref=e70]
+                                        - cell "56,00zł" [ref=e71]
+                                        - cell "630,00zł" [ref=e72]
+                            - generic [ref=e73]:
+                                - link "Zamów na dietly.pl" [ref=e74] [cursor=pointer]:
+                                    - /url: https://dietly.pl/catering-dietetyczny-firma/27catering
+                                    - text: Zamów na dietly.pl
+                                    - generic [ref=e75]: ↗
+                                - generic [ref=e76]: 4.95 ★ (85 ocen)
+                        - paragraph [ref=e78]: Historia ceny najtańszego wariantu
+                - listitem [ref=e80]:
+                    - button "2 Dieta Banana 23 warianty Ekonomiczna · 2500 kcal 56,00zł / dzień" [ref=e81]:
+                        - generic [ref=e82]: "2"
+                        - generic [ref=e83]:
+                            - generic [ref=e84]:
+                                - generic [ref=e85]: Dieta Banana
+                                - generic [ref=e86]: 23 warianty
+                            - generic [ref=e87]:
+                                - text: Ekonomiczna ·
+                                - generic [ref=e88]: 2500 kcal
+                        - generic [ref=e89]: 56,00zł / dzień
+                        - generic [ref=e90]: ▾
+                - listitem [ref=e91]:
+                    - button "3 Zdrowa Szama 24 warianty Wybór menu · Pakiet Duo 4 posiłki · Pakiet 3 - domowa · 2500 kcal 56,39zł / dzień FORMA −35%" [ref=e92]:
+                        - generic [ref=e93]: "3"
+                        - generic [ref=e94]:
+                            - generic [ref=e95]:
+                                - generic [ref=e96]: Zdrowa Szama
+                                - generic [ref=e97]: 24 warianty
+                            - generic [ref=e98]:
+                                - text: Wybór menu · Pakiet Duo 4 posiłki · Pakiet 3 - domowa ·
+                                - generic [ref=e99]: 2500 kcal
+                        - generic [ref=e100]: 56,39zł / dzień
+                        - generic "Kod firmowy" [ref=e102]:
+                            - generic [ref=e103]: FORMA
+                            - generic [ref=e104]: −35%
+                        - generic [ref=e105]: ▾
+                - listitem [ref=e106]:
+                    - button "4 Kulinarnie FIT 28 wariantów Vege · 2500 kcal 59,25zł / dzień TOECO −22%" [ref=e107]:
+                        - generic [ref=e108]: "4"
+                        - generic [ref=e109]:
+                            - generic [ref=e110]:
+                                - generic [ref=e111]: Kulinarnie FIT
+                                - generic [ref=e112]: 28 wariantów
+                            - generic [ref=e113]:
+                                - text: Vege ·
+                                - generic [ref=e114]: 2500 kcal
+                        - generic [ref=e115]: 59,25zł / dzień
+                        - generic "Kod firmowy" [ref=e117]:
+                            - generic [ref=e118]: TOECO
+                            - generic [ref=e119]: −22%
+                        - generic [ref=e120]: ▾
+                - listitem [ref=e121]:
+                    - button "5 Nieziemska Kuchnia 13 wariantów LOW MEAT · 2500 kcal 61,00zł / dzień NIEZIEMSKISTART −10%" [ref=e122]:
+                        - generic [ref=e123]: "5"
+                        - generic [ref=e124]:
+                            - generic [ref=e125]:
+                                - generic [ref=e126]: Nieziemska Kuchnia
+                                - generic [ref=e127]: 13 wariantów
+                            - generic [ref=e128]:
+                                - text: LOW MEAT ·
+                                - generic [ref=e129]: 2500 kcal
+                        - generic [ref=e130]: 61,00zł / dzień
+                        - generic "Kod firmowy" [ref=e132]:
+                            - generic [ref=e133]: NIEZIEMSKISTART
+                            - generic [ref=e134]: −10%
+                        - generic [ref=e135]: ▾
+                - listitem [ref=e136]:
+                    - button "6 dobreGO dnia 13 wariantów STANDARD BEZ RYB · 2500 kcal 62,00zł / dzień DOBRYSTART −10%" [ref=e137]:
+                        - generic [ref=e138]: "6"
+                        - generic [ref=e139]:
+                            - generic [ref=e140]:
+                                - generic [ref=e141]: dobreGO dnia
+                                - generic [ref=e142]: 13 wariantów
+                            - generic [ref=e143]:
+                                - text: STANDARD BEZ RYB ·
+                                - generic [ref=e144]: 2500 kcal
+                        - generic [ref=e145]: 62,00zł / dzień
+                        - generic "Kod firmowy" [ref=e147]:
+                            - generic [ref=e148]: DOBRYSTART
+                            - generic [ref=e149]: −10%
+                        - generic [ref=e150]: ▾
+                - listitem [ref=e151]:
+                    - button "7 Fenomen 11 wariantów Klasyczna · 2500 kcal 63,00zł / dzień START −15%" [ref=e152]:
+                        - generic [ref=e153]: "7"
+                        - generic [ref=e154]:
+                            - generic [ref=e155]:
+                                - generic [ref=e156]: Fenomen
+                                - generic [ref=e157]: 11 wariantów
+                            - generic [ref=e158]:
+                                - text: Klasyczna ·
+                                - generic [ref=e159]: 2500 kcal
+                        - generic [ref=e160]: 63,00zł / dzień
+                        - generic "Kod firmowy" [ref=e162]:
+                            - generic [ref=e163]: START
+                            - generic [ref=e164]: −15%
+                        - generic [ref=e165]: ▾
+                - listitem [ref=e166]:
+                    - button "8 Paczka Smaku 5 wariantów Klasyczna · 2500 kcal 63,00zł / dzień" [ref=e167]:
+                        - generic [ref=e168]: "8"
+                        - generic [ref=e169]:
+                            - generic [ref=e170]:
+                                - generic [ref=e171]: Paczka Smaku
+                                - generic [ref=e172]: 5 wariantów
+                            - generic [ref=e173]:
+                                - text: Klasyczna ·
+                                - generic [ref=e174]: 2500 kcal
+                        - generic [ref=e175]: 63,00zł / dzień
+                        - generic [ref=e176]: ▾
+                - listitem [ref=e177]:
+                    - button "9 Fit Marchewa 27 wariantów Domowa · 2500 kcal 63,69zł / dzień MASZWIĘCEJ −33%" [ref=e178]:
+                        - generic [ref=e179]: "9"
+                        - generic [ref=e180]:
+                            - generic [ref=e181]:
+                                - generic [ref=e182]: Fit Marchewa
+                                - generic [ref=e183]: 27 wariantów
+                            - generic [ref=e184]:
+                                - text: Domowa ·
+                                - generic [ref=e185]: 2500 kcal
+                        - generic [ref=e186]: 63,69zł / dzień
+                        - generic "Kod firmowy" [ref=e188]:
+                            - generic [ref=e189]: MASZWIĘCEJ
+                            - generic [ref=e190]: −33%
+                        - generic [ref=e191]: ▾
+                - listitem [ref=e192]:
+                    - button "10 UrbanFits 13 wariantów BEZ CUKRU · 2500 kcal 63,75zł / dzień BLISKO −29%" [ref=e193]:
+                        - generic [ref=e194]: "10"
+                        - generic [ref=e195]:
+                            - generic [ref=e196]:
+                                - generic [ref=e197]: UrbanFits
+                                - generic [ref=e198]: 13 wariantów
+                            - generic [ref=e199]:
+                                - text: BEZ CUKRU ·
+                                - generic [ref=e200]: 2500 kcal
+                        - generic [ref=e201]: 63,75zł / dzień
+                        - generic "Kod firmowy" [ref=e203]:
+                            - generic [ref=e204]: BLISKO
+                            - generic [ref=e205]: −29%
+                        - generic [ref=e206]: ▾
+                - listitem [ref=e207]:
+                    - button "11 SmacznieJem 21 wariantów Dieta Wegetariańska · 2500 kcal 63,90zł / dzień SmacznieJem12 −12%" [ref=e208]:
+                        - generic [ref=e209]: "11"
+                        - generic [ref=e210]:
+                            - generic [ref=e211]:
+                                - generic [ref=e212]: SmacznieJem
+                                - generic [ref=e213]: 21 wariantów
+                            - generic [ref=e214]:
+                                - text: Dieta Wegetariańska ·
+                                - generic [ref=e215]: 2500 kcal
+                        - generic [ref=e216]: 63,90zł / dzień
+                        - generic "Kod firmowy" [ref=e218]:
+                            - generic [ref=e219]: SmacznieJem12
+                            - generic [ref=e220]: −12%
+                        - generic [ref=e221]: ▾
+                - listitem [ref=e222]:
+                    - button "12 Light Menu 13 wariantów Ekonomiczna · 2500 kcal 64,00zł / dzień light25 −25%" [ref=e223]:
+                        - generic [ref=e224]: "12"
+                        - generic [ref=e225]:
+                            - generic [ref=e226]:
+                                - generic [ref=e227]: Light Menu
+                                - generic [ref=e228]: 13 wariantów
+                            - generic [ref=e229]:
+                                - text: Ekonomiczna ·
+                                - generic [ref=e230]: 2500 kcal
+                        - generic [ref=e231]: 64,00zł / dzień
+                        - generic "Kod firmowy" [ref=e233]:
+                            - generic [ref=e234]: light25
+                            - generic [ref=e235]: −25%
+                        - generic [ref=e236]: ▾
+                - listitem [ref=e237]:
+                    - button "13 Perfect Chef 22 warianty Niski IG · 2500 kcal 64,00zł / dzień MAJ27 −27%" [ref=e238]:
+                        - generic [ref=e239]: "13"
+                        - generic [ref=e240]:
+                            - generic [ref=e241]:
+                                - generic [ref=e242]: Perfect Chef
+                                - generic [ref=e243]: 22 warianty
+                            - generic [ref=e244]:
+                                - text: Niski IG ·
+                                - generic [ref=e245]: 2500 kcal
+                        - generic [ref=e246]: 64,00zł / dzień
+                        - generic "Kod firmowy" [ref=e248]:
+                            - generic [ref=e249]: MAJ27
+                            - generic [ref=e250]: −27%
+                        - generic [ref=e251]: ▾
+                - listitem [ref=e252]:
+                    - button "14 Zdrowsza Dieta 14 wariantów Ekonomiczna · 2500 kcal 67,00zł / dzień WIOSNA −20%" [ref=e253]:
+                        - generic [ref=e254]: "14"
+                        - generic [ref=e255]:
+                            - generic [ref=e256]:
+                                - generic [ref=e257]: Zdrowsza Dieta
+                                - generic [ref=e258]: 14 wariantów
+                            - generic [ref=e259]:
+                                - text: Ekonomiczna ·
+                                - generic [ref=e260]: 2500 kcal
+                        - generic [ref=e261]: 67,00zł / dzień
+                        - generic "Kod firmowy" [ref=e263]:
+                            - generic [ref=e264]: WIOSNA
+                            - generic [ref=e265]: −20%
+                        - generic [ref=e266]: ▾
+                - listitem [ref=e267]:
+                    - button "15 Royal Cook 21 wariantów Dieta Wegetariańska · 2500 kcal 67,90zł / dzień ROYAL26 −26%" [ref=e268]:
+                        - generic [ref=e269]: "15"
+                        - generic [ref=e270]:
+                            - generic [ref=e271]:
+                                - generic [ref=e272]: Royal Cook
+                                - generic [ref=e273]: 21 wariantów
+                            - generic [ref=e274]:
+                                - text: Dieta Wegetariańska ·
+                                - generic [ref=e275]: 2500 kcal
+                        - generic [ref=e276]: 67,90zł / dzień
+                        - generic "Kod firmowy" [ref=e278]:
+                            - generic [ref=e279]: ROYAL26
+                            - generic [ref=e280]: −26%
+                        - generic [ref=e281]: ▾
+                - listitem [ref=e282]:
+                    - button "16 Na Lekko 15 wariantów Ekonomiczna · 2500 kcal 68,00zł / dzień WIOSNA −20%" [ref=e283]:
+                        - generic [ref=e284]: "16"
+                        - generic [ref=e285]:
+                            - generic [ref=e286]:
+                                - generic [ref=e287]: Na Lekko
+                                - generic [ref=e288]: 15 wariantów
+                            - generic [ref=e289]:
+                                - text: Ekonomiczna ·
+                                - generic [ref=e290]: 2500 kcal
+                        - generic [ref=e291]: 68,00zł / dzień
+                        - generic "Kod firmowy" [ref=e293]:
+                            - generic [ref=e294]: WIOSNA
+                            - generic [ref=e295]: −20%
+                        - generic [ref=e296]: ▾
+                - listitem [ref=e297]:
+                    - button "17 TAK SZEF 14 wariantów Ekonomiczna · 2500 kcal 69,00zł / dzień WIOSNA −27%" [ref=e298]:
+                        - generic [ref=e299]: "17"
+                        - generic [ref=e300]:
+                            - generic [ref=e301]:
+                                - generic [ref=e302]: TAK SZEF
+                                - generic [ref=e303]: 14 wariantów
+                            - generic [ref=e304]:
+                                - text: Ekonomiczna ·
+                                - generic [ref=e305]: 2500 kcal
+                        - generic [ref=e306]: 69,00zł / dzień
+                        - generic "Kod firmowy" [ref=e308]:
+                            - generic [ref=e309]: WIOSNA
+                            - generic [ref=e310]: −27%
+                        - generic [ref=e311]: ▾
+                - listitem [ref=e312]:
+                    - button "18 Uczta Wilka 23 warianty Ekonomiczna · 2500 kcal 69,00zł / dzień" [ref=e313]:
+                        - generic [ref=e314]: "18"
+                        - generic [ref=e315]:
+                            - generic [ref=e316]:
+                                - generic [ref=e317]: Uczta Wilka
+                                - generic [ref=e318]: 23 warianty
+                            - generic [ref=e319]:
+                                - text: Ekonomiczna ·
+                                - generic [ref=e320]: 2500 kcal
+                        - generic [ref=e321]: 69,00zł / dzień
+                        - generic [ref=e322]: ▾
+                - listitem [ref=e323]:
+                    - button "19 Twoje Menu 19 wariantów Domowa · 2500 kcal 69,01zł / dzień WIOSNA −25%" [ref=e324]:
+                        - generic [ref=e325]: "19"
+                        - generic [ref=e326]:
+                            - generic [ref=e327]:
+                                - generic [ref=e328]: Twoje Menu
+                                - generic [ref=e329]: 19 wariantów
+                            - generic [ref=e330]:
+                                - text: Domowa ·
+                                - generic [ref=e331]: 2500 kcal
+                        - generic [ref=e332]: 69,01zł / dzień
+                        - generic "Kod firmowy" [ref=e334]:
+                            - generic [ref=e335]: WIOSNA
+                            - generic [ref=e336]: −25%
+                        - generic [ref=e337]: ▾
+                - listitem [ref=e338]:
+                    - button "20 Dziki Box 5 wariantów Dieta Standard · 2500 kcal 70,00zł / dzień FORMA25 −25%" [ref=e339]:
+                        - generic [ref=e340]: "20"
+                        - generic [ref=e341]:
+                            - generic [ref=e342]:
+                                - generic [ref=e343]: Dziki Box
+                                - generic [ref=e344]: 5 wariantów
+                            - generic [ref=e345]:
+                                - text: Dieta Standard ·
+                                - generic [ref=e346]: 2500 kcal
+                        - generic [ref=e347]: 70,00zł / dzień
+                        - generic "Kod firmowy" [ref=e349]:
+                            - generic [ref=e350]: FORMA25
+                            - generic [ref=e351]: −25%
+                        - generic [ref=e352]: ▾
+                - listitem [ref=e353]:
+                    - button "21 FitElita 24 warianty KUCHNIA ŚWIATA · 2500 kcal 70,00zł / dzień Fitforma −20%" [ref=e354]:
+                        - generic [ref=e355]: "21"
+                        - generic [ref=e356]:
+                            - generic [ref=e357]:
+                                - generic [ref=e358]: FitElita
+                                - generic [ref=e359]: 24 warianty
+                            - generic [ref=e360]:
+                                - text: KUCHNIA ŚWIATA ·
+                                - generic [ref=e361]: 2500 kcal
+                        - generic [ref=e362]: 70,00zł / dzień
+                        - generic "Kod firmowy" [ref=e364]:
+                            - generic [ref=e365]: Fitforma
+                            - generic [ref=e366]: −20%
+                        - generic [ref=e367]: ▾
+                - listitem [ref=e368]:
+                    - button "22 Głodny Miś 7 wariantów Dieta Standard · 2500 kcal 70,00zł / dzień RAB8 −8%" [ref=e369]:
+                        - generic [ref=e370]: "22"
+                        - generic [ref=e371]:
+                            - generic [ref=e372]:
+                                - generic [ref=e373]: Głodny Miś
+                                - generic [ref=e374]: 7 wariantów
+                            - generic [ref=e375]:
+                                - text: Dieta Standard ·
+                                - generic [ref=e376]: 2500 kcal
+                        - generic [ref=e377]: 70,00zł / dzień
+                        - generic "Kod firmowy" [ref=e379]:
+                            - generic [ref=e380]: RAB8
+                            - generic [ref=e381]: −8%
+                        - generic [ref=e382]: ▾
+                - listitem [ref=e383]:
+                    - button "23 Slim Way 18 wariantów Do pracy! · 2500 kcal 70,68zł / dzień FORMA20 −20%" [ref=e384]:
+                        - generic [ref=e385]: "23"
+                        - generic [ref=e386]:
+                            - generic [ref=e387]:
+                                - generic [ref=e388]: Slim Way
+                                - generic [ref=e389]: 18 wariantów
+                            - generic [ref=e390]:
+                                - text: Do pracy! ·
+                                - generic [ref=e391]: 2500 kcal
+                        - generic [ref=e392]: 70,68zł / dzień
+                        - generic "Kod firmowy" [ref=e394]:
+                            - generic [ref=e395]: FORMA20
+                            - generic [ref=e396]: −20%
+                        - generic [ref=e397]: ▾
+                - listitem [ref=e398]:
+                    - button "24 Optimal Fit 21 wariantów Ekonomiczna · 2500 kcal 71,00zł / dzień pyszniefit −25%" [ref=e399]:
+                        - generic [ref=e400]: "24"
+                        - generic [ref=e401]:
+                            - generic [ref=e402]:
+                                - generic [ref=e403]: Optimal Fit
+                                - generic [ref=e404]: 21 wariantów
+                            - generic [ref=e405]:
+                                - text: Ekonomiczna ·
+                                - generic [ref=e406]: 2500 kcal
+                        - generic [ref=e407]: 71,00zł / dzień
+                        - generic "Kod firmowy" [ref=e409]:
+                            - generic [ref=e410]: pyszniefit
+                            - generic [ref=e411]: −25%
+                        - generic [ref=e412]: ▾
+                - listitem [ref=e413]:
+                    - button "25 Sztuka Wyboru 16 wariantów FIT STANDARD · 2500 kcal 72,54zł / dzień FORMA −33%" [ref=e414]:
+                        - generic [ref=e415]: "25"
+                        - generic [ref=e416]:
+                            - generic [ref=e417]:
+                                - generic [ref=e418]: Sztuka Wyboru
+                                - generic [ref=e419]: 16 wariantów
+                            - generic [ref=e420]:
+                                - text: FIT STANDARD ·
+                                - generic [ref=e421]: 2500 kcal
+                        - generic [ref=e422]: 72,54zł / dzień
+                        - generic "Kod firmowy" [ref=e424]:
+                            - generic [ref=e425]: FORMA
+                            - generic [ref=e426]: −33%
+                        - generic [ref=e427]: ▾
+            - navigation "Paginacja firm" [ref=e428]:
+                - generic "Poprzednia strona" [ref=e429]: ‹
+                - link "1" [ref=e430] [cursor=pointer]:
+                    - /url: /?kcal_min=2500&kcal_max=2500
+                - link "2" [ref=e431] [cursor=pointer]:
+                    - /url: /?kcal_min=2500&kcal_max=2500&page=2
+                - link "3" [ref=e432] [cursor=pointer]:
+                    - /url: /?kcal_min=2500&kcal_max=2500&page=3
+                - link "Następna strona" [ref=e433] [cursor=pointer]:
+                    - /url: /?kcal_min=2500&kcal_max=2500&page=2
+                    - text: ›
+            - generic [ref=e434]:
+                - paragraph [ref=e435]: Kody globalne (dotyczą wszystkich firm)
+                - generic [ref=e436]:
+                    - generic [ref=e437]:
+                        - text: WIOSNA
+                        - generic [ref=e438]: −30%
+                    - generic [ref=e439]:
+                        - text: forma
+                        - generic [ref=e440]: −20%
+                    - generic [ref=e441]:
+                        - text: Rabat-10
+                        - generic [ref=e442]: −10%
+                    - generic [ref=e443]:
+                        - text: MASZWIĘCEJ
+                        - generic [ref=e444]: −30%
+                    - generic [ref=e445]:
+                        - text: DIETLY
+                        - generic [ref=e446]: −25%
+                    - generic [ref=e447]:
+                        - text: KWIECIEN
+                        - generic [ref=e448]: −20%
+                    - generic [ref=e449]:
+                        - text: SPRING23
+                        - generic [ref=e450]: −23%
+                    - generic [ref=e451]: ROBIM30
+                    - generic [ref=e452]: PACZKI
+                    - generic [ref=e453]: REFERRAL
+                    - generic [ref=e454]:
+                        - text: OPTISTART
+                        - generic [ref=e455]: −31%
+                    - generic [ref=e456]:
+                        - text: MAJ2026
+                        - generic [ref=e457]: −25%
+                    - generic [ref=e458]:
+                        - text: DASZRADE
+                        - generic [ref=e459]: −30%
+                    - generic [ref=e460]:
+                        - text: BOMBA
+                        - generic [ref=e461]: −18%
+                    - generic [ref=e462]:
+                        - text: FIT26
+                        - generic [ref=e463]: −25%
+                    - generic [ref=e464]:
+                        - text: Dietly
+                        - generic [ref=e465]: −25%
+                    - generic [ref=e466]:
+                        - text: MAJÓWKA
+                        - generic [ref=e467]: −28%
+                    - generic [ref=e468]:
+                        - text: LZEJ
+                        - generic [ref=e469]: −28%
+                    - generic [ref=e470]:
+                        - text: WYKWINTNIE
+                        - generic [ref=e471]: −10%
+                    - generic [ref=e472]:
+                        - text: WEGAN15
+                        - generic [ref=e473]: −15%
+            - paragraph [ref=e474]: "Dane: 27 kwietnia 2026"
+    - contentinfo [ref=e475]: dietlownik · dane z dietly.pl, scrapowane lokalnie.
+    - button "Open Next.js Dev Tools" [ref=e481] [cursor=pointer]:
+        - img [ref=e482]

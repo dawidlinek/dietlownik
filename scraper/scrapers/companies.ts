@@ -16,7 +16,9 @@ const PAGE_SIZE = 50;
  * `activePromotionInfo` and `params` (so we can populate promotions and
  * delivery flags without a per-company fetch).
  */
-export async function listCompanies(city: City): Promise<CompanySearchItem[]> {
+export const listCompanies = async (
+  city: City
+): Promise<CompanySearchItem[]> => {
   console.log(
     `[companies] listing ${city.name} (cityId=${city.cityId}) via awarded-and-top...`
   );
@@ -43,4 +45,4 @@ export async function listCompanies(city: City): Promise<CompanySearchItem[]> {
 
   console.log(`[companies] ✓ ${all.length} companies collected`);
   return all;
-}
+};

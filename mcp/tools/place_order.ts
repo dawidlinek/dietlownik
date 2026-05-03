@@ -1,6 +1,7 @@
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 
+import type { DietlyClient } from "@/mcp/client";
 import { defineTool } from "@/mcp/tool";
 
 const inputSchema = z.object({
@@ -47,7 +48,7 @@ interface PlaceOrderResponse {
   };
 }
 
-function summarizeOrder(input: PlaceOrderInput): string {
+const summarizeOrder = (input: PlaceOrderInput): string => {
   const totalMeals = input.meal_selections.reduce(
     (sum, sel) => sum + sel.meals.length,
     0
@@ -58,33 +59,30 @@ function summarizeOrder(input: PlaceOrderInput): string {
     `Email: ${input.email}`,
     `Profile address: ${input.profile_address_id}`,
     `Diet calories ID: ${input.diet_calories_id}`,
-    ...(input.tier_diet_option_id
+    ...(input.tier_diet_option_id !== undefined &&
+    input.tier_diet_option_id !== ""
       ? [`Tier diet option: ${input.tier_diet_option_id}`]
       : []),
     `Delivery: ${days} day${days === 1 ? "" : "s"} (${input.delivery_dates[0]} → ${input.delivery_dates[days - 1]})`,
     `Total meals: ${totalMeals}`,
-    ...(input.promo_codes?.length
+    ...(input.promo_codes !== undefined && input.promo_codes.length > 0
       ? [`Promo codes: ${input.promo_codes.join(", ")}`]
       : []),
-    `Test order: ${input.test_order ? "YES (no charge)" : "no — REAL CHARGE"}`,
+    `Test order: ${input.test_order === true ? "YES (no charge)" : "no — REAL CHARGE"}`,
   ];
   return lines.join("\n");
-}
+};
 
-function jsonResult(data: unknown): CallToolResult {
-  return {
-    content: [{ text: JSON.stringify(data), type: "text" }],
-    structuredContent:
-      data !== null && typeof data === "object" && !Array.isArray(data)
-        ? (data as Record<string, unknown>)
-        : undefined,
-  };
-}
+const jsonResult = (data: unknown): CallToolResult => ({
+  content: [{ text: JSON.stringify(data), type: "text" }],
+  structuredContent:
+    data !== null && typeof data === "object" && !Array.isArray(data)
+      ? // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- narrowed by the object/!array guard above
+        (data as Record<string, unknown>)
+      : undefined,
+});
 
-async function executeOrder(
-  input: PlaceOrderInput,
-  client: import("@/mcp/client").DietlyClient
-) {
+const executeOrder = async (input: PlaceOrderInput, client: DietlyClient) => {
   const customDeliveryMeals: Record<string, DeliveryMealPayload[]> = {};
   for (const selection of input.meal_selections) {
     customDeliveryMeals[selection.date] = selection.meals.map((m) => ({
@@ -132,7 +130,8 @@ async function executeOrder(
         sideOrders: [],
         testOrder: input.test_order ?? false,
         utmMap: {},
-        ...(input.tier_diet_option_id
+        ...(input.tier_diet_option_id !== undefined &&
+        input.tier_diet_option_id !== ""
           ? { tierDietOptionId: input.tier_diet_option_id }
           : {}),
       },
@@ -153,7 +152,7 @@ async function executeOrder(
   const order_id = response.orders?.[0]?.orderId ?? null;
 
   return { order_id, payment_url, raw: response };
-}
+};
 
 export const place_order = defineTool({
   annotations: {
@@ -181,9 +180,10 @@ export const place_order = defineTool({
           requestedSchema: {
             properties: {
               confirm: {
-                title: input.test_order
-                  ? "Place test order"
-                  : "Place real order (will charge)",
+                title:
+                  input.test_order === true
+                    ? "Place test order"
+                    : "Place real order (will charge)",
                 type: "boolean",
               },
             },
@@ -193,7 +193,8 @@ export const place_order = defineTool({
         });
         if (
           r.action !== "accept" ||
-          !(r.content as { confirm?: boolean } | undefined)?.confirm
+          // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- elicitation result content is freeform per MCP spec; we expect { confirm: boolean }
+          (r.content as { confirm?: boolean } | undefined)?.confirm !== true
         ) {
           return jsonResult({ reason: r.action, status: "cancelled", summary });
         }

@@ -4,7 +4,7 @@ import { getPriceHistory } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(request: Request) {
+export const GET = async (request: Request) => {
   const { searchParams } = new URL(request.url);
   const companyId = searchParams.get("company_id");
   const dietCaloriesId = Number(searchParams.get("diet_calories_id"));
@@ -12,7 +12,8 @@ export async function GET(request: Request) {
   const days = Number(searchParams.get("days"));
 
   if (
-    !companyId ||
+    companyId === null ||
+    companyId === "" ||
     !Number.isFinite(dietCaloriesId) ||
     !Number.isFinite(cityId) ||
     !Number.isFinite(days)
@@ -32,4 +33,4 @@ export async function GET(request: Request) {
     console.error("[price-history] query failed", error);
     return NextResponse.json({ error: "query failed" }, { status: 500 });
   }
-}
+};

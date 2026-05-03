@@ -19,13 +19,10 @@ export interface DietlySession {
 
 // --- Helpers ---
 
-function normalizeEmail(email: string): string {
-  return email.trim().toLowerCase();
-}
+const normalizeEmail = (email: string): string => email.trim().toLowerCase();
 
-function buildAuthCookie(session: DietlySession): string {
-  return `remember-me=${session.rememberMe}; ${session.sessionCookie}`;
-}
+const buildAuthCookie = (session: DietlySession): string =>
+  `remember-me=${session.rememberMe}; ${session.sessionCookie}`;
 
 /**
  * Wraps the dietly.pl mobile API and owns the per-email session cache.
@@ -40,7 +37,7 @@ export class DietlyClient {
    * POST /api/auth/login. On success, stores the session under `email` so
    * subsequent `authGet`/`authPost` calls authenticate transparently.
    */
-  async login(
+  public async login(
     email: string,
     password: string
   ): Promise<{ rememberMe: string; sessionCookie: string }> {
@@ -66,7 +63,12 @@ export class DietlyClient {
     const rememberMe = readCookieValue(setCookie, "remember-me");
     const sessionValue = readCookieValue(setCookie, "SESSION");
 
-    if (!rememberMe || !sessionValue) {
+    if (
+      rememberMe === null ||
+      rememberMe === "" ||
+      sessionValue === null ||
+      sessionValue === ""
+    ) {
       throw new HttpError(
         "POST",
         LOGIN_PATH,
@@ -83,7 +85,7 @@ export class DietlyClient {
 
   // --- Authenticated requests ---
 
-  async authGet<T>(
+  public async authGet<T>(
     email: string,
     path: string,
     companyId?: string
@@ -95,9 +97,11 @@ export class DietlyClient {
 
     const response = await fetchWithRetry(buildUrl(path), {
       cache: "no-store",
-      headers: this.authHeaders(
+      headers: DietlyClient.authHeaders(
         session,
-        companyId ? { "company-id": companyId } : {}
+        companyId !== undefined && companyId !== ""
+          ? { "company-id": companyId }
+          : {}
       ),
       method: "GET",
     });
@@ -106,7 +110,7 @@ export class DietlyClient {
     return parseResponse<T>(response, "GET", path);
   }
 
-  async authPost<T>(
+  public async authPost<T>(
     email: string,
     path: string,
     body: unknown,
@@ -119,9 +123,11 @@ export class DietlyClient {
 
     const response = await fetchWithRetry(buildUrl(path), {
       body: JSON.stringify(body),
-      headers: this.authHeaders(session, {
+      headers: DietlyClient.authHeaders(session, {
         "content-type": "application/json",
-        ...(companyId ? { "company-id": companyId } : {}),
+        ...(companyId !== undefined && companyId !== ""
+          ? { "company-id": companyId }
+          : {}),
       }),
       method: "POST",
     });
@@ -132,9 +138,14 @@ export class DietlyClient {
 
   // --- Anonymous requests ---
 
-  async anonGet<T>(path: string, companyId?: string): Promise<T> {
+  // oxlint-disable-next-line class-methods-use-this -- public instance method on DietlyClient: callers use `client.anonGet(...)`; converting to static would break the API contract
+  public async anonGet<T>(path: string, companyId?: string): Promise<T> {
     const response = await fetchWithRetry(buildUrl(path), {
-      headers: this.anonHeaders(companyId ? { "company-id": companyId } : {}),
+      headers: DietlyClient.anonHeaders(
+        companyId !== undefined && companyId !== ""
+          ? { "company-id": companyId }
+          : {}
+      ),
       method: "GET",
     });
 
@@ -143,7 +154,7 @@ export class DietlyClient {
 
   // --- Session introspection ---
 
-  getSession(email: string): DietlySession | undefined {
+  public getSession(email: string): DietlySession | undefined {
     return this.sessions.get(normalizeEmail(email));
   }
 
@@ -154,7 +165,11 @@ export class DietlyClient {
    * of injecting sessions directly. Kept on the public surface so the legacy
    * `setSession` re-export keeps working until tools are migrated.
    */
-  setSession(email: string, rememberMe: string, sessionCookie: string): void {
+  public setSession(
+    email: string,
+    rememberMe: string,
+    sessionCookie: string
+  ): void {
     this.sessions.set(normalizeEmail(email), { rememberMe, sessionCookie });
   }
 
@@ -171,14 +186,15 @@ export class DietlyClient {
     const rememberMe =
       readCookieValue(setCookie, "remember-me") ?? currentSession.rememberMe;
     const sessionValue = readCookieValue(setCookie, "SESSION");
-    const sessionCookie = sessionValue
-      ? `SESSION=${sessionValue}`
-      : currentSession.sessionCookie;
+    const sessionCookie =
+      sessionValue !== null && sessionValue !== ""
+        ? `SESSION=${sessionValue}`
+        : currentSession.sessionCookie;
 
     this.setSession(email, rememberMe, sessionCookie);
   }
 
-  private authHeaders(
+  private static authHeaders(
     session: DietlySession,
     extras: Record<string, string> = {}
   ): Headers {
@@ -187,7 +203,7 @@ export class DietlyClient {
     return headers;
   }
 
-  private anonHeaders(extras: Record<string, string> = {}): Headers {
+  private static anonHeaders(extras: Record<string, string> = {}): Headers {
     return new Headers({ ...MOBILE_HEADERS, ...extras });
   }
 }

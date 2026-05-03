@@ -19,12 +19,13 @@ const chartConfig = {
 } satisfies ChartConfig;
 
 export interface HistoryPoint {
-  bucket: string; // ISO yyyy-mm-dd
+  /** ISO yyyy-mm-dd */
+  bucket: string;
   price: number;
   promo_codes: string[] | null;
 }
 
-export function PriceHistoryChart({ history }: { history: HistoryPoint[] }) {
+export const PriceHistoryChart = ({ history }: { history: HistoryPoint[] }) => {
   const data = history.map((h) => ({
     date: h.bucket,
     price: h.price,
@@ -76,34 +77,36 @@ export function PriceHistoryChart({ history }: { history: HistoryPoint[] }) {
             stroke="var(--color-bone)"
           />
           <XAxis
-            dataKey="date"
-            tickLine={false}
             axisLine={false}
-            tickMargin={8}
+            dataKey="date"
             minTickGap={32}
-            tickFormatter={(value) =>
+            tickFormatter={(value: string) =>
               new Date(value).toLocaleDateString("pl-PL", {
                 day: "numeric",
                 month: "short",
               })
             }
+            tickLine={false}
+            tickMargin={8}
           />
           <ChartTooltip
-            cursor={{ stroke: "var(--color-bone)", strokeWidth: 1 }}
             content={
               <ChartTooltipContent
+                formatter={(value) =>
+                  `${formatPriceNumber(typeof value === "number" ? value : Number(value))} zł`
+                }
                 indicator="line"
                 labelFormatter={(value) =>
-                  new Date(value as string).toLocaleDateString("pl-PL", {
+                  new Date(
+                    typeof value === "string" ? value : String(value)
+                  ).toLocaleDateString("pl-PL", {
                     day: "numeric",
                     month: "long",
                   })
                 }
-                formatter={(value) =>
-                  `${formatPriceNumber(value as number)} zł`
-                }
               />
             }
+            cursor={{ stroke: "var(--color-bone)", strokeWidth: 1 }}
           />
           <Area
             dataKey="price"
@@ -136,4 +139,4 @@ export function PriceHistoryChart({ history }: { history: HistoryPoint[] }) {
       )}
     </div>
   );
-}
+};

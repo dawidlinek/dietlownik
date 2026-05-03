@@ -12,14 +12,14 @@ const inputSchema = z
     is_menu_configuration: z.boolean(),
     tier_id: z.number().int().positive().optional(),
   })
-  .refine((v) => !v.is_menu_configuration || !!v.tier_id, {
+  .refine((v) => !v.is_menu_configuration || v.tier_id !== undefined, {
     message: "tier_id is required when is_menu_configuration is true",
     path: ["tier_id"],
   })
   .refine(
     (v) =>
       !v.is_menu_configuration ||
-      (v.base_meal_ids && v.base_meal_ids.length > 0),
+      (v.base_meal_ids !== undefined && v.base_meal_ids.length > 0),
     {
       message:
         "base_meal_ids must be non-empty when is_menu_configuration is true",
@@ -55,10 +55,10 @@ interface MealApiResponse {
   meals?: MealShape[];
 }
 
-function normalizeMealsResponse(
+const normalizeMealsResponse = (
   response: MealApiResponse,
   fallbackDate: string
-) {
+) => {
   const meals = Array.isArray(response.meals) ? response.meals : [];
   return {
     calories: response.calories ?? null,
@@ -77,7 +77,7 @@ function normalizeMealsResponse(
       })),
     })),
   };
-}
+};
 
 export const get_meal_options = defineTool({
   annotations: { openWorldHint: true, readOnlyHint: true },
@@ -92,12 +92,17 @@ export const get_meal_options = defineTool({
     let response: MealApiResponse;
     if (input.is_menu_configuration) {
       // Schema refinements above guarantee tier_id + base_meal_ids are set.
+      if (input.tier_id === undefined || input.base_meal_ids === undefined) {
+        throw new Error(
+          "tier_id and base_meal_ids are required when is_menu_configuration is true"
+        );
+      }
       const params = new URLSearchParams({
         cityId: String(input.city_id),
         date: input.date,
         dietCaloriesId: String(input.diet_calories_id),
-        dietCaloriesMealIds: input.base_meal_ids!.join(","),
-        tierId: String(input.tier_id!),
+        dietCaloriesMealIds: input.base_meal_ids.join(","),
+        tierId: String(input.tier_id),
       });
       response = await client.anonGet<MealApiResponse>(
         `/api/mobile/open/order-form/steps/menu-configuration/meals?${params.toString()}`,

@@ -1,0 +1,371 @@
+- generic [active] [ref=e1]:
+    - banner [ref=e2]:
+        - generic [ref=e3]:
+            - link "die tlownik" [ref=e4] [cursor=pointer]:
+                - /url: /
+                - generic [ref=e5]:
+                    - generic [ref=e6]: die
+                    - text: tlownik
+            - button "Miasto Wrocław" [ref=e9]:
+                - generic [ref=e10]: Miasto
+                - generic [ref=e11]: Wrocław
+                - generic [ref=e12]: ↓
+    - generic [ref=e14]:
+        - generic [ref=e15]:
+            - generic [ref=e16]: Kcal
+            - spinbutton "Minimalna kaloryczność" [ref=e17]: "1500"
+            - generic [ref=e18]: –
+            - spinbutton "Maksymalna kaloryczność" [ref=e19]: "2500"
+            - button "cały zakres" [ref=e20]
+        - generic [ref=e21]:
+            - button "1200" [ref=e22]
+            - button "1500" [ref=e23]
+            - button "1800" [ref=e24]
+            - button "2000" [ref=e25]
+            - button "2500" [ref=e26]
+        - generic [ref=e27]:
+            - generic [ref=e28]: Dni
+            - button "1" [ref=e29]
+            - button "5" [ref=e30]
+            - button "10" [pressed] [ref=e31]
+            - button "20" [ref=e32]
+    - main [ref=e33]:
+        - generic [ref=e34]:
+            - generic [ref=e35]:
+                - generic [ref=e36]:
+                    - paragraph [ref=e37]: Najtaniej · Wrocław · 1500–2500 kcal · 10 dni
+                    - paragraph [ref=e38]: 55 firm w tym przedziale. Pokazujemy 26–50 z 55, posortowane od najtańszej. Kliknij firmę, żeby zobaczyć wszystkie jej diety.
+                - generic [ref=e39]: 32,00 – 93,00 zł / dzień
+            - list [ref=e40]:
+                - listitem [ref=e41]:
+                    - button "26 GoodieFoodie 160 wariantów Home Foodie · 1500 kcal 62,22zł / dzień" [ref=e42]:
+                        - generic [ref=e43]: "26"
+                        - generic [ref=e44]:
+                            - generic [ref=e45]:
+                                - generic [ref=e46]: GoodieFoodie
+                                - generic [ref=e47]: 160 wariantów
+                            - generic [ref=e48]:
+                                - text: Home Foodie ·
+                                - generic [ref=e49]: 1500 kcal
+                        - generic [ref=e50]: 62,22zł / dzień
+                        - generic [ref=e51]: ▾
+                - listitem [ref=e52]:
+                    - button "27 Głodny Miś 27 wariantów Dieta Standard · 1500 kcal 63,00zł / dzień" [ref=e53]:
+                        - generic [ref=e54]: "27"
+                        - generic [ref=e55]:
+                            - generic [ref=e56]:
+                                - generic [ref=e57]: Głodny Miś
+                                - generic [ref=e58]: 27 wariantów
+                            - generic [ref=e59]:
+                                - text: Dieta Standard ·
+                                - generic [ref=e60]: 1500 kcal
+                        - generic [ref=e61]: 63,00zł / dzień
+                        - generic [ref=e62]: ▾
+                - listitem [ref=e63]:
+                    - button "28 Robin Food 143 warianty Wybór menu · Pakiet Basic · Standard Food · 1500 kcal 63,00zł / dzień ROBIM30 −30%" [ref=e64]:
+                        - generic [ref=e65]: "28"
+                        - generic [ref=e66]:
+                            - generic [ref=e67]:
+                                - generic [ref=e68]: Robin Food
+                                - generic [ref=e69]: 143 warianty
+                            - generic [ref=e70]:
+                                - text: Wybór menu · Pakiet Basic · Standard Food ·
+                                - generic [ref=e71]: 1500 kcal
+                        - generic [ref=e72]: 63,00zł / dzień
+                        - generic "Kod firmowy" [ref=e74]:
+                            - generic [ref=e75]: ROBIM30
+                            - generic [ref=e76]: −30%
+                        - generic [ref=e77]: ▾
+                - listitem [ref=e78]:
+                    - button "29 Slim Way 86 wariantów Do pracy! · 1500 kcal 64,17zł / dzień" [ref=e79]:
+                        - generic [ref=e80]: "29"
+                        - generic [ref=e81]:
+                            - generic [ref=e82]:
+                                - generic [ref=e83]: Slim Way
+                                - generic [ref=e84]: 86 wariantów
+                            - generic [ref=e85]:
+                                - text: Do pracy! ·
+                                - generic [ref=e86]: 1500 kcal
+                        - generic [ref=e87]: 64,17zł / dzień
+                        - generic [ref=e88]: ▾
+                - listitem [ref=e89]:
+                    - button "30 Kluska i kompot - catering domowy 3 warianty Wybór menu · 1500 kcal 65,50zł / dzień" [ref=e90]:
+                        - generic [ref=e91]: "30"
+                        - generic [ref=e92]:
+                            - generic [ref=e93]:
+                                - generic [ref=e94]: Kluska i kompot - catering domowy
+                                - generic [ref=e95]: 3 warianty
+                            - generic [ref=e96]:
+                                - text: Wybór menu ·
+                                - generic [ref=e97]: 1500 kcal
+                        - generic [ref=e98]: 65,50zł / dzień
+                        - generic [ref=e99]: ▾
+                - listitem [ref=e100]:
+                    - button "31 uHrabiego 72 warianty Wybór menu · Pakiet Odchudzający/Low IG · NISKI IG · 1500 kcal 65,70zł / dzień" [ref=e101]:
+                        - generic [ref=e102]: "31"
+                        - generic [ref=e103]:
+                            - generic [ref=e104]:
+                                - generic [ref=e105]: uHrabiego
+                                - generic [ref=e106]: 72 warianty
+                            - generic [ref=e107]:
+                                - text: Wybór menu · Pakiet Odchudzający/Low IG · NISKI IG ·
+                                - generic [ref=e108]: 1500 kcal
+                        - generic [ref=e109]: 65,70zł / dzień
+                        - generic [ref=e110]: ▾
+                - listitem [ref=e111]:
+                    - button "32 NA SMAK 60 wariantów OFFICE · 1500 kcal 66,00zł / dzień" [ref=e112]:
+                        - generic [ref=e113]: "32"
+                        - generic [ref=e114]:
+                            - generic [ref=e115]:
+                                - generic [ref=e116]: NA SMAK
+                                - generic [ref=e117]: 60 wariantów
+                            - generic [ref=e118]:
+                                - text: OFFICE ·
+                                - generic [ref=e119]: 1500 kcal
+                        - generic [ref=e120]: 66,00zł / dzień
+                        - generic [ref=e121]: ▾
+                - listitem [ref=e122]:
+                    - button "33 Barek Mleczny 2 warianty Wybór menu · 4 DOMOWE POSIŁKI Z ZUPĄ · Mama Gotuje · 1800 kcal 67,00zł / dzień" [ref=e123]:
+                        - generic [ref=e124]: "33"
+                        - generic [ref=e125]:
+                            - generic [ref=e126]:
+                                - generic [ref=e127]: Barek Mleczny
+                                - generic [ref=e128]: 2 warianty
+                            - generic [ref=e129]:
+                                - text: Wybór menu · 4 DOMOWE POSIŁKI Z ZUPĄ · Mama Gotuje ·
+                                - generic [ref=e130]: 1800 kcal
+                        - generic [ref=e131]: 67,00zł / dzień
+                        - generic [ref=e132]: ▾
+                - listitem [ref=e133]:
+                    - button "34 TakeAway Diet 73 warianty VEGE · 1500 kcal 67,20zł / dzień" [ref=e134]:
+                        - generic [ref=e135]: "34"
+                        - generic [ref=e136]:
+                            - generic [ref=e137]:
+                                - generic [ref=e138]: TakeAway Diet
+                                - generic [ref=e139]: 73 warianty
+                            - generic [ref=e140]:
+                                - text: VEGE ·
+                                - generic [ref=e141]: 1500 kcal
+                        - generic [ref=e142]: 67,20zł / dzień
+                        - generic [ref=e143]: ▾
+                - listitem [ref=e144]:
+                    - button "35 FoodieForce 76 wariantów STANDARD 3-PACK · 1500 kcal 67,99zł / dzień WIOSNA25 −25%" [ref=e145]:
+                        - generic [ref=e146]: "35"
+                        - generic [ref=e147]:
+                            - generic [ref=e148]:
+                                - generic [ref=e149]: FoodieForce
+                                - generic [ref=e150]: 76 wariantów
+                            - generic [ref=e151]:
+                                - text: STANDARD 3-PACK ·
+                                - generic [ref=e152]: 1500 kcal
+                        - generic [ref=e153]: 67,99zł / dzień
+                        - generic "Kod firmowy" [ref=e155]:
+                            - generic [ref=e156]: WIOSNA25
+                            - generic [ref=e157]: −25%
+                        - generic [ref=e158]: ▾
+                - listitem [ref=e159]:
+                    - button "36 mango.diet 51 wariantów Domowa · 1500 kcal 68,85zł / dzień MG30 −30%" [ref=e160]:
+                        - generic [ref=e161]: "36"
+                        - generic [ref=e162]:
+                            - generic [ref=e163]:
+                                - generic [ref=e164]: mango.diet
+                                - generic [ref=e165]: 51 wariantów
+                            - generic [ref=e166]:
+                                - text: Domowa ·
+                                - generic [ref=e167]: 1500 kcal
+                        - generic [ref=e168]: 68,85zł / dzień
+                        - generic "Kod firmowy" [ref=e170]:
+                            - generic [ref=e171]: MG30
+                            - generic [ref=e172]: −30%
+                        - generic [ref=e173]: ▾
+                - listitem [ref=e174]:
+                    - button "37 Fit Dieta 133 warianty SMART · 1800 kcal 69,00zł / dzień" [ref=e175]:
+                        - generic [ref=e176]: "37"
+                        - generic [ref=e177]:
+                            - generic [ref=e178]:
+                                - generic [ref=e179]: Fit Dieta
+                                - generic [ref=e180]: 133 warianty
+                            - generic [ref=e181]:
+                                - text: SMART ·
+                                - generic [ref=e182]: 1800 kcal
+                        - generic [ref=e183]: 69,00zł / dzień
+                        - generic [ref=e184]: ▾
+                - listitem [ref=e185]:
+                    - button "38 Wybór Menu 84 warianty Wybór menu · BASIC 10 · OPTIMAL · 1500 kcal 69,00zł / dzień" [ref=e186]:
+                        - generic [ref=e187]: "38"
+                        - generic [ref=e188]:
+                            - generic [ref=e189]:
+                                - generic [ref=e190]: Wybór Menu
+                                - generic [ref=e191]: 84 warianty
+                            - generic [ref=e192]:
+                                - text: Wybór menu · BASIC 10 · OPTIMAL ·
+                                - generic [ref=e193]: 1500 kcal
+                        - generic [ref=e194]: 69,00zł / dzień
+                        - generic [ref=e195]: ▾
+                - listitem [ref=e196]:
+                    - button "39 5 Posiłków Dziennie 74 warianty BASIC · 1500 kcal 69,30zł / dzień" [ref=e197]:
+                        - generic [ref=e198]: "39"
+                        - generic [ref=e199]:
+                            - generic [ref=e200]:
+                                - generic [ref=e201]: 5 Posiłków Dziennie
+                                - generic [ref=e202]: 74 warianty
+                            - generic [ref=e203]:
+                                - text: BASIC ·
+                                - generic [ref=e204]: 1500 kcal
+                        - generic [ref=e205]: 69,30zł / dzień
+                        - generic [ref=e206]: ▾
+                - listitem [ref=e207]:
+                    - button "40 Mój Catering 119 wariantów Wege · 1500 kcal 70,30zł / dzień" [ref=e208]:
+                        - generic [ref=e209]: "40"
+                        - generic [ref=e210]:
+                            - generic [ref=e211]:
+                                - generic [ref=e212]: Mój Catering
+                                - generic [ref=e213]: 119 wariantów
+                            - generic [ref=e214]:
+                                - text: Wege ·
+                                - generic [ref=e215]: 1500 kcal
+                        - generic [ref=e216]: 70,30zł / dzień
+                        - generic [ref=e217]: ▾
+                - listitem [ref=e218]:
+                    - button "41 Tytka Fit catering dietetyczny 63 warianty Office · 1950 kcal 72,99zł / dzień" [ref=e219]:
+                        - generic [ref=e220]: "41"
+                        - generic [ref=e221]:
+                            - generic [ref=e222]:
+                                - generic [ref=e223]: Tytka Fit catering dietetyczny
+                                - generic [ref=e224]: 63 warianty
+                            - generic [ref=e225]:
+                                - text: Office ·
+                                - generic [ref=e226]: 1950 kcal
+                        - generic [ref=e227]: 72,99zł / dzień
+                        - generic [ref=e228]: ▾
+                - listitem [ref=e229]:
+                    - button "42 Domowe Jedzonko 4 warianty Wybór menu · 1800 kcal 73,00zł / dzień" [ref=e230]:
+                        - generic [ref=e231]: "42"
+                        - generic [ref=e232]:
+                            - generic [ref=e233]:
+                                - generic [ref=e234]: Domowe Jedzonko
+                                - generic [ref=e235]: 4 warianty
+                            - generic [ref=e236]:
+                                - text: Wybór menu ·
+                                - generic [ref=e237]: 1800 kcal
+                        - generic [ref=e238]: 73,00zł / dzień
+                        - generic [ref=e239]: ▾
+                - listitem [ref=e240]:
+                    - button "43 Maczfit 55 wariantów Wybór menu · 1500 kcal 73,00zł / dzień" [ref=e241]:
+                        - generic [ref=e242]: "43"
+                        - generic [ref=e243]:
+                            - generic [ref=e244]:
+                                - generic [ref=e245]: Maczfit
+                                - generic [ref=e246]: 55 wariantów
+                            - generic [ref=e247]:
+                                - text: Wybór menu ·
+                                - generic [ref=e248]: 1500 kcal
+                        - generic [ref=e249]: 73,00zł / dzień
+                        - generic [ref=e250]: ▾
+                - listitem [ref=e251]:
+                    - button "44 BEKETO CATERING 22 warianty KETO IF · 1500 kcal 73,90zł / dzień" [ref=e252]:
+                        - generic [ref=e253]: "44"
+                        - generic [ref=e254]:
+                            - generic [ref=e255]:
+                                - generic [ref=e256]: BEKETO CATERING
+                                - generic [ref=e257]: 22 warianty
+                            - generic [ref=e258]:
+                                - text: KETO IF ·
+                                - generic [ref=e259]: 1500 kcal
+                        - generic [ref=e260]: 73,90zł / dzień
+                        - generic [ref=e261]: ▾
+                - listitem [ref=e262]:
+                    - button "45 Pogotowie Dietetyczne Fit Catering 88 wariantów Dieta FIT · 1500 kcal 74,90zł / dzień" [ref=e263]:
+                        - generic [ref=e264]: "45"
+                        - generic [ref=e265]:
+                            - generic [ref=e266]:
+                                - generic [ref=e267]: Pogotowie Dietetyczne Fit Catering
+                                - generic [ref=e268]: 88 wariantów
+                            - generic [ref=e269]:
+                                - text: Dieta FIT ·
+                                - generic [ref=e270]: 1500 kcal
+                        - generic [ref=e271]: 74,90zł / dzień
+                        - generic [ref=e272]: ▾
+                - listitem [ref=e273]:
+                    - button "46 FitBox Catering 164 warianty Wybór menu · Dla Dwojga · Pakiet 3 · 2000 kcal 75,00zł / dzień" [ref=e274]:
+                        - generic [ref=e275]: "46"
+                        - generic [ref=e276]:
+                            - generic [ref=e277]:
+                                - generic [ref=e278]: FitBox Catering
+                                - generic [ref=e279]: 164 warianty
+                            - generic [ref=e280]:
+                                - text: Wybór menu · Dla Dwojga · Pakiet 3 ·
+                                - generic [ref=e281]: 2000 kcal
+                        - generic [ref=e282]: 75,00zł / dzień
+                        - generic [ref=e283]: ▾
+                - listitem [ref=e284]:
+                    - button "47 Właściwy Wybór 27 wariantów Wybór menu · Prosty Wybór · Dieta standardowa · 1600 kcal 76,00zł / dzień" [ref=e285]:
+                        - generic [ref=e286]: "47"
+                        - generic [ref=e287]:
+                            - generic [ref=e288]:
+                                - generic [ref=e289]: Właściwy Wybór
+                                - generic [ref=e290]: 27 wariantów
+                            - generic [ref=e291]:
+                                - text: Wybór menu · Prosty Wybór · Dieta standardowa ·
+                                - generic [ref=e292]: 1600 kcal
+                        - generic [ref=e293]: 76,00zł / dzień
+                        - generic [ref=e294]: ▾
+                - listitem [ref=e295]:
+                    - button "48 Wybierz Pudełko 97 wariantów Wybór menu · Dla Dwojga · Pakiet 3 · 2000 kcal 76,00zł / dzień" [ref=e296]:
+                        - generic [ref=e297]: "48"
+                        - generic [ref=e298]:
+                            - generic [ref=e299]:
+                                - generic [ref=e300]: Wybierz Pudełko
+                                - generic [ref=e301]: 97 wariantów
+                            - generic [ref=e302]:
+                                - text: Wybór menu · Dla Dwojga · Pakiet 3 ·
+                                - generic [ref=e303]: 2000 kcal
+                        - generic [ref=e304]: 76,00zł / dzień
+                        - generic [ref=e305]: ▾
+                - listitem [ref=e306]:
+                    - button "49 Better Life Catering Dietetyczny 150 wariantów Dieta piłkarza (Sport Carbo) · 1500 kcal 77,31zł / dzień" [ref=e307]:
+                        - generic [ref=e308]: "49"
+                        - generic [ref=e309]:
+                            - generic [ref=e310]:
+                                - generic [ref=e311]: Better Life Catering Dietetyczny
+                                - generic [ref=e312]: 150 wariantów
+                            - generic [ref=e313]:
+                                - text: Dieta piłkarza (Sport Carbo) ·
+                                - generic [ref=e314]: 1500 kcal
+                        - generic [ref=e315]: 77,31zł / dzień
+                        - generic [ref=e316]: ▾
+                - listitem [ref=e317]:
+                    - button "50 Catering Mistrza 71 wariantów Dieta Kulturystyczna · 1800 kcal 80,00zł / dzień" [ref=e318]:
+                        - generic [ref=e319]: "50"
+                        - generic [ref=e320]:
+                            - generic [ref=e321]:
+                                - generic [ref=e322]: Catering Mistrza
+                                - generic [ref=e323]: 71 wariantów
+                            - generic [ref=e324]:
+                                - text: Dieta Kulturystyczna ·
+                                - generic [ref=e325]: 1800 kcal
+                        - generic [ref=e326]: 80,00zł / dzień
+                        - generic [ref=e327]: ▾
+            - navigation "Paginacja firm" [ref=e328]:
+                - link "Poprzednia strona" [ref=e329] [cursor=pointer]:
+                    - /url: /?kcal_min=1500&kcal_max=2500
+                    - text: ‹
+                - link "1" [ref=e330] [cursor=pointer]:
+                    - /url: /?kcal_min=1500&kcal_max=2500
+                - link "2" [ref=e331] [cursor=pointer]:
+                    - /url: /?kcal_min=1500&kcal_max=2500&page=2
+                - link "3" [ref=e332] [cursor=pointer]:
+                    - /url: /?kcal_min=1500&kcal_max=2500&page=3
+                - link "Następna strona" [ref=e333] [cursor=pointer]:
+                    - /url: /?kcal_min=1500&kcal_max=2500&page=3
+                    - text: ›
+            - generic [ref=e334]:
+                - paragraph [ref=e335]: Kody globalne (dotyczą wszystkich firm)
+                - generic [ref=e336]:
+                    - generic [ref=e337]: REFERRAL
+                    - generic [ref=e338]: PACZKI
+                    - generic [ref=e339]: ROBIM30
+            - paragraph [ref=e340]: "Dane: 27 kwietnia 2026"
+    - contentinfo [ref=e341]: dietlownik · dane z dietly.pl, scrapowane lokalnie.
+    - button "Open Next.js Dev Tools" [ref=e347] [cursor=pointer]:
+        - img [ref=e348]

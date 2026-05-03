@@ -40,25 +40,28 @@ interface TopSearchResponse {
   cities: City[];
 }
 
-async function resolveCity(name: string): Promise<City> {
+const errMessage = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error);
+
+const resolveCity = async (name: string): Promise<City> => {
   const data = await get<TopSearchResponse>(
     `/api/open/search/top-search?query=${encodeURIComponent(name)}&citiesSize=10&companiesSize=0`
   );
   const c =
     data.cities.find((x) => x.name.toLowerCase() === name.toLowerCase()) ??
     data.cities[0];
-  if (!c) {
+  if (c === undefined) {
     throw new Error(`No city matched "${name}"`);
   }
   return c;
-}
+};
 
 interface CompanyTarget {
   companyId: string;
   codes: string[];
 }
 
-async function listTargets(): Promise<CompanyTarget[]> {
+const listTargets = async (): Promise<CompanyTarget[]> => {
   const { rows } = await q<{ company_id: string; codes: string[] }>(
     `SELECT company_id, ARRAY_AGG(DISTINCT code) AS codes
        FROM campaigns
@@ -69,10 +72,11 @@ async function listTargets(): Promise<CompanyTarget[]> {
       GROUP BY company_id
       ORDER BY company_id`
   );
+  const filterStr = COMPANY_FILTER ?? "";
   return rows
     .map((r) => ({ codes: r.codes ?? [], companyId: r.company_id }))
-    .filter((t) => !COMPANY_FILTER || t.companyId === COMPANY_FILTER);
-}
+    .filter((t) => filterStr === "" || t.companyId === filterStr);
+};
 
 interface CompanyResult {
   companyId: string;
@@ -83,10 +87,10 @@ interface CompanyResult {
   noCodeRowsRecent: number;
 }
 
-async function processCompany(
+const processCompany = async (
   target: CompanyTarget,
   cityId: number
-): Promise<CompanyResult> {
+): Promise<CompanyResult> => {
   const { companyId } = target;
 
   // Pull canonical, deduped, trimmed list — same logic the regular scraper
@@ -181,9 +185,9 @@ async function processCompany(
     noCodeRowsRecent,
     rowsInserted: inserted,
   };
-}
+};
 
-async function run(): Promise<void> {
+const run = async (): Promise<void> => {
   console.log(`[promo-prices] resolving city ${CITY_NAME}…`);
   const city = await resolveCity(CITY_NAME);
   console.log(`[promo-prices] cityId=${city.cityId}`);
@@ -206,14 +210,14 @@ async function run(): Promise<void> {
   // Sequential per-company, parallel within each — the api.ts limiter caps
   // global concurrency, but pacing one company at a time keeps log output
   // readable and gives the in-flight scrape predictable headroom.
-  for (let i = 0; i < targets.length; i++) {
+  for (let i = 0; i < targets.length; i += 1) {
     const t = targets[i];
     console.log(`\n[promo-prices] (${i + 1}/${targets.length}) ${t.companyId}`);
     try {
       results.push(await processCompany(t, city.cityId));
     } catch (error) {
       console.error(
-        `[promo-prices] ${t.companyId}: fatal: ${(error as Error).message}`
+        `[promo-prices] ${t.companyId}: fatal: ${errMessage(error)}`
       );
       results.push({
         codes: t.codes,
@@ -254,8 +258,9 @@ async function run(): Promise<void> {
   }
 
   await pool.end();
-}
+};
 
+// oxlint-disable-next-line promise/prefer-await-to-callbacks, promise/prefer-await-to-then -- top-level entry point
 run().catch((error: unknown) => {
   console.error("[promo-prices] fatal:", error);
   process.exit(1);

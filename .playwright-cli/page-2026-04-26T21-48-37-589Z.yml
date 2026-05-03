@@ -1,0 +1,901 @@
+- generic [active] [ref=e1]:
+    - banner [ref=e2]:
+        - generic [ref=e3]:
+            - link "die tlownik" [ref=e4] [cursor=pointer]:
+                - /url: /
+                - generic [ref=e5]:
+                    - generic [ref=e6]: die
+                    - text: tlownik
+            - generic [ref=e8]:
+                - button "Miasto Wrocław" [ref=e9]:
+                    - generic [ref=e10]: Miasto
+                    - generic [ref=e11]: Wrocław
+                    - generic [ref=e12]: ↓
+                - generic [ref=e13]: ·
+                - button "Kcal 1500 kcal" [ref=e14]:
+                    - generic [ref=e15]: Kcal
+                    - generic [ref=e16]: 1500 kcal
+                    - generic [ref=e17]: ↓
+    - generic [ref=e19]:
+        - generic [ref=e20]:
+            - generic [ref=e21]: Kcal
+            - button "400" [ref=e22]
+            - button "500" [ref=e23]
+            - button "600" [ref=e24]
+            - button "650" [ref=e25]
+            - button "700" [ref=e26]
+            - button "800" [ref=e27]
+            - button "900" [ref=e28]
+            - button "950" [ref=e29]
+            - button "1000" [ref=e30]
+            - button "1100" [ref=e31]
+            - button "1200" [ref=e32]
+            - button "1250" [ref=e33]
+            - button "1300" [ref=e34]
+            - button "1350" [ref=e35]
+            - button "1400" [ref=e36]
+            - button "1500" [pressed] [ref=e37]
+            - button "1600" [ref=e38]
+            - button "1700" [ref=e39]
+            - button "1750" [ref=e40]
+            - button "1800" [ref=e41]
+            - button "1900" [ref=e42]
+            - button "2000" [ref=e43]
+            - button "2200" [ref=e44]
+            - button "2400" [ref=e45]
+            - button "2500" [ref=e46]
+            - button "2600" [ref=e47]
+            - button "2700" [ref=e48]
+            - button "2800" [ref=e49]
+            - button "3000" [ref=e50]
+            - button "3200" [ref=e51]
+            - button "3500" [ref=e52]
+            - button "4000" [ref=e53]
+            - button "6000" [ref=e54]
+            - button "10000" [ref=e55]
+        - generic [ref=e56]:
+            - generic [ref=e57]: Dni
+            - button "1 dni" [ref=e58]
+            - button "5 dni" [ref=e59]
+            - button "10 dni" [pressed] [ref=e60]
+            - button "20 dni" [ref=e61]
+    - main [ref=e62]:
+        - generic [ref=e63]:
+            - generic [ref=e64]:
+                - paragraph [ref=e65]: Najtaniej dziś · Wrocław · 1500 kcal · 10 dni
+                - paragraph [ref=e66]: Po jednej najtańszej ofercie z każdej firmy w ramach diety. Kliknij Zamów, żeby przejść prosto na dietly.pl.
+            - generic [ref=e67]:
+                - generic [ref=e68]:
+                    - generic [ref=e69]:
+                        - heading "standard" [level=2] [ref=e70]
+                        - generic [ref=e71]: 20 firm
+                    - list [ref=e72]:
+                        - listitem [ref=e73]:
+                            - generic [ref=e75]: "1"
+                            - generic [ref=e77]:
+                                - generic [ref=e78]: kulinarniefit
+                                - generic [ref=e79]: Low IG
+                            - generic [ref=e80]: 50,25zł / dzień
+                            - link "Zamów" [ref=e81] [cursor=pointer]:
+                                - /url: https://dietly.pl/catering-dietetyczny-firma/kulinarniefit
+                                - text: Zamów
+                                - generic [ref=e82]: ↗
+                        - listitem [ref=e83]:
+                            - generic [ref=e84]: "2"
+                            - generic [ref=e86]:
+                                - generic [ref=e87]: zdrowszadieta
+                                - generic [ref=e88]: Dieta Balance
+                            - generic [ref=e89]: 52,00zł / dzień
+                            - link "Zamów" [ref=e90] [cursor=pointer]:
+                                - /url: https://dietly.pl/catering-dietetyczny-firma/zdrowszadieta
+                                - text: Zamów
+                                - generic [ref=e91]: ↗
+                        - listitem [ref=e92]:
+                            - generic [ref=e93]: "3"
+                            - generic [ref=e95]:
+                                - generic [ref=e96]: fitboxcatering
+                                - generic [ref=e97]: STANDARD 3-PACK
+                            - generic [ref=e98]: 56,00zł / dzień
+                            - link "Zamów" [ref=e99] [cursor=pointer]:
+                                - /url: https://dietly.pl/catering-dietetyczny-firma/fitboxcatering
+                                - text: Zamów
+                                - generic [ref=e100]: ↗
+                    - button "Pokaż jeszcze 17 firm →" [ref=e101]
+                - generic [ref=e102]:
+                    - generic [ref=e103]:
+                        - heading "dash" [level=2] [ref=e104]
+                        - generic [ref=e105]: 9 firm
+                    - list [ref=e106]:
+                        - listitem [ref=e107]:
+                            - generic [ref=e109]: "1"
+                            - generic [ref=e111]:
+                                - generic [ref=e112]: maczfit
+                                - generic [ref=e113]: dieta Dash Food
+                            - generic [ref=e114]: 46,00zł / dzień
+                            - link "Zamów" [ref=e115] [cursor=pointer]:
+                                - /url: https://dietly.pl/catering-dietetyczny-firma/maczfit
+                                - text: Zamów
+                                - generic [ref=e116]: ↗
+                        - listitem [ref=e117]:
+                            - generic [ref=e118]: "2"
+                            - generic [ref=e120]:
+                                - generic [ref=e121]: twojemenu
+                                - generic [ref=e122]: dieta Dash Food
+                            - generic [ref=e123]: 67,50zł / dzień
+                            - link "Zamów" [ref=e124] [cursor=pointer]:
+                                - /url: https://dietly.pl/catering-dietetyczny-firma/twojemenu
+                                - text: Zamów
+                                - generic [ref=e125]: ↗
+                        - listitem [ref=e126]:
+                            - generic [ref=e127]: "3"
+                            - generic [ref=e129]:
+                                - generic [ref=e130]: robinfood
+                                - generic [ref=e131]: dieta Dash Food
+                            - generic [ref=e132]: 73,00zł / dzień
+                            - generic "Kod firmowy" [ref=e134]:
+                                - generic [ref=e135]: ROBIM30
+                                - generic [ref=e136]: −30%
+                            - link "Zamów" [ref=e137] [cursor=pointer]:
+                                - /url: https://dietly.pl/catering-dietetyczny-firma/robinfood
+                                - text: Zamów
+                                - generic [ref=e138]: ↗
+                    - button "Pokaż jeszcze 6 firm →" [ref=e139]
+                - generic [ref=e140]:
+                    - generic [ref=e141]:
+                        - heading "diabetic" [level=2] [ref=e142]
+                        - generic [ref=e143]: 9 firm
+                    - list [ref=e144]:
+                        - listitem [ref=e145]:
+                            - generic [ref=e147]: "1"
+                            - generic [ref=e149]:
+                                - generic [ref=e150]: twojemenu
+                                - generic [ref=e151]: Dla Insulinoopornych
+                            - generic [ref=e152]: 56,02zł / dzień
+                            - link "Zamów" [ref=e153] [cursor=pointer]:
+                                - /url: https://dietly.pl/catering-dietetyczny-firma/twojemenu
+                                - text: Zamów
+                                - generic [ref=e154]: ↗
+                        - listitem [ref=e155]:
+                            - generic [ref=e156]: "2"
+                            - generic [ref=e158]:
+                                - generic [ref=e159]: zdrowszadieta
+                                - generic [ref=e160]: Dla Insulinoopornych
+                            - generic [ref=e161]: 62,00zł / dzień
+                            - link "Zamów" [ref=e162] [cursor=pointer]:
+                                - /url: https://dietly.pl/catering-dietetyczny-firma/zdrowszadieta
+                                - text: Zamów
+                                - generic [ref=e163]: ↗
+                        - listitem [ref=e164]:
+                            - generic [ref=e165]: "3"
+                            - generic [ref=e167]:
+                                - generic [ref=e168]: robinfood
+                                - generic [ref=e169]: DIABETIC
+                            - generic [ref=e170]: 64,00zł / dzień
+                            - generic "Kod firmowy" [ref=e172]:
+                                - generic [ref=e173]: ROBIM30
+                                - generic [ref=e174]: −30%
+                            - link "Zamów" [ref=e175] [cursor=pointer]:
+                                - /url: https://dietly.pl/catering-dietetyczny-firma/robinfood
+                                - text: Zamów
+                                - generic [ref=e176]: ↗
+                    - button "Pokaż jeszcze 6 firm →" [ref=e177]
+                - generic [ref=e178]:
+                    - generic [ref=e179]:
+                        - heading "fish free" [level=2] [ref=e180]
+                        - generic [ref=e181]: 6 firm
+                    - list [ref=e182]:
+                        - listitem [ref=e183]:
+                            - generic [ref=e185]: "1"
+                            - generic [ref=e187]:
+                                - generic [ref=e188]: zdrowszadieta
+                                - generic [ref=e189]: Bez Rybki
+                            - generic [ref=e190]: 66,00zł / dzień
+                            - link "Zamów" [ref=e191] [cursor=pointer]:
+                                - /url: https://dietly.pl/catering-dietetyczny-firma/zdrowszadieta
+                                - text: Zamów
+                                - generic [ref=e192]: ↗
+                        - listitem [ref=e193]:
+                            - generic [ref=e194]: "2"
+                            - generic [ref=e196]:
+                                - generic [ref=e197]: zdrowaszama
+                                - generic [ref=e198]: Bez Rybki
+                            - generic [ref=e199]: 71,59zł / dzień
+                            - generic "Kod firmowy" [ref=e201]:
+                                - generic [ref=e202]: FORMA
+                                - generic [ref=e203]: −35%
+                            - link "Zamów" [ref=e204] [cursor=pointer]:
+                                - /url: https://dietly.pl/catering-dietetyczny-firma/zdrowaszama
+                                - text: Zamów
+                                - generic [ref=e205]: ↗
+                        - listitem [ref=e206]:
+                            - generic [ref=e207]: "3"
+                            - generic [ref=e209]:
+                                - generic [ref=e210]: mangodiet
+                                - generic [ref=e211]: Bez Rybki
+                            - generic [ref=e212]: 80,75zł / dzień
+                            - generic "Kod firmowy" [ref=e214]:
+                                - generic [ref=e215]: MG30
+                                - generic [ref=e216]: −30%
+                            - link "Zamów" [ref=e217] [cursor=pointer]:
+                                - /url: https://dietly.pl/catering-dietetyczny-firma/mangodiet
+                                - text: Zamów
+                                - generic [ref=e218]: ↗
+                    - button "Pokaż jeszcze 3 firmy →" [ref=e219]
+                - generic [ref=e220]:
+                    - generic [ref=e221]:
+                        - heading "fodmap" [level=2] [ref=e222]
+                        - generic [ref=e223]: 7 firm
+                    - list [ref=e224]:
+                        - listitem [ref=e225]:
+                            - generic [ref=e227]: "1"
+                            - generic [ref=e229]:
+                                - generic [ref=e230]: zdrowaszama
+                                - generic [ref=e231]: LOW FODMAP
+                            - generic [ref=e232]: 54,39zł / dzień
+                            - generic "Kod firmowy" [ref=e234]:
+                                - generic [ref=e235]: FORMA
+                                - generic [ref=e236]: −35%
+                            - link "Zamów" [ref=e237] [cursor=pointer]:
+                                - /url: https://dietly.pl/catering-dietetyczny-firma/zdrowaszama
+                                - text: Zamów
+                                - generic [ref=e238]: ↗
+                        - listitem [ref=e239]:
+                            - generic [ref=e240]: "2"
+                            - generic [ref=e242]:
+                                - generic [ref=e243]: uhrabiego
+                                - generic [ref=e244]: LOW FODMAP
+                            - generic [ref=e245]: 69,00zł / dzień
+                            - link "Zamów" [ref=e246] [cursor=pointer]:
+                                - /url: https://dietly.pl/catering-dietetyczny-firma/uhrabiego
+                                - text: Zamów
+                                - generic [ref=e247]: ↗
+                        - listitem [ref=e248]:
+                            - generic [ref=e249]: "3"
+                            - generic [ref=e251]:
+                                - generic [ref=e252]: kuchniavikinga
+                                - generic [ref=e253]: Dieta Fodmap
+                            - generic [ref=e254]: 69,99zł / dzień
+                            - link "Zamów" [ref=e255] [cursor=pointer]:
+                                - /url: https://dietly.pl/catering-dietetyczny-firma/kuchniavikinga
+                                - text: Zamów
+                                - generic [ref=e256]: ↗
+                    - button "Pokaż jeszcze 4 firmy →" [ref=e257]
+                - generic [ref=e258]:
+                    - generic [ref=e259]:
+                        - heading "gluten lactose free" [level=2] [ref=e260]
+                        - generic [ref=e261]: 18 firm
+                    - list [ref=e262]:
+                        - listitem [ref=e263]:
+                            - generic [ref=e265]: "1"
+                            - generic [ref=e267]:
+                                - generic [ref=e268]: fitboxcatering
+                                - generic [ref=e269]: Bez glutenu i laktozy
+                            - generic [ref=e270]: 43,00zł / dzień
+                            - link "Zamów" [ref=e271] [cursor=pointer]:
+                                - /url: https://dietly.pl/catering-dietetyczny-firma/fitboxcatering
+                                - text: Zamów
+                                - generic [ref=e272]: ↗
+                        - listitem [ref=e273]:
+                            - generic [ref=e274]: "2"
+                            - generic [ref=e276]:
+                                - generic [ref=e277]: zdrowaszama
+                                - generic [ref=e278]: Bez glutenu i laktozy
+                            - generic [ref=e279]: 56,39zł / dzień
+                            - generic "Kod firmowy" [ref=e281]:
+                                - generic [ref=e282]: FORMA
+                                - generic [ref=e283]: −35%
+                            - link "Zamów" [ref=e284] [cursor=pointer]:
+                                - /url: https://dietly.pl/catering-dietetyczny-firma/zdrowaszama
+                                - text: Zamów
+                                - generic [ref=e285]: ↗
+                        - listitem [ref=e286]:
+                            - generic [ref=e287]: "3"
+                            - generic [ref=e289]:
+                                - generic [ref=e290]: foodieforce
+                                - generic [ref=e291]: Bez glutenu i laktozy
+                            - generic [ref=e292]: 56,99zł / dzień
+                            - generic "Kod firmowy" [ref=e294]:
+                                - generic [ref=e295]: WIOSNA25
+                                - generic [ref=e296]: −25%
+                            - link "Zamów" [ref=e297] [cursor=pointer]:
+                                - /url: https://dietly.pl/catering-dietetyczny-firma/foodieforce
+                                - text: Zamów
+                                - generic [ref=e298]: ↗
+                    - button "Pokaż jeszcze 15 firm →" [ref=e299]
+                - generic [ref=e300]:
+                    - generic [ref=e301]:
+                        - heading "hashi" [level=2] [ref=e302]
+                        - generic [ref=e303]: 10 firm
+                    - list [ref=e304]:
+                        - listitem [ref=e305]:
+                            - generic [ref=e307]: "1"
+                            - generic [ref=e309]:
+                                - generic [ref=e310]: glodnymis
+                                - generic [ref=e311]: Hashimoto
+                            - generic [ref=e312]: 63,00zł / dzień
+                            - link "Zamów" [ref=e313] [cursor=pointer]:
+                                - /url: https://dietly.pl/catering-dietetyczny-firma/glodnymis
+                                - text: Zamów
+                                - generic [ref=e314]: ↗
+                        - listitem [ref=e315]:
+                            - generic [ref=e316]: "2"
+                            - generic [ref=e318]:
+                                - generic [ref=e319]: kuchniavikinga
+                                - generic [ref=e320]: Dieta Hashi Low Gluten & Lactose
+                            - generic [ref=e321]: 70,99zł / dzień
+                            - link "Zamów" [ref=e322] [cursor=pointer]:
+                                - /url: https://dietly.pl/catering-dietetyczny-firma/kuchniavikinga
+                                - text: Zamów
+                                - generic [ref=e323]: ↗
+                        - listitem [ref=e324]:
+                            - generic [ref=e325]: "3"
+                            - generic [ref=e327]:
+                                - generic [ref=e328]: twojemenu
+                                - generic [ref=e329]: Hashimoto
+                            - generic [ref=e330]: 73,21zł / dzień
+                            - link "Zamów" [ref=e331] [cursor=pointer]:
+                                - /url: https://dietly.pl/catering-dietetyczny-firma/twojemenu
+                                - text: Zamów
+                                - generic [ref=e332]: ↗
+                    - button "Pokaż jeszcze 7 firm →" [ref=e333]
+                - generic [ref=e334]:
+                    - generic [ref=e335]:
+                        - heading "home" [level=2] [ref=e336]
+                        - generic [ref=e337]: 17 firm
+                    - list [ref=e338]:
+                        - listitem [ref=e339]:
+                            - generic [ref=e341]: "1"
+                            - generic [ref=e343]:
+                                - generic [ref=e344]: twojemenu
+                                - generic [ref=e345]: Domowa
+                            - generic [ref=e346]: 56,02zł / dzień
+                            - link "Zamów" [ref=e347] [cursor=pointer]:
+                                - /url: https://dietly.pl/catering-dietetyczny-firma/twojemenu
+                                - text: Zamów
+                                - generic [ref=e348]: ↗
+                        - listitem [ref=e349]:
+                            - generic [ref=e350]: "2"
+                            - generic [ref=e352]:
+                                - generic [ref=e353]: dietabanana
+                                - generic [ref=e354]: Home Foodie
+                            - generic [ref=e355]: 58,00zł / dzień
+                            - link "Zamów" [ref=e356] [cursor=pointer]:
+                                - /url: https://dietly.pl/catering-dietetyczny-firma/dietabanana
+                                - text: Zamów
+                                - generic [ref=e357]: ↗
+                        - listitem [ref=e358]:
+                            - generic [ref=e359]: "3"
+                            - generic [ref=e361]:
+                                - generic [ref=e362]: polskirycerz
+                                - generic [ref=e363]: Domowa
+                            - generic [ref=e364]: 58,20zł / dzień
+                            - link "Zamów" [ref=e365] [cursor=pointer]:
+                                - /url: https://dietly.pl/catering-dietetyczny-firma/polskirycerz
+                                - text: Zamów
+                                - generic [ref=e366]: ↗
+                    - button "Pokaż jeszcze 14 firm →" [ref=e367]
+                - generic [ref=e368]:
+                    - generic [ref=e369]:
+                        - heading "keto" [level=2] [ref=e370]
+                        - generic [ref=e371]: 19 firm
+                    - list [ref=e372]:
+                        - listitem [ref=e373]:
+                            - generic [ref=e375]: "1"
+                            - generic [ref=e377]:
+                                - generic [ref=e378]: maczfit
+                                - generic [ref=e379]: KETO
+                            - generic [ref=e380]: 46,00zł / dzień
+                            - link "Zamów" [ref=e381] [cursor=pointer]:
+                                - /url: https://dietly.pl/catering-dietetyczny-firma/maczfit
+                                - text: Zamów
+                                - generic [ref=e382]: ↗
+                        - listitem [ref=e383]:
+                            - generic [ref=e384]: "2"
+                            - generic [ref=e386]:
+                                - generic [ref=e387]: robinfood
+                                - generic [ref=e388]: Dieta Keto
+                            - generic [ref=e389]:
+                                - text: 55,80zł / dzień
+                                - generic [ref=e390]: ↓10,80
+                            - generic "Kod firmowy" [ref=e392]:
+                                - generic [ref=e393]: ROBIM30
+                                - generic [ref=e394]: −30%
+                            - link "Zamów" [ref=e395] [cursor=pointer]:
+                                - /url: https://dietly.pl/catering-dietetyczny-firma/robinfood
+                                - text: Zamów
+                                - generic [ref=e396]: ↗
+                        - listitem [ref=e397]:
+                            - generic [ref=e398]: "3"
+                            - generic [ref=e400]:
+                                - generic [ref=e401]: fitboxcatering
+                                - generic [ref=e402]: Keto
+                            - generic [ref=e403]: 56,00zł / dzień
+                            - link "Zamów" [ref=e404] [cursor=pointer]:
+                                - /url: https://dietly.pl/catering-dietetyczny-firma/fitboxcatering
+                                - text: Zamów
+                                - generic [ref=e405]: ↗
+                    - button "Pokaż jeszcze 16 firm →" [ref=e406]
+                - generic [ref=e407]:
+                    - generic [ref=e408]:
+                        - heading "lactose free" [level=2] [ref=e409]
+                        - generic [ref=e410]: 9 firm
+                    - list [ref=e411]:
+                        - listitem [ref=e412]:
+                            - generic [ref=e414]: "1"
+                            - generic [ref=e416]:
+                                - generic [ref=e417]: glodnymis
+                                - generic [ref=e418]: Dieta Bez Laktozy
+                            - generic [ref=e419]: 64,00zł / dzień
+                            - link "Zamów" [ref=e420] [cursor=pointer]:
+                                - /url: https://dietly.pl/catering-dietetyczny-firma/glodnymis
+                                - text: Zamów
+                                - generic [ref=e421]: ↗
+                        - listitem [ref=e422]:
+                            - generic [ref=e423]: "2"
+                            - generic [ref=e425]:
+                                - generic [ref=e426]: uhrabiego
+                                - generic [ref=e427]: Bez laktozy u Hrabiego
+                            - generic [ref=e428]: 73,00zł / dzień
+                            - link "Zamów" [ref=e429] [cursor=pointer]:
+                                - /url: https://dietly.pl/catering-dietetyczny-firma/uhrabiego
+                                - text: Zamów
+                                - generic [ref=e430]: ↗
+                        - listitem [ref=e431]:
+                            - generic [ref=e432]: "3"
+                            - generic [ref=e434]:
+                                - generic [ref=e435]: sztukawyboru
+                                - generic [ref=e436]: Dieta Bez Laktozy
+                            - generic [ref=e437]: 73,32zł / dzień
+                            - link "Zamów" [ref=e438] [cursor=pointer]:
+                                - /url: https://dietly.pl/catering-dietetyczny-firma/sztukawyboru
+                                - text: Zamów
+                                - generic [ref=e439]: ↗
+                    - button "Pokaż jeszcze 6 firm →" [ref=e440]
+                - generic [ref=e441]:
+                    - generic [ref=e442]:
+                        - heading "low carb" [level=2] [ref=e443]
+                        - generic [ref=e444]: 13 firm
+                    - list [ref=e445]:
+                        - listitem [ref=e446]:
+                            - generic [ref=e448]: "1"
+                            - generic [ref=e450]:
+                                - generic [ref=e451]: polskirycerz
+                                - generic [ref=e452]: Niskowęglowodanowa
+                            - generic [ref=e453]: 58,20zł / dzień
+                            - link "Zamów" [ref=e454] [cursor=pointer]:
+                                - /url: https://dietly.pl/catering-dietetyczny-firma/polskirycerz
+                                - text: Zamów
+                                - generic [ref=e455]: ↗
+                        - listitem [ref=e456]:
+                            - generic [ref=e457]: "2"
+                            - generic [ref=e459]:
+                                - generic [ref=e460]: robinfood
+                                - generic [ref=e461]: Low Carb
+                            - generic [ref=e462]: 66,60zł / dzień
+                            - generic "Kod firmowy" [ref=e464]:
+                                - generic [ref=e465]: ROBIM30
+                                - generic [ref=e466]: −30%
+                            - link "Zamów" [ref=e467] [cursor=pointer]:
+                                - /url: https://dietly.pl/catering-dietetyczny-firma/robinfood
+                                - text: Zamów
+                                - generic [ref=e468]: ↗
+                        - listitem [ref=e469]:
+                            - generic [ref=e470]: "3"
+                            - generic [ref=e472]:
+                                - generic [ref=e473]: glodnymis
+                                - generic [ref=e474]: Niskowęglowodanowa
+                            - generic [ref=e475]: 68,00zł / dzień
+                            - link "Zamów" [ref=e476] [cursor=pointer]:
+                                - /url: https://dietly.pl/catering-dietetyczny-firma/glodnymis
+                                - text: Zamów
+                                - generic [ref=e477]: ↗
+                    - button "Pokaż jeszcze 10 firm →" [ref=e478]
+                - generic [ref=e479]:
+                    - generic [ref=e480]:
+                        - heading "low ig" [level=2] [ref=e481]
+                        - generic [ref=e482]: 17 firm
+                    - list [ref=e483]:
+                        - listitem [ref=e484]:
+                            - generic [ref=e486]: "1"
+                            - generic [ref=e488]:
+                                - generic [ref=e489]: zdrowszadieta
+                                - generic [ref=e490]: Niski IG
+                            - generic [ref=e491]: 54,00zł / dzień
+                            - link "Zamów" [ref=e492] [cursor=pointer]:
+                                - /url: https://dietly.pl/catering-dietetyczny-firma/zdrowszadieta
+                                - text: Zamów
+                                - generic [ref=e493]: ↗
+                        - listitem [ref=e494]:
+                            - generic [ref=e495]: "2"
+                            - generic [ref=e497]:
+                                - generic [ref=e498]: sztukawyboru
+                                - generic [ref=e499]: Niski Indeks Glikemiczny
+                            - generic [ref=e500]: 60,84zł / dzień
+                            - link "Zamów" [ref=e501] [cursor=pointer]:
+                                - /url: https://dietly.pl/catering-dietetyczny-firma/sztukawyboru
+                                - text: Zamów
+                                - generic [ref=e502]: ↗
+                        - listitem [ref=e503]:
+                            - generic [ref=e504]: "3"
+                            - generic [ref=e506]:
+                                - generic [ref=e507]: dietabanana
+                                - generic [ref=e508]: Niski IG
+                            - generic [ref=e509]: 63,00zł / dzień
+                            - link "Zamów" [ref=e510] [cursor=pointer]:
+                                - /url: https://dietly.pl/catering-dietetyczny-firma/dietabanana
+                                - text: Zamów
+                                - generic [ref=e511]: ↗
+                    - button "Pokaż jeszcze 14 firm →" [ref=e512]
+                - generic [ref=e513]:
+                    - generic [ref=e514]:
+                        - heading "menu_configuration" [level=2] [ref=e515]
+                        - generic [ref=e516]: 21 firm
+                    - list [ref=e517]:
+                        - listitem [ref=e518]:
+                            - generic [ref=e520]: "1"
+                            - generic [ref=e522]:
+                                - generic [ref=e523]: kulinarniefit
+                                - generic [ref=e524]: Wybór menu
+                            - generic [ref=e525]: 39,00zł / dzień
+                            - link "Zamów" [ref=e526] [cursor=pointer]:
+                                - /url: https://dietly.pl/catering-dietetyczny-firma/kulinarniefit
+                                - text: Zamów
+                                - generic [ref=e527]: ↗
+                        - listitem [ref=e528]:
+                            - generic [ref=e529]: "2"
+                            - generic [ref=e531]:
+                                - generic [ref=e532]: zdrowaszama
+                                - generic [ref=e533]: Wybór menu
+                            - generic [ref=e534]: 47,19zł / dzień
+                            - generic "Kod firmowy" [ref=e536]:
+                                - generic [ref=e537]: FORMA
+                                - generic [ref=e538]: −35%
+                            - link "Zamów" [ref=e539] [cursor=pointer]:
+                                - /url: https://dietly.pl/catering-dietetyczny-firma/zdrowaszama
+                                - text: Zamów
+                                - generic [ref=e540]: ↗
+                        - listitem [ref=e541]:
+                            - generic [ref=e542]: "3"
+                            - generic [ref=e544]:
+                                - generic [ref=e545]: maczfit
+                                - generic [ref=e546]: Wybór menu · Flexi
+                            - generic [ref=e547]: 48,50zł / dzień
+                            - link "Zamów" [ref=e548] [cursor=pointer]:
+                                - /url: https://dietly.pl/catering-dietetyczny-firma/maczfit
+                                - text: Zamów
+                                - generic [ref=e549]: ↗
+                    - button "Pokaż jeszcze 18 firm →" [ref=e550]
+                - generic [ref=e551]:
+                    - generic [ref=e552]:
+                        - heading "mom" [level=2] [ref=e553]
+                        - generic [ref=e554]: 7 firm
+                    - list [ref=e555]:
+                        - listitem [ref=e556]:
+                            - generic [ref=e558]: "1"
+                            - generic [ref=e560]:
+                                - generic [ref=e561]: zdrowaszama
+                                - generic [ref=e562]: Fit Mama
+                            - generic [ref=e563]: 69,19zł / dzień
+                            - generic "Kod firmowy" [ref=e565]:
+                                - generic [ref=e566]: FORMA
+                                - generic [ref=e567]: −35%
+                            - link "Zamów" [ref=e568] [cursor=pointer]:
+                                - /url: https://dietly.pl/catering-dietetyczny-firma/zdrowaszama
+                                - text: Zamów
+                                - generic [ref=e569]: ↗
+                        - listitem [ref=e570]:
+                            - generic [ref=e571]: "2"
+                            - generic [ref=e573]:
+                                - generic [ref=e574]: goodiefoodiecatering
+                                - generic [ref=e575]: Fit Mama
+                            - generic [ref=e576]: 70,72zł / dzień
+                            - link "Zamów" [ref=e577] [cursor=pointer]:
+                                - /url: https://dietly.pl/catering-dietetyczny-firma/goodiefoodiecatering
+                                - text: Zamów
+                                - generic [ref=e578]: ↗
+                        - listitem [ref=e579]:
+                            - generic [ref=e580]: "3"
+                            - generic [ref=e582]:
+                                - generic [ref=e583]: glodnymis
+                                - generic [ref=e584]: Fit Mama
+                            - generic [ref=e585]: 74,00zł / dzień
+                            - link "Zamów" [ref=e586] [cursor=pointer]:
+                                - /url: https://dietly.pl/catering-dietetyczny-firma/glodnymis
+                                - text: Zamów
+                                - generic [ref=e587]: ↗
+                    - button "Pokaż jeszcze 4 firmy →" [ref=e588]
+                - generic [ref=e589]:
+                    - generic [ref=e590]:
+                        - heading "office" [level=2] [ref=e591]
+                        - generic [ref=e592]: 7 firm
+                    - list [ref=e593]:
+                        - listitem [ref=e594]:
+                            - generic [ref=e596]: "1"
+                            - generic [ref=e598]:
+                                - generic [ref=e599]: robinfood
+                                - generic [ref=e600]: Office Vege
+                            - generic [ref=e601]: 71,00zł / dzień
+                            - generic "Kod firmowy" [ref=e603]:
+                                - generic [ref=e604]: ROBIM30
+                                - generic [ref=e605]: −30%
+                            - link "Zamów" [ref=e606] [cursor=pointer]:
+                                - /url: https://dietly.pl/catering-dietetyczny-firma/robinfood
+                                - text: Zamów
+                                - generic [ref=e607]: ↗
+                        - listitem [ref=e608]:
+                            - generic [ref=e609]: "2"
+                            - generic [ref=e611]:
+                                - generic [ref=e612]: takeawaydiet
+                                - generic [ref=e613]: Office Vege
+                            - generic [ref=e614]: 72,00zł / dzień
+                            - link "Zamów" [ref=e615] [cursor=pointer]:
+                                - /url: https://dietly.pl/catering-dietetyczny-firma/takeawaydiet
+                                - text: Zamów
+                                - generic [ref=e616]: ↗
+                        - listitem [ref=e617]:
+                            - generic [ref=e618]: "3"
+                            - generic [ref=e620]:
+                                - generic [ref=e621]: zdrowszadieta
+                                - generic [ref=e622]: Office Vege
+                            - generic [ref=e623]: 75,00zł / dzień
+                            - link "Zamów" [ref=e624] [cursor=pointer]:
+                                - /url: https://dietly.pl/catering-dietetyczny-firma/zdrowszadieta
+                                - text: Zamów
+                                - generic [ref=e625]: ↗
+                    - button "Pokaż jeszcze 4 firmy →" [ref=e626]
+                - generic [ref=e627]:
+                    - generic [ref=e628]:
+                        - heading "samurai" [level=2] [ref=e629]
+                        - generic [ref=e630]: 1 firma
+                    - list [ref=e631]:
+                        - listitem [ref=e632]:
+                            - generic [ref=e634]: "1"
+                            - generic [ref=e636]:
+                                - generic [ref=e637]: kuchniavikinga
+                                - generic [ref=e638]: Dieta Śródziemnomorska
+                            - generic [ref=e639]: 71,99zł / dzień
+                            - link "Zamów" [ref=e640] [cursor=pointer]:
+                                - /url: https://dietly.pl/catering-dietetyczny-firma/kuchniavikinga
+                                - text: Zamów
+                                - generic [ref=e641]: ↗
+                - generic [ref=e642]:
+                    - generic [ref=e643]:
+                        - heading "sirtfood" [level=2] [ref=e644]
+                        - generic [ref=e645]: 13 firm
+                    - list [ref=e646]:
+                        - listitem [ref=e647]:
+                            - generic [ref=e649]: "1"
+                            - generic [ref=e651]:
+                                - generic [ref=e652]: robinfood
+                                - generic [ref=e653]: Dieta SIRTFOOD
+                            - generic [ref=e654]:
+                                - text: 58,50zł / dzień
+                                - generic [ref=e655]: ↓8,10
+                            - generic "Kod firmowy" [ref=e657]:
+                                - generic [ref=e658]: ROBIM30
+                                - generic [ref=e659]: −30%
+                            - link "Zamów" [ref=e660] [cursor=pointer]:
+                                - /url: https://dietly.pl/catering-dietetyczny-firma/robinfood
+                                - text: Zamów
+                                - generic [ref=e661]: ↗
+                        - listitem [ref=e662]:
+                            - generic [ref=e663]: "2"
+                            - generic [ref=e665]:
+                                - generic [ref=e666]: sztukawyboru
+                                - generic [ref=e667]: Dieta SIRTFOOD
+                            - generic [ref=e668]: 61,62zł / dzień
+                            - link "Zamów" [ref=e669] [cursor=pointer]:
+                                - /url: https://dietly.pl/catering-dietetyczny-firma/sztukawyboru
+                                - text: Zamów
+                                - generic [ref=e670]: ↗
+                        - listitem [ref=e671]:
+                            - generic [ref=e672]: "3"
+                            - generic [ref=e674]:
+                                - generic [ref=e675]: zdrowszadieta
+                                - generic [ref=e676]: Dieta SIRTFOOD
+                            - generic [ref=e677]: 64,00zł / dzień
+                            - link "Zamów" [ref=e678] [cursor=pointer]:
+                                - /url: https://dietly.pl/catering-dietetyczny-firma/zdrowszadieta
+                                - text: Zamów
+                                - generic [ref=e679]: ↗
+                    - button "Pokaż jeszcze 10 firm →" [ref=e680]
+                - generic [ref=e681]:
+                    - generic [ref=e682]:
+                        - heading "sport" [level=2] [ref=e683]
+                        - generic [ref=e684]: 17 firm
+                    - list [ref=e685]:
+                        - listitem [ref=e686]:
+                            - generic [ref=e688]: "1"
+                            - generic [ref=e690]:
+                                - generic [ref=e691]: kulinarniefit
+                                - generic [ref=e692]: Active
+                            - generic [ref=e693]: 59,25zł / dzień
+                            - link "Zamów" [ref=e694] [cursor=pointer]:
+                                - /url: https://dietly.pl/catering-dietetyczny-firma/kulinarniefit
+                                - text: Zamów
+                                - generic [ref=e695]: ↗
+                        - listitem [ref=e696]:
+                            - generic [ref=e697]: "2"
+                            - generic [ref=e699]:
+                                - generic [ref=e700]: zdrowszadieta
+                                - generic [ref=e701]: Dla Aktywnych
+                            - generic [ref=e702]: 60,00zł / dzień
+                            - link "Zamów" [ref=e703] [cursor=pointer]:
+                                - /url: https://dietly.pl/catering-dietetyczny-firma/zdrowszadieta
+                                - text: Zamów
+                                - generic [ref=e704]: ↗
+                        - listitem [ref=e705]:
+                            - generic [ref=e706]: "3"
+                            - generic [ref=e708]:
+                                - generic [ref=e709]: glodnymis
+                                - generic [ref=e710]: SPORT
+                            - generic [ref=e711]: 62,00zł / dzień
+                            - link "Zamów" [ref=e712] [cursor=pointer]:
+                                - /url: https://dietly.pl/catering-dietetyczny-firma/glodnymis
+                                - text: Zamów
+                                - generic [ref=e713]: ↗
+                    - button "Pokaż jeszcze 14 firm →" [ref=e714]
+                - generic [ref=e715]:
+                    - generic [ref=e716]:
+                        - heading "vegan" [level=2] [ref=e717]
+                        - generic [ref=e718]: 13 firm
+                    - list [ref=e719]:
+                        - listitem [ref=e720]:
+                            - generic [ref=e722]: "1"
+                            - generic [ref=e724]:
+                                - generic [ref=e725]: robinfood
+                                - generic [ref=e726]: Wegańska
+                            - generic [ref=e727]: 64,00zł / dzień
+                            - generic "Kod firmowy" [ref=e729]:
+                                - generic [ref=e730]: ROBIM30
+                                - generic [ref=e731]: −30%
+                            - link "Zamów" [ref=e732] [cursor=pointer]:
+                                - /url: https://dietly.pl/catering-dietetyczny-firma/robinfood
+                                - text: Zamów
+                                - generic [ref=e733]: ↗
+                        - listitem [ref=e734]:
+                            - generic [ref=e735]: "2"
+                            - generic [ref=e737]:
+                                - generic [ref=e738]: glodnymis
+                                - generic [ref=e739]: WEGAN
+                            - generic [ref=e740]: 66,00zł / dzień
+                            - link "Zamów" [ref=e741] [cursor=pointer]:
+                                - /url: https://dietly.pl/catering-dietetyczny-firma/glodnymis
+                                - text: Zamów
+                                - generic [ref=e742]: ↗
+                        - listitem [ref=e743]:
+                            - generic [ref=e744]: "3"
+                            - generic [ref=e746]:
+                                - generic [ref=e747]: sztukawyboru
+                                - generic [ref=e748]: WEGAN
+                            - generic [ref=e749]: 68,64zł / dzień
+                            - link "Zamów" [ref=e750] [cursor=pointer]:
+                                - /url: https://dietly.pl/catering-dietetyczny-firma/sztukawyboru
+                                - text: Zamów
+                                - generic [ref=e751]: ↗
+                    - button "Pokaż jeszcze 10 firm →" [ref=e752]
+                - generic [ref=e753]:
+                    - generic [ref=e754]:
+                        - heading "vege and fish" [level=2] [ref=e755]
+                        - generic [ref=e756]: 18 firm
+                    - list [ref=e757]:
+                        - listitem [ref=e758]:
+                            - generic [ref=e760]: "1"
+                            - generic [ref=e762]:
+                                - generic [ref=e763]: zdrowaszama
+                                - generic [ref=e764]: Vege&Fish
+                            - generic [ref=e765]: 52,39zł / dzień
+                            - generic "Kod firmowy" [ref=e767]:
+                                - generic [ref=e768]: FORMA
+                                - generic [ref=e769]: −35%
+                            - link "Zamów" [ref=e770] [cursor=pointer]:
+                                - /url: https://dietly.pl/catering-dietetyczny-firma/zdrowaszama
+                                - text: Zamów
+                                - generic [ref=e771]: ↗
+                        - listitem [ref=e772]:
+                            - generic [ref=e773]: "2"
+                            - generic [ref=e775]:
+                                - generic [ref=e776]: goodiefoodiecatering
+                                - generic [ref=e777]: Vege + Ryby
+                            - generic [ref=e778]: 53,72zł / dzień
+                            - link "Zamów" [ref=e779] [cursor=pointer]:
+                                - /url: https://dietly.pl/catering-dietetyczny-firma/goodiefoodiecatering
+                                - text: Zamów
+                                - generic [ref=e780]: ↗
+                        - listitem [ref=e781]:
+                            - generic [ref=e782]: "3"
+                            - generic [ref=e784]:
+                                - generic [ref=e785]: zdrowszadieta
+                                - generic [ref=e786]: Wege + ryba
+                            - generic [ref=e787]: 55,00zł / dzień
+                            - link "Zamów" [ref=e788] [cursor=pointer]:
+                                - /url: https://dietly.pl/catering-dietetyczny-firma/zdrowszadieta
+                                - text: Zamów
+                                - generic [ref=e789]: ↗
+                    - button "Pokaż jeszcze 15 firm →" [ref=e790]
+                - generic [ref=e791]:
+                    - generic [ref=e792]:
+                        - heading "vegetarian" [level=2] [ref=e793]
+                        - generic [ref=e794]: 19 firm
+                    - list [ref=e795]:
+                        - listitem [ref=e796]:
+                            - generic [ref=e798]: "1"
+                            - generic [ref=e800]:
+                                - generic [ref=e801]: goodiefoodiecatering
+                                - generic [ref=e802]: WEGE
+                            - generic [ref=e803]: 45,22zł / dzień
+                            - link "Zamów" [ref=e804] [cursor=pointer]:
+                                - /url: https://dietly.pl/catering-dietetyczny-firma/goodiefoodiecatering
+                                - text: Zamów
+                                - generic [ref=e805]: ↗
+                        - listitem [ref=e806]:
+                            - generic [ref=e807]: "2"
+                            - generic [ref=e809]:
+                                - generic [ref=e810]: kulinarniefit
+                                - generic [ref=e811]: Vege
+                            - generic [ref=e812]: 45,25zł / dzień
+                            - link "Zamów" [ref=e813] [cursor=pointer]:
+                                - /url: https://dietly.pl/catering-dietetyczny-firma/kulinarniefit
+                                - text: Zamów
+                                - generic [ref=e814]: ↗
+                        - listitem [ref=e815]:
+                            - generic [ref=e816]: "3"
+                            - generic [ref=e818]:
+                                - generic [ref=e819]: polskirycerz
+                                - generic [ref=e820]: VEGE
+                            - generic [ref=e821]: 55,80zł / dzień
+                            - link "Zamów" [ref=e822] [cursor=pointer]:
+                                - /url: https://dietly.pl/catering-dietetyczny-firma/polskirycerz
+                                - text: Zamów
+                                - generic [ref=e823]: ↗
+                    - button "Pokaż jeszcze 16 firm →" [ref=e824]
+                - generic [ref=e825]:
+                    - generic [ref=e826]:
+                        - heading "weight loss" [level=2] [ref=e827]
+                        - generic [ref=e828]: 20 firm
+                    - list [ref=e829]:
+                        - listitem [ref=e830]:
+                            - generic [ref=e832]: "1"
+                            - generic [ref=e834]:
+                                - generic [ref=e835]: kulinarniefit
+                                - generic [ref=e836]: Optimal
+                            - generic [ref=e837]: 46,25zł / dzień
+                            - link "Zamów" [ref=e838] [cursor=pointer]:
+                                - /url: https://dietly.pl/catering-dietetyczny-firma/kulinarniefit
+                                - text: Zamów
+                                - generic [ref=e839]: ↗
+                        - listitem [ref=e840]:
+                            - generic [ref=e841]: "2"
+                            - generic [ref=e843]:
+                                - generic [ref=e844]: zdrowszadieta
+                                - generic [ref=e845]: Ekonomiczna
+                            - generic [ref=e846]: 55,00zł / dzień
+                            - link "Zamów" [ref=e847] [cursor=pointer]:
+                                - /url: https://dietly.pl/catering-dietetyczny-firma/zdrowszadieta
+                                - text: Zamów
+                                - generic [ref=e848]: ↗
+                        - listitem [ref=e849]:
+                            - generic [ref=e850]: "3"
+                            - generic [ref=e852]:
+                                - generic [ref=e853]: kuchniavikinga
+                                - generic [ref=e854]: Optimal
+                            - generic [ref=e855]: 57,99zł / dzień
+                            - link "Zamów" [ref=e856] [cursor=pointer]:
+                                - /url: https://dietly.pl/catering-dietetyczny-firma/kuchniavikinga
+                                - text: Zamów
+                                - generic [ref=e857]: ↗
+                    - button "Pokaż jeszcze 17 firm →" [ref=e858]
+            - generic [ref=e859]:
+                - paragraph [ref=e860]: Kody globalne (dotyczą wszystkich firm)
+                - generic [ref=e861]:
+                    - generic [ref=e862]: REFERRAL
+                    - generic [ref=e863]: PACZKI
+                    - generic [ref=e864]: ROBIM30
+        - generic [ref=e866]:
+            - button "Pokaż wszystkie 2039 ofert" [ref=e867]:
+                - generic [ref=e868]: Pokaż wszystkie 2039 ofert
+                - generic [ref=e869]: ↓
+            - paragraph [ref=e870]: "Pełna tabela: każda dieta × tier × pakiet z każdej firmy. Klik w wiersz rozwija historię ceny i rachunek."
+    - contentinfo [ref=e871]: dietlownik · dane z dietly.pl, scrapowane lokalnie.
+    - button "Open Next.js Dev Tools" [ref=e877] [cursor=pointer]:
+        - img [ref=e878]

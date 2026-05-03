@@ -25,31 +25,45 @@ import type {
 
 interface PromoObservation {
   code: string;
-  source: string; // constant | awarded-and-top | banner | recommended-diets
+  /** constant | awarded-and-top | banner | recommended-diets */
+  source: string;
   company_id: string | null;
   city_id: number | null;
   discount_percents: number | null;
   promo_text: string | null;
-  deadline: string | null; // YYYY-MM-DD
+  /** YYYY-MM-DD */
+  deadline: string | null;
   separate: boolean | null;
-  valid_from: string | null; // ISO 8601
+  /** ISO 8601 */
+  valid_from: string | null;
   valid_to: string | null;
   raw: unknown;
 }
 
-function fromActivePromo(
+const isBanner = (raw: unknown): raw is Banner => {
+  if (raw === null || typeof raw !== "object") {
+    return false;
+  }
+  return "code" in raw && "validTo" in raw;
+};
+
+const fromActivePromo = (
   source: string,
   company_id: string | null,
   city_id: number | null,
   info: ActivePromotionInfo | null | undefined,
   raw: unknown
-): PromoObservation | null {
-  if (!info?.code) {
+): PromoObservation | null => {
+  if (info == null) {
+    return null;
+  }
+  const { code } = info;
+  if (code === null || code === undefined || code === "") {
     return null;
   }
   return {
     city_id,
-    code: info.code,
+    code,
     company_id,
     deadline: info.promoDeadline ?? null,
     discount_percents: info.discountPercents ?? null,
@@ -60,10 +74,13 @@ function fromActivePromo(
     valid_from: null,
     valid_to: null,
   };
-}
+};
 
-function fromBanner(banner: Banner, city_id: number): PromoObservation | null {
-  if (!banner?.code) {
+const fromBanner = (
+  banner: Banner,
+  city_id: number
+): PromoObservation | null => {
+  if (banner.code === "" || banner.code === null || banner.code === undefined) {
     return null;
   }
   return {
@@ -79,15 +96,15 @@ function fromBanner(banner: Banner, city_id: number): PromoObservation | null {
     valid_from: banner.validFrom ?? null,
     valid_to: banner.validTo ?? null,
   };
-}
+};
 
-async function insertObservation(o: PromoObservation): Promise<void> {
+const insertObservation = async (o: PromoObservation): Promise<void> => {
   // promo_observations.company_id has an FK to companies(company_id).
   // awarded-and-top can run ahead of catalog during a partial scrape,
   // pointing at a company we haven't catalogued yet. Drop the link rather
   // than blow up the batch — we still want the observation persisted.
   let companyId = o.company_id;
-  if (companyId) {
+  if (companyId !== null && companyId !== "") {
     const exists = await q<{ exists: boolean }>(
       `SELECT TRUE AS exists FROM companies WHERE company_id = $1 LIMIT 1`,
       [companyId]
@@ -115,16 +132,16 @@ async function insertObservation(o: PromoObservation): Promise<void> {
       JSON.stringify(o.raw ?? null),
     ]
   );
-}
+};
 
 /**
  * Upsert into campaigns (the SCD). One row per (code, source, company_id|'').
  * `company_id` NULL means "global / cross-company". The composite unique
  * index in v4 lets us conflict-update.
  */
-async function upsertCampaign(o: PromoObservation): Promise<void> {
+const upsertCampaign = async (o: PromoObservation): Promise<void> => {
   let companyId = o.company_id;
-  if (companyId) {
+  if (companyId !== null && companyId !== "") {
     const exists = await q<{ exists: boolean }>(
       `SELECT TRUE AS exists FROM companies WHERE company_id = $1 LIMIT 1`,
       [companyId]
@@ -133,6 +150,7 @@ async function upsertCampaign(o: PromoObservation): Promise<void> {
       companyId = null;
     }
   }
+  const bannerRaw = isBanner(o.raw) ? o.raw : null;
   await q(
     `INSERT INTO campaigns
        (code, source, company_id, discount_percent, title, deadline,
@@ -163,35 +181,26 @@ async function upsertCampaign(o: PromoObservation): Promise<void> {
       o.valid_to,
       o.separate,
       // banner-specific fields (mostly null when source != banner)
-      isBanner(o.raw) ? o.raw.target : null,
-      isBanner(o.raw) ? o.raw.deepLink : null,
-      isBanner(o.raw) ? o.raw.url : null,
+      bannerRaw?.target ?? null,
+      bannerRaw?.deepLink ?? null,
+      bannerRaw?.url ?? null,
     ]
   );
-}
+};
 
-function isBanner(raw: unknown): raw is Banner {
-  return (
-    !!raw &&
-    typeof raw === "object" &&
-    "code" in (raw as Banner) &&
-    "validTo" in (raw as Banner)
-  );
-}
-
-async function persist(observations: PromoObservation[]): Promise<void> {
+const persist = async (observations: PromoObservation[]): Promise<void> => {
   for (const o of observations) {
     await insertObservation(o);
     await upsertCampaign(o);
   }
-}
+};
 
 // ── source loaders ────────────────────────────────────────────────────────────
 
-async function fromAwardedAndTop(
+const fromAwardedAndTop = (
   cityId: number,
   companies: CompanySearchItem[]
-): Promise<PromoObservation[]> {
+): PromoObservation[] => {
   const out: PromoObservation[] = [];
   for (const c of companies) {
     const obs = fromActivePromo(
@@ -209,12 +218,12 @@ async function fromAwardedAndTop(
     }
   }
   return out;
-}
+};
 
-async function fromConstantHeaders(
+const fromConstantHeaders = (
   cityId: number,
   companies: CompanySearchItem[]
-): Promise<PromoObservation[]> {
+): PromoObservation[] => {
   // We don't want to refetch /constant for every company — catalog already
   // ran. Instead, surface promos from the awarded-and-top response as the
   // primary signal. This loader exists so callers can pass already-fetched
@@ -223,29 +232,29 @@ async function fromConstantHeaders(
   void cityId;
   void companies;
   return [];
-}
+};
 
 /**
  * Optional — pass already-fetched constant responses (from the catalog pass)
  * to also pull promo info from companyHeader.activePromotionInfo. Most useful
  * when separate=true codes (e.g. MG30) aren't surfaced by awarded-and-top.
  */
-export async function recordPromosFromConstants(
+export const recordPromosFromConstants = async (
   cityId: number,
   entries: { companyId: string; constant: ConstantResponse }[]
-): Promise<void> {
+): Promise<void> => {
   const obs: PromoObservation[] = [];
   for (const { companyId, constant } of entries) {
-    const info = constant?.companyHeader?.activePromotionInfo ?? null;
+    const info = constant.companyHeader.activePromotionInfo ?? null;
     const o = fromActivePromo("constant", companyId, cityId, info, info);
     if (o) {
       obs.push(o);
     }
   }
   await persist(obs);
-}
+};
 
-async function fetchBanners(cityId: number): Promise<PromoObservation[]> {
+const fetchBanners = async (cityId: number): Promise<PromoObservation[]> => {
   try {
     const banners = await get<Banner[]>(
       `/api/open/mobile/banners?cId=${cityId}`
@@ -260,21 +269,23 @@ async function fetchBanners(cityId: number): Promise<PromoObservation[]> {
     }
     throw error;
   }
-}
+};
 
-async function fetchRecommended(cityId: number): Promise<PromoObservation[]> {
+const fetchRecommended = async (
+  cityId: number
+): Promise<PromoObservation[]> => {
   try {
     const recs = await get<RecommendedDiet[]>(
       `/api/open/content-management/recommended-diets?cId=${cityId}&page=0&pageSize=20`
     );
     const out: PromoObservation[] = [];
     for (const r of recs ?? []) {
-      const cid = r?.companyData?.companyId ?? null;
+      const cid = r.companyData.companyId ?? null;
       const o = fromActivePromo(
         "recommended-diets",
         cid,
         cityId,
-        r?.activePromotion ?? null,
+        r.activePromotion ?? null,
         r
       );
       if (o) {
@@ -290,26 +301,26 @@ async function fetchRecommended(cityId: number): Promise<PromoObservation[]> {
     }
     throw error;
   }
-}
+};
 
 // ── main export ───────────────────────────────────────────────────────────────
 
-export async function scrapePromotions(
+export const scrapePromotions = async (
   cityId: number,
   companies: CompanySearchItem[]
-): Promise<void> {
+): Promise<void> => {
   const t0 = Date.now();
   console.log(
     `[promotions] city=${cityId} from ${companies.length} companies + banners + recommended`
   );
 
-  const [awarded, banners, recommended] = await Promise.all([
-    fromAwardedAndTop(cityId, companies),
+  const awarded = fromAwardedAndTop(cityId, companies);
+  const [banners, recommended] = await Promise.all([
     fetchBanners(cityId),
     fetchRecommended(cityId),
   ]);
   // constant-header pass needs already-fetched data; left as optional helper.
-  await fromConstantHeaders(cityId, companies);
+  fromConstantHeaders(cityId, companies);
 
   const all = [...awarded, ...banners, ...recommended];
   await persist(all);
@@ -335,4 +346,4 @@ export async function scrapePromotions(
   console.log(
     `[promotions] ✓ persisted ${all.length} observations (awarded=${counts.awardedAndTop}, banners=${counts.banners}, recommended=${counts.recommended}) in ${elapsed}s`
   );
-}
+};

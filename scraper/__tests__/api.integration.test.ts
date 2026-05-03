@@ -77,7 +77,7 @@ describe.runIf(RUN)("integration: aplikacja.dietly.pl mobile API", () => {
     // The reason this scraper exists in its current form: rateValue is the
     // real "company score 0..100" field on mobile, not avgScore.
     expect(typeof data.companyHeader.rateValue).toBe("number");
-    expect(data.companyHeader.rateValue!).toBeGreaterThan(0);
+    expect(data.companyHeader.rateValue ?? 0).toBeGreaterThan(0);
     expect(data.menuSettings).toBeDefined();
     expect(typeof data.menuSettings.menuDaysAhead).toBe("number");
 
@@ -133,7 +133,7 @@ describe.runIf(RUN)("integration: aplikacja.dietly.pl mobile API", () => {
     );
     expect(res.cart).toBeDefined();
     expect(typeof res.cart.totalCostToPay).toBe("number");
-    expect(res.cart.totalCostToPay!).toBeGreaterThan(0);
+    expect(res.cart.totalCostToPay ?? 0).toBeGreaterThan(0);
     expect(Array.isArray(res.items)).toBe(true);
   }, 15_000);
 
@@ -145,7 +145,7 @@ describe.runIf(RUN)("integration: aplikacja.dietly.pl mobile API", () => {
     today.setDate(today.getDate() + 2);
     const date = today.toISOString().slice(0, 10);
 
-    async function quoteTier(tdoId: string): Promise<number> {
+    const quoteTier = async (tdoId: string): Promise<number> => {
       const r = await post<PriceResponse>(
         `/api/mobile/open/company-card/${COMPANY_ID}/quick-order/calculate-price`,
         {
@@ -158,7 +158,7 @@ describe.runIf(RUN)("integration: aplikacja.dietly.pl mobile API", () => {
         { companyId: COMPANY_ID }
       );
       return r.cart.totalCostToPay ?? -1;
-    }
+    };
 
     const [comfortPrice, basicPrice] = [
       await quoteTier("6-17"),
@@ -180,11 +180,11 @@ describe.runIf(RUN)("integration: aplikacja.dietly.pl mobile API", () => {
     expect(typeof data.calories).toBe("number");
     expect(Array.isArray(data.meals)).toBe(true);
     expect(data.meals.length).toBeGreaterThan(0);
-    const slot = data.meals[0];
+    const [slot] = data.meals;
     expect(typeof slot.name).toBe("string");
     expect(Array.isArray(slot.options)).toBe(true);
     expect(slot.options.length).toBeGreaterThan(0);
-    const opt = slot.options[0];
+    const [opt] = slot.options;
     expect(typeof opt.name).toBe("string");
     expect(opt.name.length).toBeGreaterThan(0);
     expect(typeof opt.dietCaloriesMealId).toBe("number");
@@ -206,7 +206,9 @@ describe.runIf(RUN)("integration: aplikacja.dietly.pl mobile API", () => {
       err = error;
     }
     expect(err).toBeInstanceOf(HttpError);
-    expect((err as HttpError).status).toBe(401);
+    if (err instanceof HttpError) {
+      expect(err.status).toBe(401);
+    }
   }, 15_000);
 
   it("GET /banners returns city-scoped marketing entries", async () => {

@@ -16,14 +16,18 @@ interface ProfileShape {
   profileAddresses?: { profileAddressId?: number }[];
 }
 
-function normalizeProfileResponse(raw: unknown) {
-  const root = (raw as { profile?: unknown } | null)?.profile ?? raw;
+const hasProfileField = (value: unknown): value is { profile?: unknown } =>
+  value !== null && typeof value === "object" && "profile" in value;
+
+const normalizeProfileResponse = (raw: unknown) => {
+  const root = hasProfileField(raw) ? (raw.profile ?? raw) : raw;
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- structural shape; unknown fields fall back to undefined and are guarded below
   const profile = (root ?? {}) as ProfileShape;
   const profile_address_ids = (profile.profileAddresses ?? [])
     .map((item) => item.profileAddressId)
     .filter((id): id is number => Number.isFinite(id));
   return { profile: root, profile_address_ids };
-}
+};
 
 export const get_profile = defineTool({
   annotations: { openWorldHint: true, readOnlyHint: true },

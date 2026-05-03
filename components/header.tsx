@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import * as React from "react";
 
 import {
@@ -29,7 +29,7 @@ export interface HeaderProps {
   activeCityName: string;
 }
 
-function useUrlSetter() {
+const useUrlSetter = () => {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -47,28 +47,65 @@ function useUrlSetter() {
     },
     [router, pathname, searchParams]
   );
-}
+};
 
-function PickerButton({
-  label,
-  value,
+const CityPicker = ({
+  activeId,
+  cities,
+  onPick,
+  onSelect,
+}: {
+  cities: CityOption[];
+  activeId: number;
+  onSelect: (id: number) => void;
+  onPick?: () => void;
+}) => (
+  <Command>
+    <CommandInput placeholder="Szukaj miasta..." />
+    <CommandList>
+      <CommandEmpty>Brak miast.</CommandEmpty>
+      <CommandGroup heading="Miasta">
+        {cities.map((c) => (
+          <CommandItem
+            className="justify-between"
+            key={c.city_id}
+            onSelect={() => {
+              onSelect(c.city_id);
+              onPick?.();
+            }}
+            value={c.name}
+          >
+            <span>{c.name}</span>
+            {c.city_id === activeId && (
+              <span className="text-[var(--color-amber)] text-[12px]">●</span>
+            )}
+          </CommandItem>
+        ))}
+      </CommandGroup>
+    </CommandList>
+  </Command>
+);
+
+const PickerButton = ({
   children,
   contentClassName,
+  label,
+  value,
 }: {
   label: string;
   value: string;
   children: React.ReactNode;
   contentClassName?: string;
-}) {
+}) => {
   const [open, setOpen] = React.useState(false);
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover onOpenChange={setOpen} open={open}>
       <PopoverTrigger asChild>
         <button
-          type="button"
           className={cn(
             "group inline-flex items-center gap-2 px-2 py-1 text-[14px] text-[var(--color-ink)] hover:bg-[var(--color-oat)] rounded-sm transition-colors"
           )}
+          type="button"
         >
           <span className="text-[11px] uppercase tracking-[0.08em] text-[var(--color-ink-3)]">
             {label}
@@ -84,6 +121,7 @@ function PickerButton({
       </PopoverTrigger>
       <PopoverContent align="end" className={cn("w-64 p-0", contentClassName)}>
         {React.cloneElement(
+          // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- React.cloneElement requires concrete ReactElement type to inject onPick prop
           children as React.ReactElement<{ onPick?: () => void }>,
           {
             onPick: () => {
@@ -94,15 +132,19 @@ function PickerButton({
       </PopoverContent>
     </Popover>
   );
-}
+};
 
-export function Header({ cities, activeCityId, activeCityName }: HeaderProps) {
+export const Header = ({
+  activeCityId,
+  activeCityName,
+  cities,
+}: HeaderProps) => {
   const setUrl = useUrlSetter();
 
   return (
     <header className="border-b border-[var(--color-bone)] bg-[var(--color-cream)]">
       <div className="px-5 sm:px-8 lg:px-14 h-16 flex items-center justify-between">
-        <a href="/" className="inline-flex items-center select-none">
+        <a className="inline-flex items-center select-none" href="/">
           <span className="font-display text-[18px] leading-none text-[var(--color-ink)] relative tracking-tight">
             <span className="relative">
               <span className="relative">die</span>
@@ -119,8 +161,8 @@ export function Header({ cities, activeCityId, activeCityName }: HeaderProps) {
         <div className="flex items-center gap-1">
           <PickerButton label="Miasto" value={activeCityName || "Wrocław"}>
             <CityPicker
-              cities={cities}
               activeId={activeCityId}
+              cities={cities}
               onSelect={(id) => {
                 setUrl({ city: id });
               }}
@@ -130,43 +172,4 @@ export function Header({ cities, activeCityId, activeCityName }: HeaderProps) {
       </div>
     </header>
   );
-}
-
-function CityPicker({
-  cities,
-  activeId,
-  onSelect,
-  onPick,
-}: {
-  cities: CityOption[];
-  activeId: number;
-  onSelect: (id: number) => void;
-  onPick?: () => void;
-}) {
-  return (
-    <Command>
-      <CommandInput placeholder="Szukaj miasta..." />
-      <CommandList>
-        <CommandEmpty>Brak miast.</CommandEmpty>
-        <CommandGroup heading="Miasta">
-          {cities.map((c) => (
-            <CommandItem
-              key={c.city_id}
-              value={c.name}
-              onSelect={() => {
-                onSelect(c.city_id);
-                onPick?.();
-              }}
-              className="justify-between"
-            >
-              <span>{c.name}</span>
-              {c.city_id === activeId && (
-                <span className="text-[var(--color-amber)] text-[12px]">●</span>
-              )}
-            </CommandItem>
-          ))}
-        </CommandGroup>
-      </CommandList>
-    </Command>
-  );
-}
+};

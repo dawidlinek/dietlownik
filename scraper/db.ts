@@ -1,42 +1,29 @@
 import "dotenv/config";
-import pg from "pg";
+import type pg from "pg";
 
-const { Pool } = pg;
+import { getPool } from "@/lib/db";
 
-// Lazy: do NOT throw at import time. Modules that only import types from
-// here (or that import this transitively but never query) — including the
-// MCP route test harness in CI — must be safe to load without a DB URL.
-// The error fires on the first query attempt instead.
-let _pool: pg.Pool | undefined;
+// Scraper-side surface around the shared `lib/db.ts` Pool. The lib version
+// owns the lazy globalThis-cached singleton (HMR-safe in dev). Existing
+// scraper call sites (`pool.end()`, `q(sql, params)`) keep working
+// unchanged.
 
-function getPool(): pg.Pool {
-  if (_pool) {
-    return _pool;
-  }
-  if (!process.env.DATABASE_URL) {
-    throw new Error("DATABASE_URL is not set");
-  }
-  _pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    max: Number(process.env.PG_POOL_MAX ?? 20),
-  });
-  return _pool;
-}
+export { getPool };
 
-/**
- * Proxy that forwards every method/property access to the lazily-constructed
- * pg.Pool. Existing call sites (`pool.end()`, `pool.connect()`, etc.) keep
- * working without changes.
- */
+/** Proxy preserving the `pool` symbol used by scraper shutdown hooks. */
+// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- empty target is widened by Proxy traps; outer cast names the real surface
 export const pool = new Proxy({} as pg.Pool, {
   get(_target, prop) {
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- pg.Pool's typed surface has no index signature; Proxy trap requires dynamic lookup
     const real = getPool() as unknown as Record<string | symbol, unknown>;
     const value = real[prop];
+    // oxlint-disable-next-line typescript/no-unsafe-return -- value is `unknown` in the index signature; we forward it as-is to the caller
     return typeof value === "function" ? value.bind(real) : value;
   },
 });
 
-export const q = async <R extends pg.QueryResultRow = pg.QueryResultRow>(
+// oxlint-disable-next-line typescript/promise-function-async -- thin forwarder; adding async would force return-await dance
+export const q = <R extends pg.QueryResultRow = pg.QueryResultRow>(
   sql: string,
   params?: unknown[]
 ) => getPool().query<R>(sql, params);

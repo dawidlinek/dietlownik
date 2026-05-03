@@ -5,13 +5,13 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   resolve: {
     alias: {
-      "@": path.resolve(__dirname),
+      "@": path.resolve(import.meta.dirname),
     },
   },
   test: {
-    include: ["{scraper,mcp}/__tests__/**/*.test.ts"],
     // No live API or DB calls — keep them out by default.
-    globals: false,
     environment: "node",
+    globals: false,
+    include: ["{scraper,mcp}/__tests__/**/*.test.ts"],
   },
 });

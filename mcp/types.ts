@@ -1,11 +1,13 @@
 // oxlint-disable-next-line typescript/no-deprecated -- Server is the low-level API; we own dispatch
 import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type { z } from "zod";
 
+// `DietlyClient` is owned by ./client; we only import the type here so
+// `ToolContext` can reference it. Consumers must import DietlyClient
+// from `@/mcp/client` directly — single canonical location.
 import type { DietlyClient } from "./client";
-
-export type { DietlyClient };
 
 /**
  * Hints clients can show to users about a tool's behavior. All optional —
@@ -33,12 +35,8 @@ export interface ToolAnnotations {
  */
 export interface ToolContext {
   client: DietlyClient;
-  extra?: import("@modelcontextprotocol/sdk/shared/protocol.js").RequestHandlerExtra<
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- mirrors the SDK's own generic defaults
-    any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- mirrors the SDK's own generic defaults
-    any
-  >;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- mirrors the SDK's own generic defaults
+  extra?: RequestHandlerExtra<any, any>;
   // oxlint-disable-next-line typescript/no-deprecated -- intentional low-level API
   server?: Server;
 }

@@ -22,7 +22,8 @@ export interface TopSearchResponse {
 
 export interface ActivePromotionInfo {
   promoText: string | null;
-  promoDeadline: string | null; // YYYY-MM-DD
+  /** YYYY-MM-DD */
+  promoDeadline: string | null;
   code: string | null;
   discountPercents: number | null;
   separate?: boolean | null;
@@ -35,8 +36,10 @@ export interface CompanySearchItem {
   fullName: string;
   imageUrl?: string | null;
   badgeUrl?: string | null;
-  rate?: number | null; // 0..5
-  positiveMealsReviewPercent?: number | null; // 0..100
+  /** 0..5 */
+  rate?: number | null;
+  /** 0..100 */
+  positiveMealsReviewPercent?: number | null;
   awarded?: boolean;
   numberOfRates?: number | null;
   orderPossibleOn?: string | null;
@@ -75,7 +78,8 @@ export interface DietCaloriesItem {
 
 export interface DietOption {
   dietOptionId: number;
-  tierDietOptionId?: string; // present for menu-config diets only
+  /** present for menu-config diets only */
+  tierDietOptionId?: string;
   name: string;
   dietOptionTag: string | null;
   dietCalories: DietCaloriesItem[];
@@ -87,7 +91,8 @@ export interface Tier {
   name: string;
   description?: string | null;
   imageUrl?: string | null;
-  minPrice: string | number; // "67.00 zł" string in practice
+  /** "67.00 zł" string in practice */
+  minPrice: string | number;
   mealsNumber: number;
   defaultOptionChange: boolean;
   tag: string | null;
@@ -97,7 +102,8 @@ export interface Tier {
 export interface Discount {
   discount: number;
   minimumDays: number;
-  discountType: string; // PERCENTAGE | FIXED
+  /** PERCENTAGE | FIXED */
+  discountType: string;
 }
 
 export interface Diet {
@@ -129,7 +135,8 @@ export interface CompanyHeader {
   rateValue: number | null;
   feedbackValue: number | null;
   feedbackNumber: number | null;
-  rate?: number | null; // 0..5 duplicate
+  /** 0..5 duplicate */
+  rate?: number | null;
   awarded?: boolean;
   recentlyAdded?: boolean;
   dietlyDelivery?: boolean;
@@ -278,8 +285,10 @@ export interface DietTag {
 export interface MealDetails {
   name: string;
   imageUrl?: string | null;
-  calories?: string | null; // "300.45 kcal / 1257 kJ"
-  protein?: string | null; // "18.87g"
+  /** "300.45 kcal / 1257 kJ" */
+  calories?: string | null;
+  /** "18.87g" */
+  protein?: string | null;
   carbohydrate?: string | null;
   fat?: string | null;
   saturatedFattyAcids?: string | null;
@@ -287,7 +296,8 @@ export interface MealDetails {
   salt?: string | null;
   dietaryFiber?: string | null;
   thermo?: string | null;
-  allergens?: string | null; // pretty string
+  /** pretty string */
+  allergens?: string | null;
   allergensWithExcluded?: {
     dietaryExclusionId: number;
     companyAllergenName: string;
@@ -309,7 +319,8 @@ export interface MealOption {
 }
 
 export interface MealSlot {
-  name: string; // "Śniadanie" / "Obiad" / etc.
+  /** "Śniadanie" / "Obiad" / etc. */
+  name: string;
   baseDietCaloriesMealId: number;
   options: MealOption[];
 }
@@ -326,12 +337,15 @@ export interface Banner {
   name: string;
   code: string;
   url: string | null;
-  validFrom: string | null; // ISO 8601 with offset
+  /** ISO 8601 with offset */
+  validFrom: string | null;
   validTo: string | null;
   deepLink: string | null;
-  target: string | null; // DASHBOARD | SAVED_MEALS | COMPANIES
+  /** DASHBOARD | SAVED_MEALS | COMPANIES */
+  target: string | null;
   priority: number | null;
-  type: string | null; // CAMPAIGN | STANDALONE
+  /** CAMPAIGN | STANDALONE */
+  type: string | null;
 }
 
 // ── /api/open/content-management/recommended-diets ───────────────────────────

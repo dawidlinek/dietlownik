@@ -5,6 +5,9 @@ import type { PriceRequestBody, PriceResponse, PriceLeaf } from "../types.js";
 const ORDER_DAY_TIERS = [5, 10, 20];
 const CONCURRENCY = 8;
 
+const errMessage = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error);
+
 /**
  * Active per-company promo codes from the campaigns SCD. The mobile API
  * doesn't stack promo-code with order-length discounts — it picks whichever
@@ -16,9 +19,9 @@ const CONCURRENCY = 8;
  * case-insensitive: a campaign that surfaces both `Fit` and `FIT` for the
  * same company collapses to one quote with whichever spelling came first.
  */
-export async function getActivePromoCodes(
+export const getActivePromoCodes = async (
   companyId: string
-): Promise<string[]> {
+): Promise<string[]> => {
   const { rows } = await q<{ code: string }>(
     `SELECT DISTINCT code FROM campaigns
       WHERE is_active = TRUE
@@ -31,7 +34,7 @@ export async function getActivePromoCodes(
   const out: string[] = [];
   for (const r of rows) {
     const code = (r.code ?? "").trim();
-    if (!code) {
+    if (code === "") {
       continue;
     }
     const key = code.toLowerCase();
@@ -42,9 +45,9 @@ export async function getActivePromoCodes(
     out.push(code);
   }
   return out;
-}
+};
 
-async function getLeaves(companyId: string): Promise<PriceLeaf[]> {
+const getLeaves = async (companyId: string): Promise<PriceLeaf[]> => {
   const { rows } = await q<PriceLeaf>(
     `SELECT
        dc.diet_calories_id,
@@ -71,7 +74,7 @@ async function getLeaves(companyId: string): Promise<PriceLeaf[]> {
     [companyId]
   );
   return rows;
-}
+};
 
 // (leaf, days, promoCodes) triples — the unit of work. promoCodes=[] is the
 // order-length-only baseline; non-empty arrays are with-code variants.
@@ -87,22 +90,23 @@ interface PriceJob {
  * failure. With-code failures are isolated: the no-code job is a separate
  * PriceJob, so its outcome is independent.
  */
-export async function fetchAndInsert(
+export const fetchAndInsert = async (
   job: PriceJob,
   companyId: string,
   cityId: number
-): Promise<boolean> {
+): Promise<boolean> => {
   const { leaf, days, deliveryDates, promoCodes } = job;
 
+  const tdoId = leaf.tier_diet_option_id;
+  const includeTdo =
+    leaf.is_menu_configuration && tdoId !== null && tdoId !== "";
   const body: PriceRequestBody = {
     cityId,
     deliveryDates,
     dietCaloriesId: leaf.diet_calories_id,
     promoCodes,
     testOrder: false,
-    ...(leaf.is_menu_configuration && leaf.tier_diet_option_id
-      ? { tierDietOptionId: leaf.tier_diet_option_id }
-      : {}),
+    ...(includeTdo && tdoId !== null ? { tierDietOptionId: tdoId } : {}),
   };
 
   let result: PriceResponse;
@@ -113,15 +117,16 @@ export async function fetchAndInsert(
       { companyId }
     );
   } catch (error) {
-    const codeTag = promoCodes.length ? ` code=${promoCodes.join(",")}` : "";
+    const codeTag =
+      promoCodes.length > 0 ? ` code=${promoCodes.join(",")}` : "";
     console.warn(
-      `[prices] skip cal=${leaf.diet_calories_id} days=${days}${codeTag}: ${(error as Error).message}`
+      `[prices] skip cal=${leaf.diet_calories_id} days=${days}${codeTag}: ${errMessage(error)}`
     );
     return false;
   }
 
-  const cart = result.cart ?? {};
-  const item = result.items?.[0] ?? {};
+  const { cart } = result;
+  const [item] = result.items;
 
   await q(
     `INSERT INTO prices
@@ -138,8 +143,8 @@ export async function fetchAndInsert(
       leaf.tier_diet_option_id ?? null,
       days,
       promoCodes,
-      item.perDayDietCost ?? null,
-      item.perDayDietWithDiscountsCost ?? null,
+      item?.perDayDietCost ?? null,
+      item?.perDayDietWithDiscountsCost ?? null,
       cart.totalCostToPay ?? null,
       cart.totalCostWithoutDiscounts ?? null,
       cart.totalDeliveryCost ?? null,
@@ -150,35 +155,38 @@ export async function fetchAndInsert(
   );
 
   return true;
-}
+};
 
-async function runConcurrent(
+const runConcurrent = async (
   jobs: PriceJob[],
   companyId: string,
   cityId: number,
   concurrency: number = CONCURRENCY
-): Promise<number> {
+): Promise<number> => {
   let inserted = 0;
   const queue = [...jobs];
 
   await Promise.all(
     Array.from({ length: concurrency }, async () => {
       while (queue.length > 0) {
-        const job = queue.shift()!;
+        const job = queue.shift();
+        if (job === undefined) {
+          break;
+        }
         if (await fetchAndInsert(job, companyId, cityId)) {
-          inserted++;
+          inserted += 1;
         }
       }
     })
   );
 
   return inserted;
-}
+};
 
-export async function scrapePrices(
+export const scrapePrices = async (
   companyId: string,
   cityId: number
-): Promise<void> {
+): Promise<void> => {
   console.log(`[prices] ${companyId} / city=${cityId}`);
   const leaves = await getLeaves(companyId);
 
@@ -227,7 +235,7 @@ export async function scrapePrices(
   console.log(
     `[prices] ✓ ${companyId}: ${inserted}/${jobs.length} rows inserted (${elapsed}s)`
   );
-}
+};
 
 // Exported for the backfill script.
 export { runConcurrent, getLeaves, ORDER_DAY_TIERS };

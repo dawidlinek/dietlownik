@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import * as React from "react";
 
 import { cn } from "@/lib/utils";
@@ -21,22 +21,76 @@ interface Props {
 
 const URL_DEBOUNCE_MS = 200;
 
-function clamp(n: number, lo: number, hi: number): number {
+const clamp = (n: number, lo: number, hi: number): number => {
   if (Number.isNaN(n)) {
     return lo;
   }
   return Math.max(lo, Math.min(hi, n));
-}
+};
 
-export function KcalRangeFilter({
-  dataMin,
-  dataMax,
-  presets,
-  activeMin,
-  activeMax,
-  dayOptions,
+const Pill = ({
+  active,
+  children,
+  onClick,
+  title,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+  title?: string;
+}) => (
+  <button
+    aria-pressed={active}
+    className={cn(
+      "rounded-full px-3 py-1 text-[13px] tnum transition-colors",
+      active
+        ? "bg-[var(--color-amber-tint)] text-[var(--color-ink)]"
+        : "bg-transparent text-[var(--color-ink-2)] hover:bg-[var(--color-oat)]"
+    )}
+    onClick={onClick}
+    title={title}
+    type="button"
+  >
+    {children}
+  </button>
+);
+
+const NumberCell = ({
+  ariaLabel,
+  onChange,
+  value,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  ariaLabel: string;
+}) => (
+  <input
+    aria-label={ariaLabel}
+    className={cn(
+      "w-[68px] px-2 py-1 text-[14px] tnum text-right",
+      "bg-[var(--color-oat)] text-[var(--color-ink)]",
+      "border border-transparent rounded-md",
+      "focus:outline-none focus:border-[var(--color-amber)] focus:bg-white"
+    )}
+    inputMode="numeric"
+    onChange={(e) => {
+      onChange(e.target.value);
+    }}
+    pattern="[0-9]*"
+    type="number"
+    value={value}
+  />
+);
+
+export const KcalRangeFilter = ({
   activeDays,
-}: Props) {
+  activeMax,
+  activeMin,
+  dataMax,
+  dataMin,
+  dayOptions,
+  presets,
+}: Props) => {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -71,7 +125,7 @@ export function KcalRangeFilter({
   const debounceRef = React.useRef<number | null>(null);
   const commit = React.useCallback(
     (rawMin: string, rawMax: string) => {
-      if (debounceRef.current != null) {
+      if (debounceRef.current !== null) {
         window.clearTimeout(debounceRef.current);
       }
       debounceRef.current = window.setTimeout(() => {
@@ -110,33 +164,33 @@ export function KcalRangeFilter({
             Kcal
           </span>
           <NumberCell
-            value={minStr}
+            ariaLabel="Minimalna kaloryczność"
             onChange={(v) => {
               setMinStr(v);
               commit(v, maxStr);
             }}
-            ariaLabel="Minimalna kaloryczność"
+            value={minStr}
           />
           <span aria-hidden className="text-[var(--color-ink-3)]">
             –
           </span>
           <NumberCell
-            value={maxStr}
+            ariaLabel="Maksymalna kaloryczność"
             onChange={(v) => {
               setMaxStr(v);
               commit(minStr, v);
             }}
-            ariaLabel="Maksymalna kaloryczność"
+            value={maxStr}
           />
           {showRangeReset && (
             <button
-              type="button"
+              className="text-[12px] text-[var(--color-ink-3)] hover:text-[var(--color-ink)] underline-offset-2 hover:underline ml-1"
               onClick={() => {
                 setMinStr(String(dataMin));
                 setMaxStr(String(dataMax));
                 setUrl({ kcal_max: dataMax, kcal_min: dataMin });
               }}
-              className="text-[12px] text-[var(--color-ink-3)] hover:text-[var(--color-ink)] underline-offset-2 hover:underline ml-1"
+              type="button"
             >
               cały zakres
             </button>
@@ -149,8 +203,8 @@ export function KcalRangeFilter({
             const isActive = activeMin === k && activeMax === k;
             return (
               <Pill
-                key={k}
                 active={isActive}
+                key={k}
                 onClick={() => {
                   onPreset(k);
                 }}
@@ -169,8 +223,8 @@ export function KcalRangeFilter({
           </span>
           {dayOptions.map((d) => (
             <Pill
-              key={d}
               active={d === activeDays}
+              key={d}
               onClick={() => {
                 setUrl({ days: d });
               }}
@@ -187,62 +241,4 @@ export function KcalRangeFilter({
       </div>
     </div>
   );
-}
-
-function Pill({
-  active,
-  onClick,
-  children,
-  title,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-  title?: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={title}
-      aria-pressed={active}
-      className={cn(
-        "rounded-full px-3 py-1 text-[13px] tnum transition-colors",
-        active
-          ? "bg-[var(--color-amber-tint)] text-[var(--color-ink)]"
-          : "bg-transparent text-[var(--color-ink-2)] hover:bg-[var(--color-oat)]"
-      )}
-    >
-      {children}
-    </button>
-  );
-}
-
-function NumberCell({
-  value,
-  onChange,
-  ariaLabel,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  ariaLabel: string;
-}) {
-  return (
-    <input
-      type="number"
-      inputMode="numeric"
-      pattern="[0-9]*"
-      value={value}
-      onChange={(e) => {
-        onChange(e.target.value);
-      }}
-      aria-label={ariaLabel}
-      className={cn(
-        "w-[68px] px-2 py-1 text-[14px] tnum text-right",
-        "bg-[var(--color-oat)] text-[var(--color-ink)]",
-        "border border-transparent rounded-md",
-        "focus:outline-none focus:border-[var(--color-amber)] focus:bg-white"
-      )}
-    />
-  );
-}
+};

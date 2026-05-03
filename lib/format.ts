@@ -27,7 +27,9 @@ const plDateShort = new Intl.DateTimeFormat("pl-PL", {
   month: "short",
 });
 
-export function formatPLN(value: number | string | null | undefined): string {
+export const formatPLN = (
+  value: number | string | null | undefined
+): string => {
   if (value === null || value === undefined) {
     return "—";
   }
@@ -36,11 +38,11 @@ export function formatPLN(value: number | string | null | undefined): string {
     return "—";
   }
   return plnFormatter.format(n);
-}
+};
 
-export function formatPriceNumber(
+export const formatPriceNumber = (
   value: number | string | null | undefined
-): string {
+): string => {
   if (value === null || value === undefined) {
     return "—";
   }
@@ -49,9 +51,11 @@ export function formatPriceNumber(
     return "—";
   }
   return plnNumberFormatter.format(n);
-}
+};
 
-export function formatInt(value: number | string | null | undefined): string {
+export const formatInt = (
+  value: number | string | null | undefined
+): string => {
   if (value === null || value === undefined) {
     return "—";
   }
@@ -60,10 +64,10 @@ export function formatInt(value: number | string | null | undefined): string {
     return "—";
   }
   return intFormatter.format(n);
-}
+};
 
-export function formatDate(value: string | Date | null | undefined): string {
-  if (!value) {
+export const formatDate = (value: string | Date | null | undefined): string => {
+  if (value === null || value === undefined || value === "") {
     return "—";
   }
   const d = typeof value === "string" ? new Date(value) : value;
@@ -71,12 +75,12 @@ export function formatDate(value: string | Date | null | undefined): string {
     return "—";
   }
   return plDate.format(d);
-}
+};
 
-export function formatDateShort(
+export const formatDateShort = (
   value: string | Date | null | undefined
-): string {
-  if (!value) {
+): string => {
+  if (value === null || value === undefined || value === "") {
     return "—";
   }
   const d = typeof value === "string" ? new Date(value) : value;
@@ -84,16 +88,16 @@ export function formatDateShort(
     return "—";
   }
   return plDateShort.format(d);
-}
+};
 
 /**
  * Returns the abs delta as Polish-formatted decimal, plus a kind tag.
  * kind: "down" => cheaper, "up" => pricier, "flat" => same / missing.
  */
-export function formatDelta(
+export const formatDelta = (
   current: number | string | null | undefined,
   previous: number | string | null | undefined
-): { kind: "down" | "up" | "flat"; text: string } {
+): { kind: "down" | "up" | "flat"; text: string } => {
   if (
     current === null ||
     current === undefined ||
@@ -115,4 +119,4 @@ export function formatDelta(
   const abs = Math.abs(delta);
   const text = plnNumberFormatter.format(abs);
   return { kind: delta < 0 ? "down" : "up", text };
-}
+};

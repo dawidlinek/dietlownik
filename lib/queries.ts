@@ -58,11 +58,15 @@ export interface CateringTile {
 
 export interface CateringPage {
   tiles: CateringTile[];
-  total: number; // total number of companies that have at least one leaf in range
-  page: number; // 1-indexed
+  /** total number of companies that have at least one leaf in range */
+  total: number;
+  /** 1-indexed */
+  page: number;
   pageSize: number;
-  rangeMin: number | null; // cheapest per-day price across ALL pages, for the header summary
-  rangeMax: number | null; // costliest per-day price across ALL pages
+  /** cheapest per-day price across ALL pages, for the header summary */
+  rangeMin: number | null;
+  /** costliest per-day price across ALL pages */
+  rangeMax: number | null;
 }
 
 export interface CampaignRow {
@@ -79,7 +83,8 @@ export interface CampaignRow {
 }
 
 export interface PriceHistoryPoint {
-  bucket: string; // ISO date
+  /** ISO date */
+  bucket: string;
   price: number;
   promo_codes: string[] | null;
 }
@@ -95,20 +100,22 @@ export interface VariantMealRow {
   carbs_g: number | null;
   image_url: string | null;
   allergens: string[] | null;
-  last_seen_date: string; // YYYY-MM-DD
+  /** YYYY-MM-DD */
+  last_seen_date: string;
   occurrences: number;
 }
 
 // ── 1. Cities ───────────────────────────────────────────────────────────────
 
-export async function getCities(): Promise<CityRow[]> {
-  return query<CityRow>(
+export const getCities = async (): Promise<CityRow[]> => {
+  const rows = await query<CityRow>(
     `SELECT city_id::int AS city_id, name
      FROM cities
      WHERE EXISTS (SELECT 1 FROM company_cities cc WHERE cc.city_id = cities.city_id)
      ORDER BY name ASC`
   );
-}
+  return rows;
+};
 
 // ── 2. Kcal range bounds for a city ─────────────────────────────────────────
 
@@ -120,9 +127,10 @@ export interface KcalBounds {
 }
 
 const PRESET_CANDIDATES = [1200, 1500, 1800, 2000, 2500];
-const KCAL_HARD_CAP = 4000; // Filter junk like 6000/10000 outliers from filter UI.
+// Filter junk like 6000/10000 outliers from filter UI.
+const KCAL_HARD_CAP = 4000;
 
-export async function getKcalBounds(cityId: number): Promise<KcalBounds> {
+export const getKcalBounds = async (cityId: number): Promise<KcalBounds> => {
   const [bounds] = await query<{ min: number | null; max: number | null }>(
     `SELECT
         MIN(dc.calories)::int AS min,
@@ -154,11 +162,11 @@ export async function getKcalBounds(cityId: number): Promise<KcalBounds> {
     min: bounds?.min ?? 1000,
     presets: presets.length ? presets : PRESET_CANDIDATES,
   };
-}
+};
 
 // ── 3. Day options for a city ───────────────────────────────────────────────
 
-export async function getDayOptions(cityId: number): Promise<number[]> {
+export const getDayOptions = async (cityId: number): Promise<number[]> => {
   const rows = await query<DaysRow>(
     `SELECT DISTINCT order_days
      FROM prices
@@ -167,7 +175,7 @@ export async function getDayOptions(cityId: number): Promise<number[]> {
     [cityId]
   );
   return rows.map((r) => r.order_days);
-}
+};
 
 // ── 4. The catering page (flat tiles, paginated) ────────────────────────────
 //
@@ -180,14 +188,15 @@ export async function getDayOptions(cityId: number): Promise<number[]> {
 const PAGE_SIZE = 25;
 const MAX_PAGE_SIZE = 200;
 
-export async function getCateringPage(args: {
+export const getCateringPage = async (args: {
   cityId: number;
   kcalMin: number;
   kcalMax: number;
   days: number;
-  page: number; // 1-indexed
+  /** 1-indexed */
+  page: number;
   pageSize?: number;
-}): Promise<CateringPage> {
+}): Promise<CateringPage> => {
   const { cityId, kcalMin, kcalMax, days } = args;
   const page = Math.max(1, args.page);
   const pageSize = Math.min(
@@ -206,8 +215,10 @@ export async function getCateringPage(args: {
     awarded: boolean | null;
     feedback_value: string | null;
     feedback_number: number | null;
-    cheapest: string; // numeric cast — comparable for ordering
-    leaves: string; // jsonb agg
+    /** numeric cast — comparable for ordering */
+    cheapest: string;
+    /** jsonb agg */
+    leaves: string;
     total_companies: number;
     overall_min: string | null;
     overall_max: string | null;
@@ -380,6 +391,7 @@ export async function getCateringPage(args: {
   );
 
   const tiles: CateringTile[] = rows.map((r) => {
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- JSON.parse returns any; row schema enforced by SQL projection
     const leaves = JSON.parse(r.leaves) as LeafRow[];
     return {
       awarded: r.awarded,
@@ -399,16 +411,22 @@ export async function getCateringPage(args: {
   return {
     page,
     pageSize,
-    rangeMax: overallMax ? Number.parseFloat(overallMax) : null,
-    rangeMin: overallMin ? Number.parseFloat(overallMin) : null,
+    rangeMax:
+      overallMax === null || overallMax === ""
+        ? null
+        : Number.parseFloat(overallMax),
+    rangeMin:
+      overallMin === null || overallMin === ""
+        ? null
+        : Number.parseFloat(overallMin),
     tiles,
     total,
   };
-}
+};
 
 // ── 5. Active campaigns ─────────────────────────────────────────────────────
 
-export async function getActiveCampaigns(): Promise<CampaignRow[]> {
+export const getActiveCampaigns = async (): Promise<CampaignRow[]> => {
   // active_promotions (v4) supersedes active_campaigns (v2). Try v4 first,
   // fall back to v2, fall back to a direct campaigns scan.
   try {
@@ -446,24 +464,24 @@ export async function getActiveCampaigns(): Promise<CampaignRow[]> {
       );
     }
   }
-}
+};
 
 // ── 6. Price history for one (company, diet_calories, city, days) combo ────
 
 // ── 7. Variant meals — what's been on the menu in the last 14 days ─────────
 
-export async function getVariantMeals(args: {
+export const getVariantMeals = async (args: {
   companyId: string;
   dietCaloriesId: number;
   tierId: number | null;
-}): Promise<VariantMealRow[]> {
+}): Promise<VariantMealRow[]> => {
   const { companyId, dietCaloriesId, tierId } = args;
   // The menu scraper writes a single canonical menu per (tier_id, diet_option_id),
   // typically at the LOWEST kcal in that group. Sibling leaves (same option,
   // different kcal) share the same dish lineup with only portion sizes differing,
   // so meals_by_dc_id is sparse. Look up the (tier_id, diet_option_id) of the
   // requested leaf and pull menus from any sibling under that same option.
-  return query<VariantMealRow>(
+  const rows = await query<VariantMealRow>(
     `
     WITH target AS (
       SELECT diet_id, tier_id, diet_option_id
@@ -506,16 +524,17 @@ export async function getVariantMeals(args: {
     `,
     [companyId, dietCaloriesId, tierId]
   );
-}
+  return rows;
+};
 
-export async function getPriceHistory(args: {
+export const getPriceHistory = async (args: {
   companyId: string;
   dietCaloriesId: number;
   cityId: number;
   days: number;
-}): Promise<PriceHistoryPoint[]> {
+}): Promise<PriceHistoryPoint[]> => {
   const { companyId, dietCaloriesId, cityId, days } = args;
-  return query<PriceHistoryPoint>(
+  const rows = await query<PriceHistoryPoint>(
     `
     SELECT
       to_char(day, 'YYYY-MM-DD') AS bucket,
@@ -537,4 +556,5 @@ export async function getPriceHistory(args: {
     `,
     [companyId, dietCaloriesId, cityId, days]
   );
-}
+  return rows;
+};

@@ -30,10 +30,11 @@ let ctxPromise: Promise<{
   req: APIRequestContext;
 }> | null = null;
 
-async function getCtx(): Promise<{
+// oxlint-disable-next-line typescript/promise-function-async -- caches a Promise; making it async would create an extra await wrapper per call
+const getCtx = (): Promise<{
   ctx: BrowserContext;
   req: APIRequestContext;
-}> {
+}> => {
   if (ctxPromise) {
     return ctxPromise;
   }
@@ -45,39 +46,63 @@ async function getCtx(): Promise<{
 
     // Best-effort cleanup. SIGINT/SIGTERM await close so chrome dies cleanly;
     // 'exit' is sync-only — chrome will be reaped with the parent regardless.
-    const close = async () => ctx.close().catch(() => {});
-    process.on("exit", () => void close());
-    process.on("SIGINT", () => void close().then(() => process.exit(130)));
-    process.on("SIGTERM", () => void close().then(() => process.exit(143)));
+    const close = async (): Promise<void> => {
+      try {
+        await ctx.close();
+      } catch {
+        // best-effort cleanup
+      }
+    };
+    process.on("exit", () => {
+      void close();
+    });
+    process.on("SIGINT", () => {
+      void (async () => {
+        await close();
+        process.exit(130);
+      })();
+    });
+    process.on("SIGTERM", () => {
+      void (async () => {
+        await close();
+        process.exit(143);
+      })();
+    });
 
     return { ctx, req: ctx.request };
   })();
   return ctxPromise;
-}
+};
 
 // Serialize page-based challenge solves so we don't open N tabs at once
 // (which would itself look bot-like to CF).
 let challengeSolveLock: Promise<void> = Promise.resolve();
 
-async function solveChallengeInPage(
+const solveChallengeInPage = async (
   ctx: BrowserContext,
   url: string
-): Promise<void> {
+): Promise<void> => {
   const prev = challengeSolveLock;
   let release!: () => void;
-  challengeSolveLock = new Promise<void>((r) => {
-    release = r;
+  // oxlint-disable-next-line promise/avoid-new -- low-level synchronization waiter
+  challengeSolveLock = new Promise<void>((resolve) => {
+    release = resolve;
   });
   await prev;
   try {
     process.stderr.write(`[cf-fetch] CF challenge — solving in page: ${url}\n`);
     const page = await ctx.newPage();
     try {
-      await page
-        .goto(url, { timeout: 30_000, waitUntil: "domcontentloaded" })
-        .catch(() => {});
-      await page
-        .waitForFunction(
+      try {
+        await page.goto(url, {
+          timeout: 30_000,
+          waitUntil: "domcontentloaded",
+        });
+      } catch {
+        // best-effort navigation
+      }
+      try {
+        await page.waitForFunction(
           () => {
             const t = `${document.title || ""} ${(
               document.body?.textContent || ""
@@ -87,26 +112,34 @@ async function solveChallengeInPage(
             );
           },
           { polling: 500, timeout: 30_000 }
-        )
-        .catch(() => {});
+        );
+      } catch {
+        // best-effort wait
+      }
     } finally {
-      await page.close().catch(() => {});
+      try {
+        await page.close();
+      } catch {
+        // best-effort cleanup
+      }
     }
   } finally {
     release();
   }
-}
+};
 
-async function rawFetch(
+const rawFetch = async (
   req: APIRequestContext,
   url: string,
   init: RequestInit,
   timeoutMs: number
-): Promise<{ status: number; headers: Headers; body: string }> {
+): Promise<{ status: number; headers: Headers; body: string }> => {
   const method = (init.method ?? "GET").toUpperCase();
   const res = await req.fetch(url, {
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- RequestInit.body is BodyInit; patchright wants string|undefined and we only ever set string bodies
     data: init.body as string | undefined,
     failOnStatusCode: false,
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- RequestInit.headers is HeadersInit; we only ever pass plain string-string maps in this codepath
     headers: init.headers as Record<string, string> | undefined,
     maxRedirects: 5,
     method,
@@ -114,18 +147,18 @@ async function rawFetch(
   });
   const body = await res.text();
   return { body, headers: new Headers(res.headers()), status: res.status() };
-}
+};
 
 /**
  * `fetch`-compatible wrapper that goes through patchright + Chrome. On a CF
  * challenge response, opens the URL in a real Page so chrome's JS engine
  * solves it (sets cf_clearance in the shared cookie jar), then retries.
  */
-export async function cfFetch(
+export const cfFetch = async (
   url: string,
   init: RequestInit = {},
   timeoutMs = 25_000
-): Promise<Response> {
+): Promise<Response> => {
   const { ctx, req } = await getCtx();
 
   let result = await rawFetch(req, url, init, timeoutMs);
@@ -138,4 +171,4 @@ export async function cfFetch(
     headers: result.headers,
     status: result.status,
   });
-}
+};

@@ -2,7 +2,7 @@ import { get } from "../api.js";
 import { q } from "../db.js";
 import type { DietTag } from "../types.js";
 
-export async function scrapeDietTags(): Promise<void> {
+export const scrapeDietTags = async (): Promise<void> => {
   console.log("[diet_tags] fetching...");
   const raw = await get<Record<string, DietTag>>("/api/open/diet-tag-info/all");
   const tags = Object.values(raw);
@@ -19,4 +19,4 @@ export async function scrapeDietTags(): Promise<void> {
   }
 
   console.log(`[diet_tags] ✓ ${tags.length} tags stored`);
-}
+};

@@ -10,12 +10,56 @@ import type {
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-async function upsertCompany(
+const errMessage = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error);
+
+interface CompanyRow {
+  name: string;
+  logoUrl: string | null;
+  rateValue: number | null;
+  feedbackValue: number | null;
+  feedbackNumber: number | null;
+  awarded: boolean;
+  priceCategory: string | null;
+  deliveryOnSaturday: boolean | null;
+  deliveryOnSunday: boolean | null;
+  menuEnabled: boolean | null;
+  menuDaysAhead: number | null;
+  ordersEnabled: boolean | null;
+  deliveryEnabled: boolean | null;
+}
+
+const projectCompanyRow = (
   companyId: string,
   constant: ConstantResponse,
   cityData: CityResponse
-): Promise<void> {
-  const { companyHeader: h, companyParams: p, menuSettings: m } = constant;
+): CompanyRow => {
+  const h = constant.companyHeader;
+  const p = constant.companyParams;
+  const m = constant.menuSettings;
+  return {
+    awarded: h.awarded ?? false,
+    deliveryEnabled: cityData.companySettings.deliveryEnabled ?? null,
+    deliveryOnSaturday: p.deliveryOnSaturday ?? null,
+    deliveryOnSunday: p.deliveryOnSunday ?? null,
+    feedbackNumber: h.feedbackNumber ?? null,
+    feedbackValue: h.feedbackValue ?? null,
+    logoUrl: h.logoUrl ?? null,
+    menuDaysAhead: m.menuDaysAhead ?? null,
+    menuEnabled: m.menuEnabled ?? null,
+    name: h.name ?? companyId,
+    ordersEnabled: cityData.companySettings.ordersEnabled ?? null,
+    priceCategory: cityData.companyPriceCategory ?? null,
+    rateValue: h.rateValue ?? null,
+  };
+};
+
+const upsertCompany = async (
+  companyId: string,
+  constant: ConstantResponse,
+  cityData: CityResponse
+): Promise<void> => {
+  const r = projectCompanyRow(companyId, constant, cityData);
   await q(
     `INSERT INTO companies
        (company_id, name, logo_url, avg_score, feedback_value, feedback_number,
@@ -39,19 +83,19 @@ async function upsertCompany(
        updated_at         = NOW()`,
     [
       companyId,
-      h?.name ?? companyId,
-      h?.logoUrl ?? null,
-      h?.rateValue ?? null,
-      h?.feedbackValue ?? null,
-      h?.feedbackNumber ?? null,
-      h?.awarded ?? false,
-      cityData?.companyPriceCategory ?? null,
-      p?.deliveryOnSaturday ?? null,
-      p?.deliveryOnSunday ?? null,
-      m?.menuEnabled ?? null,
-      m?.menuDaysAhead ?? null,
-      cityData?.companySettings?.ordersEnabled ?? null,
-      cityData?.companySettings?.deliveryEnabled ?? null,
+      r.name,
+      r.logoUrl,
+      r.rateValue,
+      r.feedbackValue,
+      r.feedbackNumber,
+      r.awarded,
+      r.priceCategory,
+      r.deliveryOnSaturday,
+      r.deliveryOnSunday,
+      r.menuEnabled,
+      r.menuDaysAhead,
+      r.ordersEnabled,
+      r.deliveryEnabled,
     ]
   );
 
@@ -60,21 +104,21 @@ async function upsertCompany(
      VALUES ($1,$2,$3,$4,$5,$6)`,
     [
       companyId,
-      h?.rateValue ?? null,
-      h?.feedbackValue ?? null,
-      h?.feedbackNumber ?? null,
-      h?.awarded ?? false,
-      cityData?.companyPriceCategory ?? null,
+      r.rateValue,
+      r.feedbackValue,
+      r.feedbackNumber,
+      r.awarded,
+      r.priceCategory,
     ]
   );
-}
+};
 
-async function upsertCompanyCity(
+const upsertCompanyCity = async (
   companyId: string,
   cityId: number,
   cityData: CityResponse
-): Promise<void> {
-  const lp = cityData?.lowestPrice ?? {};
+): Promise<void> => {
+  const lp = cityData.lowestPrice;
   await q(
     `INSERT INTO company_cities (company_id, city_id, delivery_fee, lowest_price_standard, lowest_price_menu_config)
      VALUES ($1,$2,$3,$4,$5)
@@ -86,14 +130,14 @@ async function upsertCompanyCity(
     [
       companyId,
       cityId,
-      cityData?.citySearchResult?.deliveryFee ?? null,
+      cityData.citySearchResult.deliveryFee ?? null,
       parsePrice(lp.standard),
       parsePrice(lp.menuConfiguration),
     ]
   );
-}
+};
 
-async function upsertDiet(companyId: string, diet: Diet): Promise<void> {
+const upsertDiet = async (companyId: string, diet: Diet): Promise<void> => {
   await q(
     `INSERT INTO diets
        (diet_id, company_id, name, description, image_url, awarded, avg_score,
@@ -136,13 +180,13 @@ async function upsertDiet(companyId: string, diet: Diet): Promise<void> {
       [diet.dietId, companyId, d.discount, d.minimumDays, d.discountType]
     );
   }
-}
+};
 
-async function upsertTier(
+const upsertTier = async (
   companyId: string,
   dietId: number,
   tier: Tier
-): Promise<void> {
+): Promise<void> => {
   await q(
     `INSERT INTO tiers (tier_id, diet_id, company_id, name, min_price, meals_number, default_option_change, tag, valid_from)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW())
@@ -165,14 +209,52 @@ async function upsertTier(
       tier.tag ?? null,
     ]
   );
-}
+};
 
-async function upsertOption(
+/**
+ * Upsert one (company, diet, kcal_id, tier|null, option|null) row.
+ * Uses the v4 composite unique index. Two-phase update-or-insert because the
+ * index has COALESCE() expressions (NULL-safe), which ON CONFLICT can match
+ * but only with the same expressions — easier to do explicitly in two steps.
+ */
+const upsertDietCalories = async (
+  companyId: string,
+  dietId: number,
+  dietCaloriesId: number,
+  calories: number | null,
+  tierId: number | null,
+  dietOptionId: number | null
+): Promise<void> => {
+  const upd = await q(
+    `UPDATE diet_calories
+        SET calories   = COALESCE($5::numeric, calories),
+            valid_to   = NULL,
+            updated_at = NOW()
+      WHERE company_id = $1
+        AND diet_id    = $2
+        AND diet_calories_id = $3
+        AND COALESCE(tier_id, -1)        = COALESCE($4::int, -1)
+        AND COALESCE(diet_option_id, -1) = COALESCE($6::int, -1)`,
+    [companyId, dietId, dietCaloriesId, tierId, calories, dietOptionId]
+  );
+  if (upd.rowCount !== null && upd.rowCount > 0) {
+    return;
+  }
+  await q(
+    `INSERT INTO diet_calories
+       (diet_calories_id, diet_option_id, tier_id, diet_id, company_id, calories, valid_from)
+     VALUES ($1,$2,$3,$4,$5,$6,NOW())
+     ON CONFLICT DO NOTHING`,
+    [dietCaloriesId, dietOptionId, tierId, dietId, companyId, calories]
+  );
+};
+
+const upsertOption = async (
   companyId: string,
   dietId: number,
   tierId: number,
   opt: DietOption
-): Promise<void> {
+): Promise<void> => {
   await q(
     `INSERT INTO diet_options
        (diet_option_id, tier_id, diet_id, company_id, tier_diet_option_id, name, diet_option_tag, is_default, valid_from)
@@ -205,52 +287,14 @@ async function upsertOption(
       opt.dietOptionId
     );
   }
-}
-
-/**
- * Upsert one (company, diet, kcal_id, tier|null, option|null) row.
- * Uses the v4 composite unique index. Two-phase update-or-insert because the
- * index has COALESCE() expressions (NULL-safe), which ON CONFLICT can match
- * but only with the same expressions — easier to do explicitly in two steps.
- */
-async function upsertDietCalories(
-  companyId: string,
-  dietId: number,
-  dietCaloriesId: number,
-  calories: number | null,
-  tierId: number | null,
-  dietOptionId: number | null
-): Promise<void> {
-  const upd = await q(
-    `UPDATE diet_calories
-        SET calories   = COALESCE($5::numeric, calories),
-            valid_to   = NULL,
-            updated_at = NOW()
-      WHERE company_id = $1
-        AND diet_id    = $2
-        AND diet_calories_id = $3
-        AND COALESCE(tier_id, -1)        = COALESCE($4::int, -1)
-        AND COALESCE(diet_option_id, -1) = COALESCE($6::int, -1)`,
-    [companyId, dietId, dietCaloriesId, tierId, calories, dietOptionId]
-  );
-  if (upd.rowCount && upd.rowCount > 0) {
-    return;
-  }
-  await q(
-    `INSERT INTO diet_calories
-       (diet_calories_id, diet_option_id, tier_id, diet_id, company_id, calories, valid_from)
-     VALUES ($1,$2,$3,$4,$5,$6,NOW())
-     ON CONFLICT DO NOTHING`,
-    [dietCaloriesId, dietOptionId, tierId, dietId, companyId, calories]
-  );
-}
+};
 
 // ── main export ───────────────────────────────────────────────────────────────
 
-export async function scrapeCatalog(
+export const scrapeCatalog = async (
   companyId: string,
   cityId: number
-): Promise<void> {
+): Promise<void> => {
   console.log(`[catalog] ${companyId} / city=${cityId}`);
 
   const [constant, cityData] = await Promise.all([
@@ -316,7 +360,7 @@ export async function scrapeCatalog(
           null,
           null
         );
-        totalCalories++;
+        totalCalories += 1;
       }
     }
   }
@@ -337,10 +381,10 @@ export async function scrapeCatalog(
     const { recordPromosFromConstants } = await import("./promotions.js");
     await recordPromosFromConstants(cityId, [{ companyId, constant }]);
   } catch (error) {
-    console.warn(`[catalog] promo write skipped (${(error as Error).message})`);
+    console.warn(`[catalog] promo write skipped (${errMessage(error)})`);
   }
 
   console.log(
     `[catalog] ✓ ${companyId}: ${activeDietIds.length} diets, ${totalCalories} kcal nodes`
   );
-}
+};

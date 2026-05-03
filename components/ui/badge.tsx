@@ -23,10 +23,8 @@ export interface BadgeProps
     React.HTMLAttributes<HTMLSpanElement>,
     VariantProps<typeof badgeVariants> {}
 
-function Badge({ className, variant, ...props }: BadgeProps) {
-  return (
-    <span className={cn(badgeVariants({ variant }), className)} {...props} />
-  );
-}
+const Badge = ({ className, variant, ...props }: BadgeProps) => (
+  <span className={cn(badgeVariants({ variant }), className)} {...props} />
+);
 
 export { Badge, badgeVariants };
