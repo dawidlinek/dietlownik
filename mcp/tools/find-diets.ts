@@ -77,10 +77,11 @@ const outputSchema = z.object({
 interface FindRow {
   readonly awarded: boolean | null;
   readonly avg_score: string | number | null;
-  readonly calories: number | null;
+  // pg returns numeric/bigint columns as strings; we coerce at the boundary.
+  readonly calories: string | number | null;
   readonly company_id: string;
   readonly company_name: string | null;
-  readonly diet_calories_id: number;
+  readonly diet_calories_id: number | string;
   readonly diet_name: string | null;
   readonly diet_tag: string | null;
   readonly is_menu_configuration: boolean | null;
@@ -272,7 +273,7 @@ export const find_diets = defineTool({
           : undefined;
       const offer_id = encodeOfferId({
         company_id: row.company_id,
-        diet_calories_id: row.diet_calories_id,
+        diet_calories_id: Number(row.diet_calories_id),
         is_menu_configuration: isMenuConfig,
         ...(isMenuConfig && tierOptId !== undefined
           ? { tier_diet_option_id: tierOptId }
@@ -289,7 +290,7 @@ export const find_diets = defineTool({
       return {
         avg_score: row.avg_score_num,
         awarded: row.awarded === true,
-        calories: row.calories,
+        calories: toNumber(row.calories),
         company: { id: row.company_id, name: row.company_name },
         diet: { name: row.diet_name, tag: row.diet_tag },
         is_configurable: isMenuConfig,

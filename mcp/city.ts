@@ -10,7 +10,8 @@ import { q } from "@/scraper/db";
 import { fetchWithRetry, parseResponse } from "./http";
 
 interface CityRow {
-  readonly city_id: number;
+  // pg returns bigint as string; we coerce with Number() at use site.
+  readonly city_id: number | string;
   readonly name: string;
 }
 
@@ -48,7 +49,9 @@ const fromDb = async (input: string): Promise<ResolvedCity | undefined> => {
     [input]
   );
   const [row] = res.rows;
-  return row === undefined ? undefined : { id: row.city_id, name: row.name };
+  return row === undefined
+    ? undefined
+    : { id: Number(row.city_id), name: row.name };
 };
 
 const fromApi = async (input: string): Promise<ResolvedCity | undefined> => {
