@@ -1,3 +1,4 @@
+import { CityResolver } from "@/mcp/city";
 import {
   LOGIN_DEVICE_TOKEN,
   LOGIN_PATH,
@@ -30,6 +31,13 @@ const buildAuthCookie = (session: DietlySession): string =>
  */
 export class DietlyClient {
   private readonly sessions = new Map<string, DietlySession>();
+  /** Per-session city name → city_id resolver (DB + dietly top-search). */
+  public readonly cities = new CityResolver();
+  /** Most-recently-logged-in email; tools may default the email arg from here. */
+  private lastEmail: string | undefined;
+
+  /** Returns the most-recently-logged-in email in this session, if any. */
+  public getDefaultEmail = (): string | undefined => this.lastEmail;
 
   // --- Auth ---
 
@@ -79,6 +87,7 @@ export class DietlyClient {
 
     const sessionCookie = `SESSION=${sessionValue}`;
     this.setSession(email, rememberMe, sessionCookie);
+    this.lastEmail = email;
 
     return { rememberMe, sessionCookie };
   }
@@ -150,6 +159,26 @@ export class DietlyClient {
     });
 
     return parseResponse<T>(response, "GET", path);
+  }
+
+  // oxlint-disable-next-line class-methods-use-this -- public instance method on DietlyClient: callers use `client.anonPost(...)`; converting to static would break the API contract
+  public async anonPost<T>(
+    path: string,
+    body: unknown,
+    companyId?: string
+  ): Promise<T> {
+    const response = await fetchWithRetry(buildUrl(path), {
+      body: JSON.stringify(body),
+      headers: DietlyClient.anonHeaders({
+        "content-type": "application/json",
+        ...(companyId !== undefined && companyId !== ""
+          ? { "company-id": companyId }
+          : {}),
+      }),
+      method: "POST",
+    });
+
+    return parseResponse<T>(response, "POST", path);
   }
 
   // --- Session introspection ---

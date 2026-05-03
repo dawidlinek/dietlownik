@@ -55,15 +55,29 @@ describe("MCP route", () => {
     vi.restoreAllMocks();
   });
 
-  it("initialize → tools/list → tools/call (search_caterings)", async () => {
-    // Stub the postgres client so search_caterings doesn't hit a real DB.
+  it("initialize → tools/list → tools/call (find_diets)", async () => {
+    // Stub Postgres for both find_diets's SQL and CityResolver's city lookup.
     const dbModule = await import("@/scraper/db");
-    vi.spyOn(dbModule, "q").mockResolvedValue({
-      command: "SELECT",
-      fields: [],
-      oid: 0,
-      rowCount: 0,
-      rows: [],
+    // oxlint-disable-next-line typescript/promise-function-async -- vitest mock; sync return of Promise satisfies the spy contract
+    vi.spyOn(dbModule, "q").mockImplementation((sql: string) => {
+      // CityResolver looks up `cities`; return a single matching row so the
+      // resolver doesn't fall through to the live dietly API.
+      if (sql.includes("FROM cities")) {
+        return Promise.resolve({
+          command: "SELECT",
+          fields: [],
+          oid: 0,
+          rowCount: 1,
+          rows: [{ city_id: 986_283, name: "Wrocław" }],
+        });
+      }
+      return Promise.resolve({
+        command: "SELECT",
+        fields: [],
+        oid: 0,
+        rowCount: 0,
+        rows: [],
+      });
     });
 
     // 1. Initialize
@@ -95,20 +109,20 @@ describe("MCP route", () => {
     };
     const names = result.tools.map((t) => t.name).toSorted();
     expect(names).toEqual([
-      "get_meal_options",
-      "get_profile",
+      "find_diets",
+      "get_menu",
       "login",
       "place_order",
-      "search_caterings",
+      "quote_order",
     ]);
 
-    // 4. tools/call search_caterings — exercises full dispatch
+    // 4. tools/call find_diets — exercises full dispatch
     const callRes = await POST(
       mkRpc(
         sessionId,
         jsonRpc(3, "tools/call", {
-          arguments: { city_id: 986_283 },
-          name: "search_caterings",
+          arguments: { city: "Wrocław" },
+          name: "find_diets",
         })
       )
     );
@@ -117,10 +131,19 @@ describe("MCP route", () => {
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- test-only narrowing of the JSON-RPC result envelope to the expected MCP tools/call shape
     const callResult = callJson.result as {
       isError?: boolean;
-      structuredContent?: { caterings: unknown[]; total: number };
+      structuredContent?: {
+        city: { id: number; name: string };
+        offers: unknown[];
+        total: number;
+      };
     };
     expect(callResult.isError).toBeUndefined();
-    expect(callResult.structuredContent).toEqual({ caterings: [], total: 0 });
+    expect(callResult.structuredContent?.city).toEqual({
+      id: 986_283,
+      name: "Wrocław",
+    });
+    expect(callResult.structuredContent?.offers).toEqual([]);
+    expect(callResult.structuredContent?.total).toBe(0);
 
     // 5. Tear down so the session map doesn't leak across tests
     await DELETE(mkRpc(sessionId, {}));

@@ -1,15 +1,15 @@
 import type { AnyToolDefinition } from "@/mcp/types";
 
-import { get_meal_options } from "./get-meal-options";
-import { get_profile } from "./get-profile";
+import { find_diets } from "./find-diets";
+import { get_menu } from "./get-menu";
 import { login } from "./login";
 import { place_order } from "./place-order";
-import { search_caterings } from "./search-caterings";
+import { quote_order } from "./quote-order";
 
 export const ALL_TOOLS = [
-  get_meal_options,
-  get_profile,
+  find_diets,
+  get_menu,
   login,
   place_order,
-  search_caterings,
+  quote_order,
 ] as const satisfies readonly AnyToolDefinition[];

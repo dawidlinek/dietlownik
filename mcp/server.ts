@@ -18,18 +18,18 @@ const TOOLS_BY_NAME: ReadonlyMap<string, AnyToolDefinition> = new Map(
 
 const SERVER_INFO = {
   name: "dietly-mcp-server",
-  version: "0.2.0",
+  version: "0.3.0",
 };
 
 const INSTRUCTIONS =
-  "Auth flow: call `login` once per session, then reuse the same email " +
-  "across `get_profile`, `get_meal_options`, and `place_order`. " +
-  "Get `profileAddressId`, `tier_diet_option_id`, `diet_calories_id`, " +
-  "and `diet_calories_meal_id` values from `search_caterings` + " +
-  "`get_meal_options` results — never invent these IDs. " +
-  "`place_order` is irreversible and incurs a real charge; always " +
-  "show the user the order summary returned by the tool's " +
-  "confirmation step before approving.";
+  "Tools wrap dietly.pl meal-delivery (catering diet) ordering for one user. " +
+  "Typical flow:\n" +
+  "  1. `find_diets(city: 'Wrocław', max_price_per_day: 80)` → list of offers, each with an opaque `offer_id`.\n" +
+  "  2. `quote_order(offer_id, city, dates)` → exact PLN total + breakdown, no order placed.\n" +
+  "  3. `login(email, password)` → caches the session for the rest of this conversation; returns `addresses` with stable `address_index` slots.\n" +
+  "  4. `get_menu(offer_id, city, dates?)` → daily meals with `pick_id` per option (only needed when the offer is `is_configurable: true`).\n" +
+  "  5. `place_order(offer_id, city, dates, picks?, address_index?, test_order?, confirmed)` → IRREVERSIBLE; always show the user the summary from the first call before re-calling with `confirmed: true`.\n" +
+  "Pass `offer_id` and `pick_id` as opaque tokens — never parse, never fabricate. After `login`, the email arg on order tools is optional (defaults to the last login).";
 
 /**
  * Build a fresh MCP `Server` wired to all registered tools. The SDK only
