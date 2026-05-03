@@ -1,3 +1,4 @@
+// oxlint-disable-next-line typescript/no-deprecated -- Server is the low-level API; we own dispatch
 import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type { z } from "zod";
@@ -38,6 +39,7 @@ export interface ToolContext {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- mirrors the SDK's own generic defaults
     any
   >;
+  // oxlint-disable-next-line typescript/no-deprecated -- intentional low-level API
   server?: Server;
 }
 
@@ -74,4 +76,5 @@ export type AnyToolDefinition = ToolDefinition<
 >;
 
 // Re-export Server type for convenience in server.ts consumers.
+// oxlint-disable-next-line typescript/no-deprecated -- intentional low-level API
 export type { Server };

@@ -13,26 +13,26 @@
 // known"). Validity from banners and promoDeadline from API both feed in so we
 // can answer "is X still active?" without touching the API.
 
-import { get, HttpError } from '../api.js';
-import { q } from '../db.js';
+import { get, HttpError } from "../api.js";
+import { q } from "../db.js";
 import type {
   ActivePromotionInfo,
   Banner,
   CompanySearchItem,
   ConstantResponse,
   RecommendedDiet,
-} from '../types.js';
+} from "../types.js";
 
 interface PromoObservation {
   code: string;
-  source: string;                   // constant | awarded-and-top | banner | recommended-diets
+  source: string; // constant | awarded-and-top | banner | recommended-diets
   company_id: string | null;
   city_id: number | null;
   discount_percents: number | null;
   promo_text: string | null;
-  deadline: string | null;          // YYYY-MM-DD
+  deadline: string | null; // YYYY-MM-DD
   separate: boolean | null;
-  valid_from: string | null;        // ISO 8601
+  valid_from: string | null; // ISO 8601
   valid_to: string | null;
   raw: unknown;
 }
@@ -42,38 +42,42 @@ function fromActivePromo(
   company_id: string | null,
   city_id: number | null,
   info: ActivePromotionInfo | null | undefined,
-  raw: unknown,
+  raw: unknown
 ): PromoObservation | null {
-  if (!info?.code) return null;
+  if (!info?.code) {
+    return null;
+  }
   return {
-    code: info.code,
-    source,
-    company_id,
     city_id,
+    code: info.code,
+    company_id,
+    deadline: info.promoDeadline ?? null,
     discount_percents: info.discountPercents ?? null,
     promo_text: info.promoText ?? null,
-    deadline: info.promoDeadline ?? null,
+    raw,
     separate: info.separate ?? null,
+    source,
     valid_from: null,
     valid_to: null,
-    raw,
   };
 }
 
 function fromBanner(banner: Banner, city_id: number): PromoObservation | null {
-  if (!banner?.code) return null;
+  if (!banner?.code) {
+    return null;
+  }
   return {
-    code: banner.code,
-    source: 'banner',
-    company_id: null,
     city_id,
+    code: banner.code,
+    company_id: null,
+    deadline: null,
     discount_percents: null,
     promo_text: banner.name ?? null,
-    deadline: null,
+    raw: banner,
     separate: null,
+    source: "banner",
     valid_from: banner.validFrom ?? null,
     valid_to: banner.validTo ?? null,
-    raw: banner,
   };
 }
 
@@ -86,9 +90,11 @@ async function insertObservation(o: PromoObservation): Promise<void> {
   if (companyId) {
     const exists = await q<{ exists: boolean }>(
       `SELECT TRUE AS exists FROM companies WHERE company_id = $1 LIMIT 1`,
-      [companyId],
+      [companyId]
     );
-    if (exists.rowCount === 0) companyId = null;
+    if (exists.rowCount === 0) {
+      companyId = null;
+    }
   }
   await q(
     `INSERT INTO promo_observations
@@ -96,10 +102,18 @@ async function insertObservation(o: PromoObservation): Promise<void> {
         deadline, separate, valid_from, valid_to, raw)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
     [
-      o.code, o.source, companyId, o.city_id, o.discount_percents,
-      o.promo_text, o.deadline, o.separate, o.valid_from, o.valid_to,
+      o.code,
+      o.source,
+      companyId,
+      o.city_id,
+      o.discount_percents,
+      o.promo_text,
+      o.deadline,
+      o.separate,
+      o.valid_from,
+      o.valid_to,
       JSON.stringify(o.raw ?? null),
-    ],
+    ]
   );
 }
 
@@ -113,9 +127,11 @@ async function upsertCampaign(o: PromoObservation): Promise<void> {
   if (companyId) {
     const exists = await q<{ exists: boolean }>(
       `SELECT TRUE AS exists FROM companies WHERE company_id = $1 LIMIT 1`,
-      [companyId],
+      [companyId]
     );
-    if (exists.rowCount === 0) companyId = null;
+    if (exists.rowCount === 0) {
+      companyId = null;
+    }
   }
   await q(
     `INSERT INTO campaigns
@@ -150,12 +166,17 @@ async function upsertCampaign(o: PromoObservation): Promise<void> {
       isBanner(o.raw) ? o.raw.target : null,
       isBanner(o.raw) ? o.raw.deepLink : null,
       isBanner(o.raw) ? o.raw.url : null,
-    ],
+    ]
   );
 }
 
 function isBanner(raw: unknown): raw is Banner {
-  return !!raw && typeof raw === 'object' && 'code' in (raw as Banner) && 'validTo' in (raw as Banner);
+  return (
+    !!raw &&
+    typeof raw === "object" &&
+    "code" in (raw as Banner) &&
+    "validTo" in (raw as Banner)
+  );
 }
 
 async function persist(observations: PromoObservation[]): Promise<void> {
@@ -167,19 +188,33 @@ async function persist(observations: PromoObservation[]): Promise<void> {
 
 // ── source loaders ────────────────────────────────────────────────────────────
 
-async function fromAwardedAndTop(cityId: number, companies: CompanySearchItem[]): Promise<PromoObservation[]> {
+async function fromAwardedAndTop(
+  cityId: number,
+  companies: CompanySearchItem[]
+): Promise<PromoObservation[]> {
   const out: PromoObservation[] = [];
   for (const c of companies) {
-    const obs = fromActivePromo('awarded-and-top', c.companyId ?? c.name ?? null, cityId, c.activePromotionInfo, {
-      companyId: c.companyId ?? c.name,
-      activePromotionInfo: c.activePromotionInfo,
-    });
-    if (obs) out.push(obs);
+    const obs = fromActivePromo(
+      "awarded-and-top",
+      c.companyId ?? c.name ?? null,
+      cityId,
+      c.activePromotionInfo,
+      {
+        activePromotionInfo: c.activePromotionInfo,
+        companyId: c.companyId ?? c.name,
+      }
+    );
+    if (obs) {
+      out.push(obs);
+    }
   }
   return out;
 }
 
-async function fromConstantHeaders(cityId: number, companies: CompanySearchItem[]): Promise<PromoObservation[]> {
+async function fromConstantHeaders(
+  cityId: number,
+  companies: CompanySearchItem[]
+): Promise<PromoObservation[]> {
   // We don't want to refetch /constant for every company — catalog already
   // ran. Instead, surface promos from the awarded-and-top response as the
   // primary signal. This loader exists so callers can pass already-fetched
@@ -197,51 +232,63 @@ async function fromConstantHeaders(cityId: number, companies: CompanySearchItem[
  */
 export async function recordPromosFromConstants(
   cityId: number,
-  entries: Array<{ companyId: string; constant: ConstantResponse }>,
+  entries: { companyId: string; constant: ConstantResponse }[]
 ): Promise<void> {
   const obs: PromoObservation[] = [];
   for (const { companyId, constant } of entries) {
     const info = constant?.companyHeader?.activePromotionInfo ?? null;
-    const o = fromActivePromo('constant', companyId, cityId, info, info);
-    if (o) obs.push(o);
+    const o = fromActivePromo("constant", companyId, cityId, info, info);
+    if (o) {
+      obs.push(o);
+    }
   }
   await persist(obs);
 }
 
 async function fetchBanners(cityId: number): Promise<PromoObservation[]> {
   try {
-    const banners = await get<Banner[]>(`/api/open/mobile/banners?cId=${cityId}`);
+    const banners = await get<Banner[]>(
+      `/api/open/mobile/banners?cId=${cityId}`
+    );
     return (banners ?? [])
-      .map(b => fromBanner(b, cityId))
+      .map((b) => fromBanner(b, cityId))
       .filter((b): b is PromoObservation => b !== null);
-  } catch (err) {
-    if (err instanceof HttpError) {
-      console.warn(`[promotions] /banners failed: ${err.status}`);
+  } catch (error) {
+    if (error instanceof HttpError) {
+      console.warn(`[promotions] /banners failed: ${error.status}`);
       return [];
     }
-    throw err;
+    throw error;
   }
 }
 
 async function fetchRecommended(cityId: number): Promise<PromoObservation[]> {
   try {
     const recs = await get<RecommendedDiet[]>(
-      `/api/open/content-management/recommended-diets?cId=${cityId}&page=0&pageSize=20`,
+      `/api/open/content-management/recommended-diets?cId=${cityId}&page=0&pageSize=20`
     );
     const out: PromoObservation[] = [];
     for (const r of recs ?? []) {
       const cid = r?.companyData?.companyId ?? null;
-      const o = fromActivePromo('recommended-diets', cid, cityId, r?.activePromotion ?? null, r);
-      if (o) out.push(o);
+      const o = fromActivePromo(
+        "recommended-diets",
+        cid,
+        cityId,
+        r?.activePromotion ?? null,
+        r
+      );
+      if (o) {
+        out.push(o);
+      }
     }
     return out;
-  } catch (err) {
-    if (err instanceof HttpError) {
+  } catch (error) {
+    if (error instanceof HttpError) {
       // Server has been observed returning 500 here intermittently — log+skip.
-      console.warn(`[promotions] /recommended-diets failed: ${err.status}`);
+      console.warn(`[promotions] /recommended-diets failed: ${error.status}`);
       return [];
     }
-    throw err;
+    throw error;
   }
 }
 
@@ -249,10 +296,12 @@ async function fetchRecommended(cityId: number): Promise<PromoObservation[]> {
 
 export async function scrapePromotions(
   cityId: number,
-  companies: CompanySearchItem[],
+  companies: CompanySearchItem[]
 ): Promise<void> {
   const t0 = Date.now();
-  console.log(`[promotions] city=${cityId} from ${companies.length} companies + banners + recommended`);
+  console.log(
+    `[promotions] city=${cityId} from ${companies.length} companies + banners + recommended`
+  );
 
   const [awarded, banners, recommended] = await Promise.all([
     fromAwardedAndTop(cityId, companies),
@@ -274,7 +323,7 @@ export async function scrapePromotions(
             updated_at = NOW()
       WHERE is_active = TRUE
         AND last_seen_at < NOW() - INTERVAL '24 hours'
-        AND COALESCE(deadline, CURRENT_DATE) < CURRENT_DATE`,
+        AND COALESCE(deadline, CURRENT_DATE) < CURRENT_DATE`
   );
 
   const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
@@ -283,5 +332,7 @@ export async function scrapePromotions(
     banners: banners.length,
     recommended: recommended.length,
   };
-  console.log(`[promotions] ✓ persisted ${all.length} observations (awarded=${counts.awardedAndTop}, banners=${counts.banners}, recommended=${counts.recommended}) in ${elapsed}s`);
+  console.log(
+    `[promotions] ✓ persisted ${all.length} observations (awarded=${counts.awardedAndTop}, banners=${counts.banners}, recommended=${counts.recommended}) in ${elapsed}s`
+  );
 }

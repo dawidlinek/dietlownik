@@ -32,13 +32,14 @@ interface SessionBinding {
 const sessions = new Map<string, SessionBinding>();
 
 async function createSessionBinding(): Promise<SessionBinding> {
-  let binding: SessionBinding | undefined;
+  // Holder so the transport's `onsessioninitialized` callback can reach the
+  // binding that we construct *after* the transport (chicken-and-egg: the
+  // callback closure is needed at transport construction time).
+  const holder: { current: SessionBinding | undefined } = {
+    current: undefined,
+  };
 
   const transport = new WebStandardStreamableHTTPServerTransport({
-    sessionIdGenerator: () => crypto.randomUUID(),
-    onsessioninitialized: (sessionId) => {
-      if (binding) sessions.set(sessionId, binding);
-    },
     onsessionclosed: async (sessionId) => {
       const existing = sessions.get(sessionId);
       if (existing) {
@@ -47,35 +48,46 @@ async function createSessionBinding(): Promise<SessionBinding> {
         sessions.delete(sessionId);
       }
     },
+    onsessioninitialized: (sessionId) => {
+      if (holder.current) {
+        sessions.set(sessionId, holder.current);
+      }
+    },
+    sessionIdGenerator: () => crypto.randomUUID(),
   });
 
   const client = new DietlyClient();
   const server = buildServer(client);
   await server.connect(transport);
 
-  binding = { client, server, transport };
-  return binding;
+  holder.current = { client, server, transport };
+  return holder.current;
 }
 
 async function resolveBinding(
   request: Request,
-  parsedBody: unknown,
+  parsedBody: unknown
 ): Promise<SessionBinding | Response> {
   const sessionId = request.headers.get("mcp-session-id");
   if (sessionId) {
     const existing = sessions.get(sessionId);
-    if (existing) return existing;
+    if (existing) {
+      return existing;
+    }
   }
   if (request.method === "POST" && isInitializeRequest(parsedBody)) {
     return createSessionBinding();
   }
   return Response.json(
     {
-      error: { code: -32_000, message: "Bad Request: No valid session ID provided" },
+      error: {
+        code: -32_000,
+        message: "Bad Request: No valid session ID provided",
+      },
       id: null,
       jsonrpc: "2.0",
     },
-    { status: 400 },
+    { status: 400 }
   );
 }
 
@@ -90,10 +102,14 @@ async function handleRequest(request: Request): Promise<Response> {
   }
 
   const bindingOrResponse = await resolveBinding(request, parsedBody);
-  if (bindingOrResponse instanceof Response) return bindingOrResponse;
+  if (bindingOrResponse instanceof Response) {
+    return bindingOrResponse;
+  }
 
   try {
-    return await bindingOrResponse.transport.handleRequest(request, { parsedBody });
+    return await bindingOrResponse.transport.handleRequest(request, {
+      parsedBody,
+    });
   } catch (error) {
     console.error("[mcp] request failed", error);
     return Response.json(
@@ -102,19 +118,19 @@ async function handleRequest(request: Request): Promise<Response> {
         id: null,
         jsonrpc: "2.0",
       },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }
 
-export function GET(request: Request) {
+export async function GET(request: Request) {
   return handleRequest(request);
 }
 
-export function POST(request: Request) {
+export async function POST(request: Request) {
   return handleRequest(request);
 }
 
-export function DELETE(request: Request) {
+export async function DELETE(request: Request) {
   return handleRequest(request);
 }

@@ -12,7 +12,7 @@ describe("callTool", () => {
   it("returns ok result with structuredContent for plain object", async () => {
     const tool = defineTool({
       description: "test",
-      execute: () => Promise.resolve({ greeting: "hi" }),
+      execute: async () => ({ greeting: "hi" }),
       inputSchema: z.object({}),
       name: "test_obj",
       outputSchema: z.object({ greeting: z.string() }),
@@ -20,13 +20,16 @@ describe("callTool", () => {
     const res = await callTool(tool, {}, { client: fakeClient });
     expect(res.isError).toBeUndefined();
     expect(res.structuredContent).toEqual({ greeting: "hi" });
-    expect(res.content[0]).toMatchObject({ text: '{"greeting":"hi"}', type: "text" });
+    expect(res.content[0]).toMatchObject({
+      text: '{"greeting":"hi"}',
+      type: "text",
+    });
   });
 
   it("omits structuredContent for array results (spec compliance)", async () => {
     const tool = defineTool({
       description: "test",
-      execute: () => Promise.resolve([1, 2, 3]),
+      execute: async () => [1, 2, 3],
       inputSchema: z.object({}),
       name: "test_arr",
     });
@@ -46,7 +49,7 @@ describe("callTool", () => {
     });
     const res = await callTool(tool, {}, { client: fakeClient });
     expect(res.isError).toBe(true);
-    const text = (res.content[0] as { text: string }).text;
+    const { text } = res.content[0] as { text: string };
     expect(text).toContain("401");
     expect(text).toContain("call `login` again");
   });
@@ -67,7 +70,7 @@ describe("callTool", () => {
   it("returns ZodError as structured error with field paths", async () => {
     const tool = defineTool({
       description: "test",
-      execute: ({ n }) => Promise.resolve({ doubled: n * 2 }),
+      execute: async ({ n }) => ({ doubled: n * 2 }),
       inputSchema: z.object({ n: z.number().int().positive() }),
       name: "test_zod",
     });
@@ -79,25 +82,26 @@ describe("callTool", () => {
   it("validates output against outputSchema and reports mismatch", async () => {
     const tool = defineTool({
       description: "test",
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- intentional shape mismatch
-      execute: () => Promise.resolve({ wrong_field: "oops" } as any),
+      // oxlint-disable-next-line typescript/no-explicit-any, unicorn/no-useless-promise-resolve-reject -- intentional shape mismatch + need a Promise return
+      execute: async () => Promise.resolve({ wrong_field: "oops" } as any),
       inputSchema: z.object({}),
       name: "test_out",
       outputSchema: z.object({ ok: z.boolean() }),
     });
     const res = await callTool(tool, {}, { client: fakeClient });
     expect(res.isError).toBe(true);
-    expect((res.content[0] as { text: string }).text).toContain("invalid output");
+    expect((res.content[0] as { text: string }).text).toContain(
+      "invalid output"
+    );
   });
 
   it("passes through raw CallToolResult (elicitation/multi-block path)", async () => {
     const tool = defineTool({
       description: "test",
-      execute: () =>
-        Promise.resolve({
-          content: [{ text: "raw", type: "text" as const }],
-          isError: false,
-        }),
+      execute: async () => ({
+        content: [{ text: "raw", type: "text" as const }],
+        isError: false,
+      }),
       inputSchema: z.object({}),
       name: "test_raw",
     });
@@ -112,7 +116,7 @@ describe("toMcpTool", () => {
     const tool = defineTool({
       annotations: { readOnlyHint: true },
       description: "say hi",
-      execute: ({ name }) => Promise.resolve({ greeting: `hi ${name}` }),
+      execute: async ({ name }) => ({ greeting: `hi ${name}` }),
       inputSchema: z.object({ name: z.string() }),
       name: "greet",
       outputSchema: z.object({ greeting: z.string() }),

@@ -1,12 +1,8 @@
 "use client";
 
-import * as React from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import * as React from "react";
+
 import {
   Command,
   CommandEmpty,
@@ -15,6 +11,11 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 
 export interface CityOption {
@@ -36,8 +37,11 @@ function useUrlSetter() {
     (patch: Record<string, string | number | undefined>) => {
       const sp = new URLSearchParams(searchParams.toString());
       for (const [k, v] of Object.entries(patch)) {
-        if (v === undefined) sp.delete(k);
-        else sp.set(k, String(v));
+        if (v === undefined) {
+          sp.delete(k);
+        } else {
+          sp.set(k, String(v));
+        }
       }
       router.push(`${pathname}?${sp.toString()}`, { scroll: false });
     },
@@ -78,23 +82,21 @@ function PickerButton({
           </span>
         </button>
       </PopoverTrigger>
-      <PopoverContent
-        align="end"
-        className={cn("w-64 p-0", contentClassName)}
-      >
-        {React.cloneElement(children as React.ReactElement<{ onPick?: () => void }>, {
-          onPick: () => setOpen(false),
-        })}
+      <PopoverContent align="end" className={cn("w-64 p-0", contentClassName)}>
+        {React.cloneElement(
+          children as React.ReactElement<{ onPick?: () => void }>,
+          {
+            onPick: () => {
+              setOpen(false);
+            },
+          }
+        )}
       </PopoverContent>
     </Popover>
   );
 }
 
-export function Header({
-  cities,
-  activeCityId,
-  activeCityName,
-}: HeaderProps) {
+export function Header({ cities, activeCityId, activeCityName }: HeaderProps) {
   const setUrl = useUrlSetter();
 
   return (
@@ -119,7 +121,9 @@ export function Header({
             <CityPicker
               cities={cities}
               activeId={activeCityId}
-              onSelect={(id) => setUrl({ city: id })}
+              onSelect={(id) => {
+                setUrl({ city: id });
+              }}
             />
           </PickerButton>
         </div>
@@ -166,4 +170,3 @@ function CityPicker({
     </Command>
   );
 }
-

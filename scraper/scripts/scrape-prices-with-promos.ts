@@ -15,24 +15,26 @@
 // Tunables: MAX_IN_FLIGHT (api.ts) governs the global concurrency cap;
 // CITY (default Wrocław) selects the city used in calculate-price calls.
 
+import { get, futureWeekdays } from "../api.js";
+import { pool, q } from "../db.js";
 import {
   getLeaves,
   getActivePromoCodes,
   fetchAndInsert,
   runConcurrent,
   ORDER_DAY_TIERS,
-  type PriceJob,
-} from '../scrapers/prices.js';
-import { get, futureWeekdays } from '../api.js';
-import { pool, q } from '../db.js';
-import type { City } from '../types.js';
+} from "../scrapers/prices.js";
+import type { PriceJob } from "../scrapers/prices.js";
+import type { City } from "../types.js";
 
-const CITY_NAME = process.env.CITY ?? 'Wrocław';
+const CITY_NAME = process.env.CITY ?? "Wrocław";
 const COMPANY_FILTER = process.env.COMPANY ?? null;
 // Per-company concurrency for the in-script worker pool. The shared limiter
 // in api.ts (MAX_IN_FLIGHT) is the actual ceiling; this just bounds the
 // number of jobs we hand to it at once.
-const PER_COMPANY_CONCURRENCY = Number(process.env.PER_COMPANY_CONCURRENCY ?? 4);
+const PER_COMPANY_CONCURRENCY = Number(
+  process.env.PER_COMPANY_CONCURRENCY ?? 4
+);
 
 interface TopSearchResponse {
   cities: City[];
@@ -40,12 +42,14 @@ interface TopSearchResponse {
 
 async function resolveCity(name: string): Promise<City> {
   const data = await get<TopSearchResponse>(
-    `/api/open/search/top-search?query=${encodeURIComponent(name)}&citiesSize=10&companiesSize=0`,
+    `/api/open/search/top-search?query=${encodeURIComponent(name)}&citiesSize=10&companiesSize=0`
   );
   const c =
     data.cities.find((x) => x.name.toLowerCase() === name.toLowerCase()) ??
     data.cities[0];
-  if (!c) throw new Error(`No city matched "${name}"`);
+  if (!c) {
+    throw new Error(`No city matched "${name}"`);
+  }
   return c;
 }
 
@@ -63,10 +67,10 @@ async function listTargets(): Promise<CompanyTarget[]> {
         AND (deadline IS NULL OR deadline >= CURRENT_DATE)
         AND (valid_to IS NULL OR valid_to >= NOW())
       GROUP BY company_id
-      ORDER BY company_id`,
+      ORDER BY company_id`
   );
   return rows
-    .map((r) => ({ companyId: r.company_id, codes: r.codes ?? [] }))
+    .map((r) => ({ codes: r.codes ?? [], companyId: r.company_id }))
     .filter((t) => !COMPANY_FILTER || t.companyId === COMPANY_FILTER);
 }
 
@@ -81,7 +85,7 @@ interface CompanyResult {
 
 async function processCompany(
   target: CompanyTarget,
-  cityId: number,
+  cityId: number
 ): Promise<CompanyResult> {
   const { companyId } = target;
 
@@ -89,13 +93,27 @@ async function processCompany(
   // will use, so we don't fight that path on case/whitespace edge cases.
   const codes = await getActivePromoCodes(companyId);
   if (codes.length === 0) {
-    return { companyId, leavesQuoted: 0, rowsInserted: 0, jobs: 0, codes: [], noCodeRowsRecent: 0 };
+    return {
+      codes: [],
+      companyId,
+      jobs: 0,
+      leavesQuoted: 0,
+      noCodeRowsRecent: 0,
+      rowsInserted: 0,
+    };
   }
 
   const leaves = await getLeaves(companyId);
   if (leaves.length === 0) {
     console.warn(`[promo-prices] ${companyId}: no active leaves, skipping`);
-    return { companyId, leavesQuoted: 0, rowsInserted: 0, jobs: 0, codes, noCodeRowsRecent: 0 };
+    return {
+      codes,
+      companyId,
+      jobs: 0,
+      leavesQuoted: 0,
+      noCodeRowsRecent: 0,
+      rowsInserted: 0,
+    };
   }
 
   // Sanity check: confirm the regular scrape already covered this company
@@ -107,12 +125,12 @@ async function processCompany(
       WHERE company_id = $1
         AND promo_codes = '{}'
         AND captured_at > NOW() - INTERVAL '6 hours'`,
-    [companyId],
+    [companyId]
   );
   const noCodeRowsRecent = cov[0]?.recent ?? 0;
   if (noCodeRowsRecent === 0) {
     console.warn(
-      `[promo-prices] ${companyId}: WARNING no recent (<6h) no-code rows — backfill will still run, but the dashboard's cheapest-pick may be lopsided until the regular scrape catches up.`,
+      `[promo-prices] ${companyId}: WARNING no recent (<6h) no-code rows — backfill will still run, but the dashboard's cheapest-pick may be lopsided until the regular scrape catches up.`
     );
   }
 
@@ -123,40 +141,45 @@ async function processCompany(
     ORDER_DAY_TIERS.map((days) => [
       days,
       futureWeekdays(days, { includeSaturday, includeSunday }),
-    ]),
+    ])
   );
 
   // With-code only: skip promoCodes=[].
   const jobs: PriceJob[] = leaves.flatMap((leaf) =>
     ORDER_DAY_TIERS.flatMap((days) =>
       codes.map((code) => ({
-        leaf,
         days,
         deliveryDates: datesByDays[days],
+        leaf,
         promoCodes: [code],
-      })),
-    ),
+      }))
+    )
   );
 
   console.log(
-    `[promo-prices] ${companyId}: leaves=${leaves.length} codes=${codes.join(',')} jobs=${jobs.length} (no-code recent=${noCodeRowsRecent})`,
+    `[promo-prices] ${companyId}: leaves=${leaves.length} codes=${codes.join(",")} jobs=${jobs.length} (no-code recent=${noCodeRowsRecent})`
   );
 
   const t0 = Date.now();
-  const inserted = await runConcurrent(jobs, companyId, cityId, PER_COMPANY_CONCURRENCY);
+  const inserted = await runConcurrent(
+    jobs,
+    companyId,
+    cityId,
+    PER_COMPANY_CONCURRENCY
+  );
   const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
 
   console.log(
-    `[promo-prices] ✓ ${companyId}: ${inserted}/${jobs.length} rows in ${elapsed}s`,
+    `[promo-prices] ✓ ${companyId}: ${inserted}/${jobs.length} rows in ${elapsed}s`
   );
 
   return {
-    companyId,
-    leavesQuoted: leaves.length,
-    rowsInserted: inserted,
-    jobs: jobs.length,
     codes,
+    companyId,
+    jobs: jobs.length,
+    leavesQuoted: leaves.length,
     noCodeRowsRecent,
+    rowsInserted: inserted,
   };
 }
 
@@ -169,7 +192,7 @@ async function run(): Promise<void> {
   console.log(`[promo-prices] ${targets.length} companies with active codes`);
 
   if (targets.length === 0) {
-    console.log('[promo-prices] nothing to do');
+    console.log("[promo-prices] nothing to do");
     await pool.end();
     return;
   }
@@ -188,17 +211,17 @@ async function run(): Promise<void> {
     console.log(`\n[promo-prices] (${i + 1}/${targets.length}) ${t.companyId}`);
     try {
       results.push(await processCompany(t, city.cityId));
-    } catch (err) {
+    } catch (error) {
       console.error(
-        `[promo-prices] ${t.companyId}: fatal: ${(err as Error).message}`,
+        `[promo-prices] ${t.companyId}: fatal: ${(error as Error).message}`
       );
       results.push({
-        companyId: t.companyId,
-        leavesQuoted: 0,
-        rowsInserted: 0,
-        jobs: 0,
         codes: t.codes,
+        companyId: t.companyId,
+        jobs: 0,
+        leavesQuoted: 0,
         noCodeRowsRecent: 0,
+        rowsInserted: 0,
       });
     }
   }
@@ -208,7 +231,7 @@ async function run(): Promise<void> {
   const totalJobs = results.reduce((s, r) => s + r.jobs, 0);
   const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
 
-  console.log('\n[promo-prices] ── summary ──');
+  console.log("\n[promo-prices] ── summary ──");
   console.log(`  city:               ${CITY_NAME} (${city.cityId})`);
   console.log(`  companies processed: ${results.length}`);
   console.log(`  leaves quoted:       ${totalLeaves}`);
@@ -220,16 +243,20 @@ async function run(): Promise<void> {
   // Per-company breakdown for the few that failed every job.
   const allFailed = results.filter((r) => r.jobs > 0 && r.rowsInserted === 0);
   if (allFailed.length > 0) {
-    console.log('\n[promo-prices] companies with 0 inserts (likely rejected codes):');
+    console.log(
+      "\n[promo-prices] companies with 0 inserts (likely rejected codes):"
+    );
     for (const r of allFailed) {
-      console.log(`  - ${r.companyId} codes=${r.codes.join(',')} jobs=${r.jobs}`);
+      console.log(
+        `  - ${r.companyId} codes=${r.codes.join(",")} jobs=${r.jobs}`
+      );
     }
   }
 
   await pool.end();
 }
 
-run().catch((err) => {
-  console.error('[promo-prices] fatal:', err);
+run().catch((error: unknown) => {
+  console.error("[promo-prices] fatal:", error);
   process.exit(1);
 });

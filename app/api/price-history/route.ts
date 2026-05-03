@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+
 import { getPriceHistory } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
@@ -21,17 +22,14 @@ export async function GET(request: Request) {
 
   try {
     const history = await getPriceHistory({
-      companyId,
-      dietCaloriesId,
       cityId,
+      companyId,
       days,
+      dietCaloriesId,
     });
     return NextResponse.json({ history });
-  } catch (err) {
-    console.error("[price-history] query failed", err);
-    return NextResponse.json(
-      { error: "query failed" },
-      { status: 500 }
-    );
+  } catch (error) {
+    console.error("[price-history] query failed", error);
+    return NextResponse.json({ error: "query failed" }, { status: 500 });
   }
 }

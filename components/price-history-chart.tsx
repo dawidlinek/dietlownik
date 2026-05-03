@@ -1,25 +1,20 @@
 "use client";
 
 import * as React from "react";
-import {
-  Area,
-  AreaChart,
-  CartesianGrid,
-  ReferenceDot,
-  XAxis,
-} from "recharts";
+import { Area, AreaChart, CartesianGrid, ReferenceDot, XAxis } from "recharts";
+
 import {
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
-  type ChartConfig,
 } from "@/components/ui/chart";
+import type { ChartConfig } from "@/components/ui/chart";
 import { formatPriceNumber } from "@/lib/format";
 
 const chartConfig = {
   price: {
-    label: "Cena/dzień",
     color: "var(--chart-1)",
+    label: "Cena/dzień",
   },
 } satisfies ChartConfig;
 
@@ -32,15 +27,15 @@ export interface HistoryPoint {
 export function PriceHistoryChart({ history }: { history: HistoryPoint[] }) {
   const data = history.map((h) => ({
     date: h.bucket,
-    price: Number(h.price),
+    price: h.price,
   }));
 
   const promos = history
     .filter((h) => Array.isArray(h.promo_codes) && h.promo_codes.length > 0)
     .map((h) => ({
-      date: h.bucket,
       code: (h.promo_codes ?? []).join(","),
-      price: Number(h.price),
+      date: h.bucket,
+      price: h.price,
     }));
 
   if (data.length === 0) {
@@ -57,7 +52,10 @@ export function PriceHistoryChart({ history }: { history: HistoryPoint[] }) {
         config={chartConfig}
         className="aspect-auto h-[200px] w-full"
       >
-        <AreaChart data={data} margin={{ left: 8, right: 8, top: 8, bottom: 0 }}>
+        <AreaChart
+          data={data}
+          margin={{ bottom: 0, left: 8, right: 8, top: 8 }}
+        >
           <defs>
             <linearGradient id="fillPrice" x1="0" y1="0" x2="0" y2="1">
               <stop
@@ -85,8 +83,8 @@ export function PriceHistoryChart({ history }: { history: HistoryPoint[] }) {
             minTickGap={32}
             tickFormatter={(value) =>
               new Date(value).toLocaleDateString("pl-PL", {
-                month: "short",
                 day: "numeric",
+                month: "short",
               })
             }
           />
@@ -97,8 +95,8 @@ export function PriceHistoryChart({ history }: { history: HistoryPoint[] }) {
                 indicator="line"
                 labelFormatter={(value) =>
                   new Date(value as string).toLocaleDateString("pl-PL", {
-                    month: "long",
                     day: "numeric",
+                    month: "long",
                   })
                 }
                 formatter={(value) =>
@@ -113,8 +111,10 @@ export function PriceHistoryChart({ history }: { history: HistoryPoint[] }) {
             fill="url(#fillPrice)"
             stroke="var(--color-price)"
             strokeWidth={1.5}
-            dot={data.length === 1 ? { r: 3, fill: "var(--color-price)" } : false}
-            activeDot={{ r: 4, fill: "var(--color-price)" }}
+            dot={
+              data.length === 1 ? { fill: "var(--color-price)", r: 3 } : false
+            }
+            activeDot={{ fill: "var(--color-price)", r: 4 }}
           />
           {promos.map((p) => (
             <ReferenceDot

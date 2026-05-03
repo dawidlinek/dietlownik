@@ -8,18 +8,22 @@ export const LOGIN_PATH = "/api/auth/login";
 export const LOGIN_DEVICE_TOKEN = "dietly-mcp-device-token";
 
 export const MOBILE_HEADERS = {
+  accept: "application/json",
+  "accept-language": "pl-PL",
+  "user-agent": "okhttp/4.9.2",
   "x-launcher-type": "ANDROID_APP",
   "x-mobile-version": "4.0.0",
-  "accept-language": "pl-PL",
-  accept: "application/json",
-  "user-agent": "okhttp/4.9.2",
 };
 
 // --- URL + cookie helpers ---
 
 export function buildUrl(path: string): string {
-  if (path.startsWith("http://") || path.startsWith("https://")) return path;
-  if (path.startsWith("/")) return `${BASE}${path}`;
+  if (path.startsWith("http://") || path.startsWith("https://")) {
+    return path;
+  }
+  if (path.startsWith("/")) {
+    return `${BASE}${path}`;
+  }
   return `${BASE}/${path}`;
 }
 
@@ -50,7 +54,6 @@ export async function fetchWithRetry(
   init: RequestInit
 ): Promise<Response> {
   const RETRY_MAX = 3;
-  let lastRes: Response | undefined;
 
   for (let attempt = 1; attempt <= RETRY_MAX; attempt++) {
     try {
@@ -79,8 +82,8 @@ export async function fetchWithRetry(
       }
 
       return res;
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
       if (
         attempt < RETRY_MAX &&
         (msg.includes("fetch failed") || msg.includes("ECONN"))
@@ -88,10 +91,12 @@ export async function fetchWithRetry(
         await sleep(1000 * attempt);
         continue;
       }
-      throw err;
+      throw error;
     }
   }
-  return lastRes as Response;
+  // Unreachable: every iteration either returns or continues; the final
+  // attempt's failure throws.
+  throw new Error(`fetchWithRetry exhausted attempts: ${url}`);
 }
 
 export async function parseResponse<T>(
@@ -104,7 +109,9 @@ export async function parseResponse<T>(
     throw new HttpError(method, path, res.status, text);
   }
 
-  if (!text) return null as T;
+  if (!text) {
+    return null as T;
+  }
 
   try {
     return JSON.parse(text) as T;

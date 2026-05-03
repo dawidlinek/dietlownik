@@ -20,8 +20,8 @@
 
   /* ── deltas — muted, food-derived, NEVER traffic-light red/green ──────── */
   --color-olive: oklch(48% 0.085 130);
-  --color-olive-tint: oklch(94% 0.030 130);
-  --color-clay: oklch(52% 0.130 35);
+  --color-olive-tint: oklch(94% 0.03 130);
+  --color-clay: oklch(52% 0.13 35);
   --color-clay-tint: oklch(94% 0.035 35);
 
   /* ── fonts — wired up via next/font CSS variables ─────────────────────── */
@@ -40,7 +40,7 @@
   /* ── shadcn chart variables ───────────────────────────────────────────── */
   --color-chart-1: oklch(54% 0.16 55);
   --color-chart-2: oklch(48% 0.085 130);
-  --color-chart-3: oklch(52% 0.130 35);
+  --color-chart-3: oklch(52% 0.13 35);
   --color-chart-4: oklch(40% 0.022 65);
   --color-chart-5: oklch(58% 0.022 70);
 }

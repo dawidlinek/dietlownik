@@ -17,11 +17,14 @@ const inputSchema = z
     path: ["tier_id"],
   })
   .refine(
-    (v) => !v.is_menu_configuration || (v.base_meal_ids && v.base_meal_ids.length > 0),
+    (v) =>
+      !v.is_menu_configuration ||
+      (v.base_meal_ids && v.base_meal_ids.length > 0),
     {
-      message: "base_meal_ids must be non-empty when is_menu_configuration is true",
+      message:
+        "base_meal_ids must be non-empty when is_menu_configuration is true",
       path: ["base_meal_ids"],
-    },
+    }
   );
 
 const outputSchema = z.object({
@@ -52,7 +55,10 @@ interface MealApiResponse {
   meals?: MealShape[];
 }
 
-function normalizeMealsResponse(response: MealApiResponse, fallbackDate: string) {
+function normalizeMealsResponse(
+  response: MealApiResponse,
+  fallbackDate: string
+) {
   const meals = Array.isArray(response.meals) ? response.meals : [];
   return {
     calories: response.calories ?? null,
@@ -95,11 +101,11 @@ export const get_meal_options = defineTool({
       });
       response = await client.anonGet<MealApiResponse>(
         `/api/mobile/open/order-form/steps/menu-configuration/meals?${params.toString()}`,
-        input.company_id,
+        input.company_id
       );
     } else {
       const path = `/api/mobile/open/company-card/${encodeURIComponent(
-        input.company_id,
+        input.company_id
       )}/menu/${input.diet_calories_id}/city/${input.city_id}/date/${input.date}`;
       response = await client.anonGet<MealApiResponse>(path, input.company_id);
     }

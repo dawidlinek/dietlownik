@@ -1,10 +1,20 @@
 import { query } from "./db";
 
-export type CityRow = { city_id: number; name: string };
-export type KcalRow = { calories: number };
-export type DaysRow = { order_days: number };
+export interface CityRow {
+  city_id: number;
+  name: string;
+}
+export interface KcalRow {
+  calories: number;
+}
+export interface DaysRow {
+  order_days: number;
+}
 
-export type CompanyRow = { company_id: string; name: string | null };
+export interface CompanyRow {
+  company_id: string;
+  name: string | null;
+}
 
 /** One leaf row — a single (company, diet, tier, option, kcal) price observation. */
 export interface LeafRow {
@@ -48,11 +58,11 @@ export interface CateringTile {
 
 export interface CateringPage {
   tiles: CateringTile[];
-  total: number;          // total number of companies that have at least one leaf in range
-  page: number;           // 1-indexed
+  total: number; // total number of companies that have at least one leaf in range
+  page: number; // 1-indexed
   pageSize: number;
-  rangeMin: number | null;  // cheapest per-day price across ALL pages, for the header summary
-  rangeMax: number | null;  // costliest per-day price across ALL pages
+  rangeMin: number | null; // cheapest per-day price across ALL pages, for the header summary
+  rangeMax: number | null; // costliest per-day price across ALL pages
 }
 
 export interface CampaignRow {
@@ -140,8 +150,8 @@ export async function getKcalBounds(cityId: number): Promise<KcalBounds> {
   const presets = PRESET_CANDIDATES.filter((p) => present.has(p));
 
   return {
-    min: bounds?.min ?? 1000,
     max: bounds?.max ?? 3000,
+    min: bounds?.min ?? 1000,
     presets: presets.length ? presets : PRESET_CANDIDATES,
   };
 }
@@ -175,30 +185,33 @@ export async function getCateringPage(args: {
   kcalMin: number;
   kcalMax: number;
   days: number;
-  page: number;          // 1-indexed
+  page: number; // 1-indexed
   pageSize?: number;
 }): Promise<CateringPage> {
   const { cityId, kcalMin, kcalMax, days } = args;
   const page = Math.max(1, args.page);
-  const pageSize = Math.min(MAX_PAGE_SIZE, Math.max(1, args.pageSize ?? PAGE_SIZE));
+  const pageSize = Math.min(
+    MAX_PAGE_SIZE,
+    Math.max(1, args.pageSize ?? PAGE_SIZE)
+  );
   const offset = (page - 1) * pageSize;
 
   // We DISTINCT ON (company, dc_id, tier|null, option|null, days) to capture
   // the latest capture per real combo (the same dc_id can appear under
   // multiple tiers — verified live: different prices). Then we filter by
   // calories range, group per company, sort ascending by cheapest.
-  type PageRow = {
+  interface PageRow {
     company_id: string;
     company_name: string | null;
     awarded: boolean | null;
     feedback_value: string | null;
     feedback_number: number | null;
-    cheapest: string;       // numeric cast — comparable for ordering
-    leaves: string;          // jsonb agg
+    cheapest: string; // numeric cast — comparable for ordering
+    leaves: string; // jsonb agg
     total_companies: number;
     overall_min: string | null;
     overall_max: string | null;
-  };
+  }
 
   const rows = await query<PageRow>(
     `
@@ -369,12 +382,12 @@ export async function getCateringPage(args: {
   const tiles: CateringTile[] = rows.map((r) => {
     const leaves = JSON.parse(r.leaves) as LeafRow[];
     return {
+      awarded: r.awarded,
+      cheapest: leaves[0],
       company_id: r.company_id,
       company_name: r.company_name,
-      awarded: r.awarded,
-      feedback_value: r.feedback_value,
       feedback_number: r.feedback_number,
-      cheapest: leaves[0],
+      feedback_value: r.feedback_value,
       leaves,
     };
   });
@@ -384,12 +397,12 @@ export async function getCateringPage(args: {
   const overallMax = rows[0]?.overall_max ?? null;
 
   return {
-    tiles,
-    total,
     page,
     pageSize,
-    rangeMin: overallMin ? parseFloat(overallMin) : null,
-    rangeMax: overallMax ? parseFloat(overallMax) : null,
+    rangeMax: overallMax ? Number.parseFloat(overallMax) : null,
+    rangeMin: overallMin ? Number.parseFloat(overallMin) : null,
+    tiles,
+    total,
   };
 }
 

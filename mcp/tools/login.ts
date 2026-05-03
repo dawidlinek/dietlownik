@@ -3,7 +3,7 @@ import { z } from "zod";
 import { defineTool } from "@/mcp/tool";
 
 const inputSchema = z.object({
-  email: z.string().email(),
+  email: z.email(),
   password: z.string().min(1),
 });
 
@@ -15,7 +15,7 @@ const outputSchema = z.object({
 });
 
 interface ProfileShape {
-  profileAddresses?: Array<{ profileAddressId?: number }>;
+  profileAddresses?: { profileAddressId?: number }[];
 }
 
 function normalizeProfileResponse(raw: unknown) {
@@ -36,7 +36,10 @@ export const login = defineTool({
     "have already called this in the current process.",
   execute: async (input, { client }) => {
     await client.login(input.email, input.password);
-    const profileResponse = await client.authGet<unknown>(input.email, "/api/profile");
+    const profileResponse = await client.authGet<unknown>(
+      input.email,
+      "/api/profile"
+    );
     const normalized = normalizeProfileResponse(profileResponse);
     return {
       authenticated: true,

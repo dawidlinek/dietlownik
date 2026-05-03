@@ -1,4 +1,5 @@
-import { Pool, type QueryResultRow } from "pg";
+import { Pool } from "pg";
+import type { QueryResultRow } from "pg";
 
 declare global {
   // eslint-disable-next-line no-var
@@ -14,9 +15,9 @@ function makePool(): Pool {
   }
   return new Pool({
     connectionString: url,
-    max: 5,
-    idleTimeoutMillis: 30_000,
     connectionTimeoutMillis: 10_000,
+    idleTimeoutMillis: 30_000,
+    max: 5,
   });
 }
 
@@ -24,7 +25,9 @@ function makePool(): Pool {
 // doesn't leak connections in dev. Module load must NOT throw — Next collects
 // page data at build time without env vars set.
 function getPool(): Pool {
-  if (global.__dietlownikPool) return global.__dietlownikPool;
+  if (global.__dietlownikPool) {
+    return global.__dietlownikPool;
+  }
   const pool = makePool();
   global.__dietlownikPool = pool;
   return pool;

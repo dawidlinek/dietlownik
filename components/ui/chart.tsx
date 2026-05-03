@@ -2,25 +2,31 @@
 
 import * as React from "react";
 import * as RechartsPrimitive from "recharts";
+
 import { cn } from "@/lib/utils";
 
 // ── Config plumbing (shadcn-compatible shape, simplified) ───────────────────
 
-export type ChartConfig = {
-  [k in string]: {
+export type ChartConfig = Record<
+  string,
+  {
     label?: React.ReactNode;
     icon?: React.ComponentType;
     color?: string;
-  };
-};
+  }
+>;
 
-type ChartContextProps = { config: ChartConfig };
+interface ChartContextProps {
+  config: ChartConfig;
+}
 
 const ChartContext = React.createContext<ChartContextProps | null>(null);
 
 function useChart() {
   const ctx = React.useContext(ChartContext);
-  if (!ctx) throw new Error("useChart must be used within <ChartContainer>");
+  if (!ctx) {
+    throw new Error("useChart must be used within <ChartContainer>");
+  }
   return ctx;
 }
 
@@ -36,7 +42,7 @@ const ChartContainer = React.forwardRef<
   }
 >(({ id, className, children, config, ...props }, ref) => {
   const uniqueId = React.useId();
-  const chartId = `chart-${id || uniqueId.replace(/:/g, "")}`;
+  const chartId = `chart-${id ?? uniqueId.replaceAll(":", "")}`;
 
   return (
     <ChartContext.Provider value={{ config }}>
@@ -72,7 +78,9 @@ ChartContainer.displayName = "Chart";
 
 const ChartStyle = ({ id, config }: { id: string; config: ChartConfig }) => {
   const colorConfig = Object.entries(config).filter(([, c]) => c.color);
-  if (!colorConfig.length) return null;
+  if (!colorConfig.length) {
+    return null;
+  }
   const css = `[data-chart=${id}] {\n${colorConfig
     .map(([key, item]) => `  --color-${key}: ${item.color};`)
     .join("\n")}\n}`;
@@ -99,7 +107,10 @@ const ChartTooltipContent = React.forwardRef<
     label?: unknown;
     indicator?: "line" | "dot";
     hideLabel?: boolean;
-    labelFormatter?: (label: unknown, payload: PayloadItem[]) => React.ReactNode;
+    labelFormatter?: (
+      label: unknown,
+      payload: PayloadItem[]
+    ) => React.ReactNode;
     formatter?: (value: unknown, name: string) => React.ReactNode;
   }
 >(
@@ -117,11 +128,15 @@ const ChartTooltipContent = React.forwardRef<
     ref
   ) => {
     const { config } = useChart();
-    if (!active || !payload?.length) return null;
+    if (!active || !payload?.length) {
+      return null;
+    }
 
     const tooltipLabel = !hideLabel ? (
       <div className="text-[11px] uppercase tracking-[0.08em] text-[var(--color-ink-3)] mb-1.5">
-        {labelFormatter ? labelFormatter(label, payload) : (label as React.ReactNode)}
+        {labelFormatter
+          ? labelFormatter(label, payload)
+          : (label as React.ReactNode)}
       </div>
     ) : null;
 
@@ -137,8 +152,8 @@ const ChartTooltipContent = React.forwardRef<
         <div className="grid gap-1">
           {payload.map((item, idx) => {
             const key = `${item.dataKey ?? item.name ?? "value"}`;
-            const conf = config[key as keyof typeof config];
-            const indicatorColor = item.color || `var(--color-${key})`;
+            const conf = config[key];
+            const indicatorColor = item.color ?? `var(--color-${key})`;
             return (
               <div
                 key={`${key}-${idx}`}
@@ -181,7 +196,9 @@ const ChartLegendContent = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement> & { payload?: PayloadItem[] }
 >(({ className, payload }, ref) => {
-  if (!payload?.length) return null;
+  if (!payload?.length) {
+    return null;
+  }
   return (
     <div
       ref={ref}

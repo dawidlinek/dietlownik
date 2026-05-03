@@ -3,7 +3,7 @@ import { z } from "zod";
 import { defineTool } from "@/mcp/tool";
 
 const inputSchema = z.object({
-  email: z.string().email(),
+  email: z.email(),
 });
 
 const outputSchema = z.object({
@@ -13,7 +13,7 @@ const outputSchema = z.object({
 });
 
 interface ProfileShape {
-  profileAddresses?: Array<{ profileAddressId?: number }>;
+  profileAddresses?: { profileAddressId?: number }[];
 }
 
 function normalizeProfileResponse(raw: unknown) {
@@ -32,7 +32,10 @@ export const get_profile = defineTool({
     "already-logged-in email. Use this when the cached session is still " +
     "valid; if the email isn't logged in yet, call `login` first.",
   execute: async (input, { client }) => {
-    const profileResponse = await client.authGet<unknown>(input.email, "/api/profile");
+    const profileResponse = await client.authGet<unknown>(
+      input.email,
+      "/api/profile"
+    );
     const normalized = normalizeProfileResponse(profileResponse);
     return {
       email: input.email,

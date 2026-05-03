@@ -11,7 +11,7 @@ import type { AnyToolDefinition, DietlyClient } from "./types";
 
 const MCP_TOOL_LIST = ALL_TOOLS.map(toMcpTool);
 const TOOLS_BY_NAME: ReadonlyMap<string, AnyToolDefinition> = new Map(
-  ALL_TOOLS.map((t) => [t.name, t]),
+  ALL_TOOLS.map((t) => [t.name, t])
 );
 
 const SERVER_INFO = {
@@ -43,17 +43,19 @@ export const buildServer = (client: DietlyClient): Server => {
     instructions: INSTRUCTIONS,
   });
 
-  server.setRequestHandler(ListToolsRequestSchema, () =>
-    Promise.resolve({ tools: MCP_TOOL_LIST }),
-  );
+  server.setRequestHandler(ListToolsRequestSchema, async () => ({
+    tools: MCP_TOOL_LIST,
+  }));
 
-  server.setRequestHandler(CallToolRequestSchema, (req, extra) => {
+  server.setRequestHandler(CallToolRequestSchema, async (req, extra) => {
     const tool = TOOLS_BY_NAME.get(req.params.name);
     if (tool === undefined) {
-      return Promise.resolve({
-        content: [{ text: `Unknown tool: ${req.params.name}`, type: "text" as const }],
+      return {
+        content: [
+          { text: `Unknown tool: ${req.params.name}`, type: "text" as const },
+        ],
         isError: true,
-      });
+      };
     }
     return callTool(tool, req.params.arguments, { client, extra, server });
   });

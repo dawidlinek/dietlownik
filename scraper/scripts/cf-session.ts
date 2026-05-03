@@ -16,7 +16,7 @@
 // up automatically. `cf_clearance` is bound to {IP, User-Agent} — if your
 // public IP changes, refresh the session.
 
-import { writeCfSession } from '../cf-shared.js';
+import { writeCfSession } from "../cf-shared.js";
 
 interface ParsedCurl {
   cookie?: string;
@@ -31,12 +31,16 @@ interface ParsedCurl {
  */
 export function tokenize(input: string): string[] {
   const out: string[] = [];
-  let cur = '';
+  let cur = "";
   let quote: string | null = null;
   for (let i = 0; i < input.length; i++) {
     const ch = input[i];
     if (quote) {
-      if (ch === '\\' && i + 1 < input.length && (input[i + 1] === quote || input[i + 1] === '\\')) {
+      if (
+        ch === "\\" &&
+        i + 1 < input.length &&
+        (input[i + 1] === quote || input[i + 1] === "\\")
+      ) {
         cur += input[i + 1];
         i++;
         continue;
@@ -52,20 +56,22 @@ export function tokenize(input: string): string[] {
       quote = ch;
       continue;
     }
-    if (ch === '\\' && input[i + 1] === '\n') {
+    if (ch === "\\" && input[i + 1] === "\n") {
       i++;
       continue;
     }
     if (/\s/.test(ch)) {
       if (cur) {
         out.push(cur);
-        cur = '';
+        cur = "";
       }
       continue;
     }
     cur += ch;
   }
-  if (cur) out.push(cur);
+  if (cur) {
+    out.push(cur);
+  }
   return out;
 }
 
@@ -74,40 +80,64 @@ export function parseCurl(input: string): ParsedCurl {
   const headers: Record<string, string> = {};
   for (let i = 0; i < tokens.length; i++) {
     const t = tokens[i];
-    if (t === '-H' || t === '--header') {
+    if (t === "-H" || t === "--header") {
       const v = tokens[++i];
-      if (!v) continue;
-      const idx = v.indexOf(':');
-      if (idx < 0) continue;
+      if (!v) {
+        continue;
+      }
+      const idx = v.indexOf(":");
+      if (idx === -1) {
+        continue;
+      }
       const name = v.slice(0, idx).trim().toLowerCase();
       headers[name] = v.slice(idx + 1).trim();
-    } else if (t === '-A' || t === '--user-agent') {
+    } else if (t === "-A" || t === "--user-agent") {
       const v = tokens[++i];
-      if (v) headers['user-agent'] = v;
-    } else if (t === '-b' || t === '--cookie') {
+      if (v) {
+        headers["user-agent"] = v;
+      }
+    } else if (t === "-b" || t === "--cookie") {
       const v = tokens[++i];
-      if (v) headers['cookie'] = v;
+      if (v) {
+        headers.cookie = v;
+      }
     }
   }
-  return { cookie: headers['cookie'], userAgent: headers['user-agent'], headers };
+  return {
+    cookie: headers.cookie,
+    headers,
+    userAgent: headers["user-agent"],
+  };
 }
 
-function parseFlags(argv: string[]): { cookie?: string; ua?: string; help: boolean } {
+function parseFlags(argv: string[]): {
+  cookie?: string;
+  ua?: string;
+  help: boolean;
+} {
   const out: { cookie?: string; ua?: string; help: boolean } = { help: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === '--cookie') out.cookie = argv[++i];
-    else if (a === '--ua' || a === '--user-agent') out.ua = argv[++i];
-    else if (a === '-h' || a === '--help') out.help = true;
+    if (a === "--cookie") {
+      out.cookie = argv[++i];
+    } else if (a === "--ua" || a === "--user-agent") {
+      out.ua = argv[++i];
+    } else if (a === "-h" || a === "--help") {
+      out.help = true;
+    }
   }
   return out;
 }
 
 async function readStdin(): Promise<string> {
-  if (process.stdin.isTTY) return '';
+  if (process.stdin.isTTY) {
+    return "";
+  }
   const chunks: Buffer[] = [];
-  for await (const c of process.stdin) chunks.push(Buffer.from(c));
-  return Buffer.concat(chunks).toString('utf8');
+  for await (const c of process.stdin) {
+    chunks.push(Buffer.from(c));
+  }
+  return Buffer.concat(chunks).toString("utf-8");
 }
 
 const HELP = `Usage:
@@ -124,7 +154,7 @@ async function main() {
     return;
   }
 
-  let cookie = flags.cookie;
+  let { cookie } = flags;
   let userAgent = flags.ua;
 
   if (!cookie || !userAgent) {
@@ -137,33 +167,42 @@ async function main() {
   }
 
   if (!cookie && !userAgent) {
-    console.error('cf-session: no cookie or user-agent found.\n');
+    console.error("cf-session: no cookie or user-agent found.\n");
     console.error(HELP);
     process.exit(1);
   }
   if (!cookie) {
-    console.error('cf-session: cookie missing — `cf_clearance` is required to bypass the challenge.');
+    console.error(
+      "cf-session: cookie missing — `cf_clearance` is required to bypass the challenge."
+    );
     process.exit(1);
   }
   if (!userAgent) {
-    console.error('cf-session: user-agent missing — cf_clearance is bound to UA, send the same one your browser used.');
+    console.error(
+      "cf-session: user-agent missing — cf_clearance is bound to UA, send the same one your browser used."
+    );
     process.exit(1);
   }
 
-  if (!/cf_clearance=/.test(cookie)) {
-    console.error('cf-session: warning — cookie has no `cf_clearance`. CF will likely still challenge.');
+  if (!cookie.includes("cf_clearance=")) {
+    console.error(
+      "cf-session: warning — cookie has no `cf_clearance`. CF will likely still challenge."
+    );
   }
 
   const path = writeCfSession({ cookie, userAgent });
-  const cookieNames = cookie.split(';').map(s => s.split('=')[0].trim()).filter(Boolean);
+  const cookieNames = cookie
+    .split(";")
+    .map((s) => s.split("=")[0].trim())
+    .filter(Boolean);
   console.log(`wrote ${path}`);
-  console.log(`  cookies: ${cookieNames.join(', ')}`);
+  console.log(`  cookies: ${cookieNames.join(", ")}`);
   console.log(`  user-agent: ${userAgent}`);
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  main().catch(err => {
-    console.error(err);
+  main().catch((error: unknown) => {
+    console.error(error);
     process.exit(1);
   });
 }

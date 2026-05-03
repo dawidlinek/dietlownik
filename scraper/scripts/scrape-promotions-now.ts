@@ -3,13 +3,16 @@
 // you don't want to wait for the full scrape to finish before refreshing
 // the campaigns table.
 
-import { listCompanies } from '../scrapers/companies.js';
-import { scrapePromotions, recordPromosFromConstants } from '../scrapers/promotions.js';
-import { get } from '../api.js';
-import { pool } from '../db.js';
-import type { City, ConstantResponse } from '../types.js';
+import { get } from "../api.js";
+import { pool } from "../db.js";
+import { listCompanies } from "../scrapers/companies.js";
+import {
+  scrapePromotions,
+  recordPromosFromConstants,
+} from "../scrapers/promotions.js";
+import type { City, ConstantResponse } from "../types.js";
 
-const CITY_NAME = process.env.CITY ?? 'Wrocław';
+const CITY_NAME = process.env.CITY ?? "Wrocław";
 
 interface TopSearchResponse {
   cities: City[];
@@ -17,12 +20,14 @@ interface TopSearchResponse {
 
 async function resolveCity(name: string): Promise<City> {
   const data = await get<TopSearchResponse>(
-    `/api/open/search/top-search?query=${encodeURIComponent(name)}&citiesSize=10&companiesSize=0`,
+    `/api/open/search/top-search?query=${encodeURIComponent(name)}&citiesSize=10&companiesSize=0`
   );
   const c =
     data.cities.find((x) => x.name.toLowerCase() === name.toLowerCase()) ??
     data.cities[0];
-  if (!c) throw new Error(`No city matched "${name}"`);
+  if (!c) {
+    throw new Error(`No city matched "${name}"`);
+  }
   return c;
 }
 
@@ -38,8 +43,10 @@ async function run(): Promise<void> {
   // We need companyHeader.activePromotionInfo, which has the `separate` flag
   // and is more reliable than awarded-and-top (verified: DOBRYSTART shows
   // here even when the API serves an old awarded-and-top snapshot).
-  console.log(`[promos-now] fetching /constant for ${companies.length} companies…`);
-  const constants: Array<{ companyId: string; constant: ConstantResponse }> = [];
+  console.log(
+    `[promos-now] fetching /constant for ${companies.length} companies…`
+  );
+  const constants: { companyId: string; constant: ConstantResponse }[] = [];
   let done = 0;
   await Promise.all(
     companies.map(async (c) => {
@@ -47,18 +54,22 @@ async function run(): Promise<void> {
       try {
         const constant = await get<ConstantResponse>(
           `/api/mobile/open/company-card/${companyId}/constant?cityId=${city.cityId}`,
-          { companyId },
+          { companyId }
         );
         constants.push({ companyId, constant });
-      } catch (err) {
-        console.warn(`[promos-now] /constant ${companyId}: ${(err as Error).message}`);
+      } catch (error) {
+        console.warn(
+          `[promos-now] /constant ${companyId}: ${(error as Error).message}`
+        );
       } finally {
         done += 1;
         if (done % 10 === 0 || done === companies.length) {
-          console.log(`[promos-now]   ${done}/${companies.length} constants fetched`);
+          console.log(
+            `[promos-now]   ${done}/${companies.length} constants fetched`
+          );
         }
       }
-    }),
+    })
   );
 
   await scrapePromotions(city.cityId, companies);
@@ -68,7 +79,7 @@ async function run(): Promise<void> {
   await pool.end();
 }
 
-run().catch((err) => {
-  console.error('[promos-now] fatal:', err);
+run().catch((error: unknown) => {
+  console.error("[promos-now] fatal:", error);
   process.exit(1);
 });

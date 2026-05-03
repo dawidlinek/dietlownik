@@ -3,18 +3,23 @@
 // fetch path), `cf-fetch.ts` (patchright transport), and the two
 // `scripts/cf-session*.ts` refresh helpers.
 
-import { chromium, type BrowserContext } from 'patchright';
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { resolve, join } from 'node:path';
+import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { homedir } from "node:os";
+import { resolve, join } from "node:path";
+
+import { chromium } from "patchright";
+import type { BrowserContext } from "patchright";
 
 // ── CF challenge detector ────────────────────────────────────────────────────
 
 /** Body fingerprints of CF's "Just a moment..." JS interstitial. */
-export const CF_CHALLENGE_RE = /Just a moment|cf-browser-verification|__cf_chl_/i;
+export const CF_CHALLENGE_RE =
+  /Just a moment|cf-browser-verification|__cf_chl_/i;
 
 export function isCloudflareChallenge(status: number, body: string): boolean {
-  if (status !== 403 && status !== 503 && status !== 429) return false;
+  if (status !== 403 && status !== 503 && status !== 429) {
+    return false;
+  }
   return CF_CHALLENGE_RE.test(body);
 }
 
@@ -27,44 +32,52 @@ export interface CfSession {
 }
 
 export const CF_SESSION_PATH =
-  process.env.DIETLY_SESSION_FILE || resolve(process.cwd(), '.cf-session.json');
+  process.env.DIETLY_SESSION_FILE ?? resolve(process.cwd(), ".cf-session.json");
 
 export function loadCfSession(): CfSession {
   const fromEnv: CfSession = {
-    cookie: process.env.DIETLY_COOKIE || undefined,
-    userAgent: process.env.DIETLY_USER_AGENT || undefined,
+    cookie: process.env.DIETLY_COOKIE ?? undefined,
+    userAgent: process.env.DIETLY_USER_AGENT ?? undefined,
   };
-  if (fromEnv.cookie || fromEnv.userAgent) return fromEnv;
+  if (fromEnv.cookie || fromEnv.userAgent) {
+    return fromEnv;
+  }
   try {
-    return JSON.parse(readFileSync(CF_SESSION_PATH, 'utf8')) as CfSession;
+    return JSON.parse(readFileSync(CF_SESSION_PATH, "utf-8")) as CfSession;
   } catch {
     return {};
   }
 }
 
-export function writeCfSession(payload: { cookie: string; userAgent: string }): string {
+export function writeCfSession(payload: {
+  cookie: string;
+  userAgent: string;
+}): string {
   const out = { ...payload, savedAt: new Date().toISOString() };
-  writeFileSync(CF_SESSION_PATH, JSON.stringify(out, null, 2) + '\n', 'utf8');
+  writeFileSync(CF_SESSION_PATH, `${JSON.stringify(out, null, 2)}\n`, "utf-8");
   return CF_SESSION_PATH;
 }
 
 // ── Patchright + Chrome ──────────────────────────────────────────────────────
 
 export const USER_DATA_DIR =
-  process.env.CF_USER_DATA_DIR ?? join(homedir(), '.cache', 'dietlownik-cf-profile');
+  process.env.CF_USER_DATA_DIR ??
+  join(homedir(), ".cache", "dietlownik-cf-profile");
 
 // Headless Chrome leaks "HeadlessChrome/…" in navigator.userAgent — CF uses
 // it as a kill-signal under load. Override at context level.
 export const FORCED_UA =
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36';
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36";
 
-export async function launchCfBrowser(opts: { headless: boolean }): Promise<BrowserContext> {
+export async function launchCfBrowser(opts: {
+  headless: boolean;
+}): Promise<BrowserContext> {
   mkdirSync(USER_DATA_DIR, { recursive: true });
   return chromium.launchPersistentContext(USER_DATA_DIR, {
-    channel: 'chrome',
+    channel: "chrome",
     headless: opts.headless,
-    viewport: null,
     userAgent: opts.headless ? FORCED_UA : undefined,
+    viewport: null,
   });
 }
 
@@ -73,15 +86,23 @@ export async function launchCfBrowser(opts: { headless: boolean }): Promise<Brow
  * Returns true if cleared, false on timeout.
  */
 export async function waitForChallengeCleared(
-  page: import('patchright').Page,
-  deadlineAt: number,
+  page: import("patchright").Page,
+  deadlineAt: number
 ): Promise<boolean> {
   while (Date.now() < deadlineAt) {
-    const stuck = await page.evaluate(() => {
-      const t = (document.title || '') + ' ' + (document.body?.innerText || '').slice(0, 200);
-      return /Just a moment|Verify you are human|Checking if the site connection is secure/i.test(t);
-    }).catch(() => false);
-    if (!stuck) return true;
+    const stuck = await page
+      .evaluate(() => {
+        const t = `${document.title || ""} ${(
+          document.body?.textContent || ""
+        ).slice(0, 200)}`;
+        return /Just a moment|Verify you are human|Checking if the site connection is secure/i.test(
+          t
+        );
+      })
+      .catch(() => false);
+    if (!stuck) {
+      return true;
+    }
     await page.waitForTimeout(1000);
   }
   return false;

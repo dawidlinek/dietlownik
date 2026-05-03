@@ -1,28 +1,27 @@
 "use client";
 
-import * as React from "react";
 import Link from "next/link";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import {
-  PriceHistoryChart,
-  type HistoryPoint,
-} from "@/components/price-history-chart";
-import {
-  type CateringTile,
-  type CampaignRow,
-  type LeafRow,
-  type VariantMealRow,
-} from "@/lib/queries";
+import * as React from "react";
+
+import { PriceHistoryChart } from "@/components/price-history-chart";
+import type { HistoryPoint } from "@/components/price-history-chart";
 import {
   formatPriceNumber,
   formatDelta,
   formatInt,
   formatDate,
 } from "@/lib/format";
+import type {
+  CateringTile,
+  CampaignRow,
+  LeafRow,
+  VariantMealRow,
+} from "@/lib/queries";
 import { cn } from "@/lib/utils";
 
 // Canonical daily order (lowercased compare). Anything unknown sorts last.
-const SLOT_ORDER: ReadonlyArray<string> = [
+const SLOT_ORDER: readonly string[] = [
   "śniadanie",
   "i śniadanie",
   "ii śniadanie",
@@ -37,7 +36,11 @@ function slotRank(name: string): number {
   const k = name.trim().toLowerCase();
   for (let i = 0; i < SLOT_ORDER.length; i++) {
     const needle = SLOT_ORDER[i];
-    if (k === needle || k.startsWith(needle + " ") || k.startsWith(needle + "-")) {
+    if (
+      k === needle ||
+      k.startsWith(`${needle} `) ||
+      k.startsWith(`${needle}-`)
+    ) {
       return i;
     }
   }
@@ -46,21 +49,23 @@ function slotRank(name: string): number {
 
 function groupMealsBySlot(
   meals: VariantMealRow[]
-): Array<{ slot: string; meals: VariantMealRow[] }> {
+): { slot: string; meals: VariantMealRow[] }[] {
   const buckets = new Map<string, VariantMealRow[]>();
   for (const m of meals) {
     const list = buckets.get(m.slot_name) ?? [];
     list.push(m);
     buckets.set(m.slot_name, list);
   }
-  const slots = Array.from(buckets.keys());
+  const slots = [...buckets.keys()];
   slots.sort((a, b) => {
     const ra = slotRank(a);
     const rb = slotRank(b);
-    if (ra !== rb) return ra - rb;
+    if (ra !== rb) {
+      return ra - rb;
+    }
     return a.localeCompare(b, "pl");
   });
-  return slots.map((slot) => ({ slot, meals: buckets.get(slot)! }));
+  return slots.map((slot) => ({ meals: buckets.get(slot)!, slot }));
 }
 
 const DEFAULT_VISIBLE_COLLAPSED = 5;
@@ -105,15 +110,21 @@ export function CateringList({
     const byCompany = new Map<string, PromoChip[]>();
     const globals: PromoChip[] = [];
     for (const c of campaigns) {
-      if (!c.code) continue;
+      if (!c.code) {
+        continue;
+      }
       const chip: PromoChip = {
         code: c.code,
-        discountPct: c.discount_percent ? parseFloat(c.discount_percent) : null,
+        discountPct: c.discount_percent
+          ? Number.parseFloat(c.discount_percent)
+          : null,
         scope: c.company_id ? "company" : "global",
       };
       if (c.company_id) {
         const list = byCompany.get(c.company_id) ?? [];
-        if (!list.some((x) => x.code === chip.code)) list.push(chip);
+        if (!list.some((x) => x.code === chip.code)) {
+          list.push(chip);
+        }
         byCompany.set(c.company_id, list);
       } else if (!globals.some((x) => x.code === chip.code)) {
         globals.push(chip);
@@ -126,7 +137,9 @@ export function CateringList({
     return (
       <section className="px-5 sm:px-8 lg:px-14 py-16">
         <p className="text-[11px] uppercase tracking-[0.08em] text-[var(--color-ink-3)] font-medium">
-          Najtaniej dziś · {cityName} · {kcalMin === kcalMax ? `${kcalMin}` : `${kcalMin}–${kcalMax}`} kcal · {days} dni
+          Najtaniej dziś · {cityName} ·{" "}
+          {kcalMin === kcalMax ? `${kcalMin}` : `${kcalMin}–${kcalMax}`} kcal ·{" "}
+          {days} dni
         </p>
         <p className="mt-4 text-[var(--color-ink-2)]">
           Brak ofert dla wybranego zakresu. Spróbuj poszerzyć kalorie albo
@@ -152,14 +165,16 @@ export function CateringList({
           </p>
           <p className="mt-3 text-[15px] text-[var(--color-ink-2)] max-w-[64ch]">
             {total} {plural(total, "firma", "firmy", "firm")} w tym przedziale.
-            Pokazujemy {startIdx}{startIdx !== endIdx ? `–${endIdx}` : ""} z {total},
-            posortowane od najtańszej. Kliknij firmę, żeby zobaczyć wszystkie jej diety.
+            Pokazujemy {startIdx}
+            {startIdx !== endIdx ? `–${endIdx}` : ""} z {total}, posortowane od
+            najtańszej. Kliknij firmę, żeby zobaczyć wszystkie jej diety.
           </p>
         </div>
 
         {rangeMin !== null && rangeMax !== null && (
           <div className="text-[12px] text-[var(--color-ink-3)] tnum whitespace-nowrap">
-            {formatPriceNumber(rangeMin)} – {formatPriceNumber(rangeMax)} zł / dzień
+            {formatPriceNumber(rangeMin)} – {formatPriceNumber(rangeMax)} zł /
+            dzień
           </div>
         )}
       </div>
@@ -255,25 +270,27 @@ function CateringTileRow({
   const primaryChip: PromoChip | null = (() => {
     if (appliedCode) {
       const match = chips.find((x) => x.code === appliedCode);
-      if (match) return match;
+      if (match) {
+        return match;
+      }
       // Applied code may not be in the campaigns table (e.g. no `separate`
       // info). Synthesize a chip so the user still sees what unlocked the
       // displayed price.
       return { code: appliedCode, discountPct: null, scope: "company" };
     }
-    if (chips.length === 0) return null;
-    return [...chips].sort(
+    if (chips.length === 0) {
+      return null;
+    }
+    return [...chips].toSorted(
       (a, b) =>
-        (b.discountPct ?? 0) - (a.discountPct ?? 0) || a.code.localeCompare(b.code, "pl"),
+        (b.discountPct ?? 0) - (a.discountPct ?? 0) ||
+        a.code.localeCompare(b.code, "pl")
     )[0];
   })();
 
   return (
     <li
-      className={cn(
-        "border-b border-[var(--color-bone)]",
-        isTop && "relative"
-      )}
+      className={cn("border-b border-[var(--color-bone)]", isTop && "relative")}
     >
       {isTop && (
         <span
@@ -283,7 +300,9 @@ function CateringTileRow({
       )}
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => {
+          setOpen((v) => !v);
+        }}
         aria-expanded={open}
         aria-controls={`tile-${tile.company_id}`}
         className={cn(
@@ -297,7 +316,9 @@ function CateringTileRow({
         <span
           className={cn(
             "tnum text-[12px] w-5 text-right row-span-2 lg:row-span-1 self-start lg:self-center pt-1 lg:pt-0",
-            isTop ? "text-[var(--color-amber-deep)]" : "text-[var(--color-ink-3)]"
+            isTop
+              ? "text-[var(--color-amber-deep)]"
+              : "text-[var(--color-ink-3)]"
           )}
         >
           {rank}
@@ -348,7 +369,9 @@ function CateringTileRow({
           <span className="text-[18px] text-[var(--color-ink)]">
             {formatPriceNumber(c.effective_per_day)}
           </span>
-          <span className="ml-1 text-[12px] text-[var(--color-ink-3)]">zł / dzień</span>
+          <span className="ml-1 text-[12px] text-[var(--color-ink-3)]">
+            zł / dzień
+          </span>
           {delta.kind !== "flat" && (
             <span
               className={cn(
@@ -419,34 +442,43 @@ function CateringDrilldown({
     loading: boolean;
   }>({ history: null, loading: true });
 
-  const cheapest = tile.cheapest;
+  const { cheapest } = tile;
   const abortRef = React.useRef<AbortController | null>(null);
 
   React.useEffect(() => {
     const ctrl = new AbortController();
     abortRef.current = ctrl;
     setHistoryState({ history: null, loading: true });
-    (async () => {
+    void (async () => {
       try {
         const u = new URL("/api/price-history", window.location.origin);
         u.searchParams.set("company_id", cheapest.company_id);
-        u.searchParams.set("diet_calories_id", String(cheapest.diet_calories_id));
+        u.searchParams.set(
+          "diet_calories_id",
+          String(cheapest.diet_calories_id)
+        );
         u.searchParams.set("city_id", String(cityId));
         u.searchParams.set("days", String(days));
         const res = await fetch(u.toString(), { signal: ctrl.signal });
-        if (ctrl.signal.aborted) return;
+        if (ctrl.signal.aborted) {
+          return;
+        }
         const data = res.ok
           ? ((await res.json()) as { history: HistoryPoint[] })
           : { history: [] };
         if (!ctrl.signal.aborted) {
           setHistoryState({ history: data.history, loading: false });
         }
-      } catch (err) {
-        if ((err as { name?: string })?.name === "AbortError") return;
+      } catch (error) {
+        if ((error as { name?: string })?.name === "AbortError") {
+          return;
+        }
         setHistoryState({ history: [], loading: false });
       }
     })();
-    return () => ctrl.abort();
+    return () => {
+      ctrl.abort();
+    };
   }, [cheapest.company_id, cheapest.diet_calories_id, cityId, days]);
 
   // Per-leaf meals cache, keyed by leafKey. Single in-flight controller so a
@@ -457,52 +489,57 @@ function CateringDrilldown({
   const mealsAbortRef = React.useRef<AbortController | null>(null);
   const requestedRef = React.useRef<Set<string>>(new Set());
 
-  const requestMeals = React.useCallback(
-    (leaf: LeafRow) => {
-      const key = leafKey(leaf);
-      if (requestedRef.current.has(key)) return; // already loading or loaded
-      requestedRef.current.add(key);
-      mealsAbortRef.current?.abort();
-      const ctrl = new AbortController();
-      mealsAbortRef.current = ctrl;
-      setMealsCache((prev) => {
-        const next = new Map(prev);
-        next.set(key, { kind: "loading" });
-        return next;
-      });
-      (async () => {
-        try {
-          const u = new URL("/api/variant-meals", window.location.origin);
-          u.searchParams.set("company_id", leaf.company_id);
-          u.searchParams.set("diet_calories_id", String(leaf.diet_calories_id));
-          if (leaf.tier_id != null) {
-            u.searchParams.set("tier_id", String(leaf.tier_id));
-          }
-          const res = await fetch(u.toString(), { signal: ctrl.signal });
-          if (ctrl.signal.aborted) return;
-          const data = res.ok
-            ? ((await res.json()) as { meals: VariantMealRow[] })
-            : { meals: [] };
-          if (ctrl.signal.aborted) return;
-          setMealsCache((prev) => {
-            const next = new Map(prev);
-            next.set(key, { kind: "ready", meals: data.meals });
-            return next;
-          });
-        } catch (err) {
-          if ((err as { name?: string })?.name === "AbortError") return;
-          setMealsCache((prev) => {
-            const next = new Map(prev);
-            next.set(key, { kind: "error" });
-            return next;
-          });
-          // Allow retry on error.
-          requestedRef.current.delete(key);
+  const requestMeals = React.useCallback((leaf: LeafRow) => {
+    const key = leafKey(leaf);
+    if (requestedRef.current.has(key)) {
+      return;
+    } // already loading or loaded
+    requestedRef.current.add(key);
+    mealsAbortRef.current?.abort();
+    const ctrl = new AbortController();
+    mealsAbortRef.current = ctrl;
+    setMealsCache((prev) => {
+      const next = new Map(prev);
+      next.set(key, { kind: "loading" });
+      return next;
+    });
+    void (async () => {
+      try {
+        const u = new URL("/api/variant-meals", window.location.origin);
+        u.searchParams.set("company_id", leaf.company_id);
+        u.searchParams.set("diet_calories_id", String(leaf.diet_calories_id));
+        if (leaf.tier_id != null) {
+          u.searchParams.set("tier_id", String(leaf.tier_id));
         }
-      })();
-    },
-    []
-  );
+        const res = await fetch(u.toString(), { signal: ctrl.signal });
+        if (ctrl.signal.aborted) {
+          return;
+        }
+        const data = res.ok
+          ? ((await res.json()) as { meals: VariantMealRow[] })
+          : { meals: [] };
+        if (ctrl.signal.aborted) {
+          return;
+        }
+        setMealsCache((prev) => {
+          const next = new Map(prev);
+          next.set(key, { kind: "ready", meals: data.meals });
+          return next;
+        });
+      } catch (error) {
+        if ((error as { name?: string })?.name === "AbortError") {
+          return;
+        }
+        setMealsCache((prev) => {
+          const next = new Map(prev);
+          next.set(key, { kind: "error" });
+          return next;
+        });
+        // Allow retry on error.
+        requestedRef.current.delete(key);
+      }
+    })();
+  }, []);
 
   // Pre-fetch the cheapest leaf so the right column lights up immediately.
   React.useEffect(() => {
@@ -515,7 +552,9 @@ function CateringDrilldown({
     (leaf: LeafRow) => {
       const key = leafKey(leaf);
       setExpandedKey((cur) => {
-        if (cur === key) return null;
+        if (cur === key) {
+          return null;
+        }
         return key;
       });
       requestMeals(leaf);
@@ -523,11 +562,12 @@ function CateringDrilldown({
     [requestMeals]
   );
 
-  React.useEffect(() => {
-    return () => {
+  React.useEffect(
+    () => () => {
       mealsAbortRef.current?.abort();
-    };
-  }, []);
+    },
+    []
+  );
 
   // Show 8 leaves by default; expand to all on demand.
   const [showAllLeaves, setShowAllLeaves] = React.useState(false);
@@ -536,7 +576,9 @@ function CateringDrilldown({
 
   // The leaf whose meals show on the right: the expanded one if any, else cheapest.
   const focusedLeaf: LeafRow = React.useMemo(() => {
-    if (!expandedKey) return cheapest;
+    if (!expandedKey) {
+      return cheapest;
+    }
     return tile.leaves.find((l) => leafKey(l) === expandedKey) ?? cheapest;
   }, [expandedKey, cheapest, tile.leaves]);
   const focusedMeals = mealsCache.get(leafKey(focusedLeaf));
@@ -581,7 +623,9 @@ function CateringDrilldown({
                         leaf={l}
                         highlight={idx === 0}
                         open={isOpen}
-                        onToggle={() => onLeafClick(l)}
+                        onToggle={() => {
+                          onLeafClick(l);
+                        }}
                       />
                       {isOpen && (
                         <tr className="border-t border-[var(--color-bone)] bg-[var(--color-cream)]">
@@ -599,10 +643,13 @@ function CateringDrilldown({
           {hidden > 0 && (
             <button
               type="button"
-              onClick={() => setShowAllLeaves(true)}
+              onClick={() => {
+                setShowAllLeaves(true);
+              }}
               className="mt-3 text-[12px] text-[var(--color-ink-3)] hover:text-[var(--color-ink)] transition-colors"
             >
-              Pokaż jeszcze {hidden} {plural(hidden, "wariant", "warianty", "wariantów")} →
+              Pokaż jeszcze {hidden}{" "}
+              {plural(hidden, "wariant", "warianty", "wariantów")} →
             </button>
           )}
 
@@ -623,7 +670,8 @@ function CateringDrilldown({
             </a>
             {tile.feedback_value && tile.feedback_number ? (
               <span className="text-[12px] text-[var(--color-ink-3)] tnum">
-                {parseFloat(tile.feedback_value).toFixed(2)} ★ ({tile.feedback_number}{" "}
+                {Number.parseFloat(tile.feedback_value).toFixed(2)} ★ (
+                {tile.feedback_number}{" "}
                 {plural(tile.feedback_number, "ocena", "oceny", "ocen")})
               </span>
             ) : null}
@@ -810,7 +858,7 @@ function LeafRowDisplay({
         <span>{dietLine || "—"}</span>
       </td>
       <td className="py-2 px-3 tnum text-[var(--color-ink-2)]">
-        {leaf.calories != null ? `${formatInt(leaf.calories)}` : "—"}
+        {leaf.calories != null ? formatInt(leaf.calories) : "—"}
       </td>
       <td className="py-2 px-3 text-right tnum pr-3">
         {formatPriceNumber(leaf.effective_per_day)}
@@ -826,7 +874,13 @@ function leafKey(l: LeafRow): string {
 
 // ── pagination ───────────────────────────────────────────────────────────────
 
-function Pagination({ page, totalPages }: { page: number; totalPages: number }) {
+function Pagination({
+  page,
+  totalPages,
+}: {
+  page: number;
+  totalPages: number;
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -834,8 +888,11 @@ function Pagination({ page, totalPages }: { page: number; totalPages: number }) 
   const hrefFor = React.useCallback(
     (n: number) => {
       const sp = new URLSearchParams(searchParams.toString());
-      if (n <= 1) sp.delete("page");
-      else sp.set("page", String(n));
+      if (n <= 1) {
+        sp.delete("page");
+      } else {
+        sp.set("page", String(n));
+      }
       const qs = sp.toString();
       return qs ? `${pathname}?${qs}` : pathname;
     },
@@ -844,16 +901,24 @@ function Pagination({ page, totalPages }: { page: number; totalPages: number }) 
 
   React.useEffect(() => {
     // Prefetch neighbours so paging feels instant.
-    if (page > 1) router.prefetch(hrefFor(page - 1));
-    if (page < totalPages) router.prefetch(hrefFor(page + 1));
+    if (page > 1) {
+      router.prefetch(hrefFor(page - 1));
+    }
+    if (page < totalPages) {
+      router.prefetch(hrefFor(page + 1));
+    }
   }, [page, totalPages, hrefFor, router]);
 
-  if (totalPages <= 1) return null;
+  if (totalPages <= 1) {
+    return null;
+  }
 
   const items: number[] = [];
   // Compact bar: 1 … (page-1) page (page+1) … last
   const push = (n: number) => {
-    if (n >= 1 && n <= totalPages && !items.includes(n)) items.push(n);
+    if (n >= 1 && n <= totalPages && !items.includes(n)) {
+      items.push(n);
+    }
   };
   push(1);
   push(page - 1);
@@ -988,8 +1053,12 @@ function Chip({ chip }: { chip: PromoChip }) {
 function plural(n: number, one: string, few: string, many: string): string {
   const mod10 = n % 10;
   const mod100 = n % 100;
-  if (n === 1) return one;
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return few;
+  if (n === 1) {
+    return one;
+  }
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) {
+    return few;
+  }
   return many;
 }
 

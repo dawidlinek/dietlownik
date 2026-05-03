@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+
 import { getVariantMeals } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
@@ -26,8 +27,8 @@ export async function GET(request: Request) {
       tierId,
     });
     return NextResponse.json({ meals });
-  } catch (err) {
-    console.error("[variant-meals] query failed", err);
+  } catch (error) {
+    console.error("[variant-meals] query failed", error);
     return NextResponse.json({ error: "query failed" }, { status: 500 });
   }
 }

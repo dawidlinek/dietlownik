@@ -1,4 +1,3 @@
-import { HttpError } from "@/scraper/api";
 import {
   LOGIN_DEVICE_TOKEN,
   LOGIN_PATH,
@@ -9,6 +8,7 @@ import {
   parseResponse,
   readCookieValue,
 } from "@/mcp/http";
+import { HttpError } from "@/scraper/api";
 
 // --- Public types ---
 
@@ -51,10 +51,10 @@ export class DietlyClient {
     form.set("notificationsPermitted", "true");
 
     const response = await fetchWithRetry(buildUrl(LOGIN_PATH), {
-      method: "POST",
-      headers: new Headers(MOBILE_HEADERS),
       body: form,
       cache: "no-store",
+      headers: new Headers(MOBILE_HEADERS),
+      method: "POST",
     });
 
     const bodyText = await response.text();
@@ -83,16 +83,23 @@ export class DietlyClient {
 
   // --- Authenticated requests ---
 
-  async authGet<T>(email: string, path: string, companyId?: string): Promise<T> {
+  async authGet<T>(
+    email: string,
+    path: string,
+    companyId?: string
+  ): Promise<T> {
     const session = this.sessions.get(normalizeEmail(email));
     if (!session) {
       throw new HttpError("GET", path, 401, `No stored session for ${email}`);
     }
 
     const response = await fetchWithRetry(buildUrl(path), {
-      method: "GET",
-      headers: this.authHeaders(session, companyId ? { "company-id": companyId } : {}),
       cache: "no-store",
+      headers: this.authHeaders(
+        session,
+        companyId ? { "company-id": companyId } : {}
+      ),
+      method: "GET",
     });
 
     this.refreshSessionFromResponse(email, session, response.headers);
@@ -111,12 +118,12 @@ export class DietlyClient {
     }
 
     const response = await fetchWithRetry(buildUrl(path), {
-      method: "POST",
+      body: JSON.stringify(body),
       headers: this.authHeaders(session, {
         "content-type": "application/json",
         ...(companyId ? { "company-id": companyId } : {}),
       }),
-      body: JSON.stringify(body),
+      method: "POST",
     });
 
     this.refreshSessionFromResponse(email, session, response.headers);
@@ -127,8 +134,8 @@ export class DietlyClient {
 
   async anonGet<T>(path: string, companyId?: string): Promise<T> {
     const response = await fetchWithRetry(buildUrl(path), {
-      method: "GET",
       headers: this.anonHeaders(companyId ? { "company-id": companyId } : {}),
+      method: "GET",
     });
 
     return parseResponse<T>(response, "GET", path);
@@ -157,7 +164,9 @@ export class DietlyClient {
     headers: Headers
   ): void {
     const setCookie = getSetCookieValues(headers);
-    if (setCookie.length === 0) return;
+    if (setCookie.length === 0) {
+      return;
+    }
 
     const rememberMe =
       readCookieValue(setCookie, "remember-me") ?? currentSession.rememberMe;

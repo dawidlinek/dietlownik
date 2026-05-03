@@ -45,16 +45,16 @@ No rate-limit headers were observed. Be polite: 1–2 req/s per company.
 
 Hierarchy: **company → diet → tier → dietOption → dietCalories** (leaf).
 
-| ID | Where it comes from | Example | Notes |
-|---|---|---|---|
-| `cityId` | `top-search` → `cities[].cityId`, also `cities/top-10` | `986283` (Wrocław) | `int` |
-| `companyId` | URL slug; `awarded-and-top` returns `name` (= slug) | `robinfood`, `mangodiet` | `string`, URL-stable |
-| `dietId` | `companyDiets[].dietId` | `4` ("Wybór menu"), `9` ("Standard Food") | `int` |
-| `tierId` | `dietTiers[].tierId` | `6` ("Pakiet Comfort") | `int`. Only set for menu-config diets. |
-| `dietOptionId` | `dietOptions[].dietOptionId` | `15` ("Standard Food") | `int` |
-| `tierDietOptionId` | composite `"{tierId}-{dietOptionId}"` | `"6-15"` | `string`. Required by `quick-order/calculate-price` for menu-config diets, omitted for fixed diets. |
-| `dietCaloriesId` | `dietCalories[].dietCaloriesId` (leaf) | `65` (1200 kcal Standard) | `int`. **The only ID strictly needed for pricing and menu queries.** |
-| `dietCaloriesMealId` | `meals[].options[].dietCaloriesMealId` | `358` | `int`. The per-day, per-kcal, per-dish ID — use this to track menus over time. |
+| ID                   | Where it comes from                                    | Example                                   | Notes                                                                                               |
+| -------------------- | ------------------------------------------------------ | ----------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `cityId`             | `top-search` → `cities[].cityId`, also `cities/top-10` | `986283` (Wrocław)                        | `int`                                                                                               |
+| `companyId`          | URL slug; `awarded-and-top` returns `name` (= slug)    | `robinfood`, `mangodiet`                  | `string`, URL-stable                                                                                |
+| `dietId`             | `companyDiets[].dietId`                                | `4` ("Wybór menu"), `9` ("Standard Food") | `int`                                                                                               |
+| `tierId`             | `dietTiers[].tierId`                                   | `6` ("Pakiet Comfort")                    | `int`. Only set for menu-config diets.                                                              |
+| `dietOptionId`       | `dietOptions[].dietOptionId`                           | `15` ("Standard Food")                    | `int`                                                                                               |
+| `tierDietOptionId`   | composite `"{tierId}-{dietOptionId}"`                  | `"6-15"`                                  | `string`. Required by `quick-order/calculate-price` for menu-config diets, omitted for fixed diets. |
+| `dietCaloriesId`     | `dietCalories[].dietCaloriesId` (leaf)                 | `65` (1200 kcal Standard)                 | `int`. **The only ID strictly needed for pricing and menu queries.**                                |
+| `dietCaloriesMealId` | `meals[].options[].dietCaloriesMealId`                 | `358`                                     | `int`. The per-day, per-kcal, per-dish ID — use this to track menus over time.                      |
 
 Two diet shapes coexist within the same company:
 
@@ -107,9 +107,9 @@ Top-10 cities with delivery-window info. Useful as a seed list.
     "sectorId": 86,
     "deliveryFee": null,
     "deliveryTime": [
-      { "deliveryTimeId": 229, "timeFrom": "23:59:59", "timeTo": "08:00:00" }
-    ]
-  }
+      { "deliveryTimeId": 229, "timeFrom": "23:59:59", "timeTo": "08:00:00" },
+    ],
+  },
 ]
 ```
 
@@ -213,19 +213,22 @@ fields are `null`/`false`; otherwise `code` is the promo code):
 {
   "name": "mango.diet",
   "logoUrl": "https://ml-assets.com/...",
-  "rateValue": 92.0,                  // 0–100
-  "feedbackValue": 4.82,              // 0–5
+  "rateValue": 92.0, // 0–100
+  "feedbackValue": 4.82, // 0–5
   "feedbackNumber": 369,
   "activePromotionInfo": {
     "promoText": "Promocja -30%  KOD:MG30",
     "promoDeadline": "2026-05-03",
     "code": "MG30",
     "discountPercents": 30,
-    "separate": true                  // true = code not auto-applied to advertised price
+    "separate": true, // true = code not auto-applied to advertised price
   },
-  "deliveryInfo": { "date": "2026-04-28", "text": "Zamów do 05:00 (jutro) - dostawa we wtorek" },
+  "deliveryInfo": {
+    "date": "2026-04-28",
+    "text": "Zamów do 05:00 (jutro) - dostawa we wtorek",
+  },
   "rate": 4.82,
-  "dietlyDelivery": true              // delivered by Dietly's logistics, not the catering
+  "dietlyDelivery": true, // delivered by Dietly's logistics, not the catering
 }
 ```
 
@@ -242,15 +245,15 @@ Per-diet, menu-config shape:
   "feedbackValue": 4.74,
   "feedbackNumber": 277,
   "dietMealCount": 40,
-  "dietOptions": [],                  // empty for menu-config; lives under tiers
+  "dietOptions": [], // empty for menu-config; lives under tiers
   "dietTiers": [
     {
       "tierId": 6,
       "name": "Pakiet Comfort",
       "description": "25 posiłków do wyboru codziennie",
-      "minPrice": "67.00 zł",         // string with currency!
+      "minPrice": "67.00 zł", // string with currency!
       "mealsNumber": 25,
-      "tag": null,                    // "BESTSELLER", "VEGE", etc.
+      "tag": null, // "BESTSELLER", "VEGE", etc.
       "dietOptions": [
         {
           "dietOptionId": 15,
@@ -258,23 +261,23 @@ Per-diet, menu-config shape:
           "name": "Standard Food",
           "dietOptionTag": "STANDARD",
           "dietCalories": [
-            { "dietCaloriesId": 65,  "calories": 1200 },
-            { "dietCaloriesId": 66,  "calories": 1500 },
-            { "dietCaloriesId": 67,  "calories": 1800 },
-            { "dietCaloriesId": 68,  "calories": 2000 },
+            { "dietCaloriesId": 65, "calories": 1200 },
+            { "dietCaloriesId": 66, "calories": 1500 },
+            { "dietCaloriesId": 67, "calories": 1800 },
+            { "dietCaloriesId": 68, "calories": 2000 },
             { "dietCaloriesId": 184, "calories": 2200 },
-            { "dietCaloriesId": 69,  "calories": 2500 },
-            { "dietCaloriesId": 70,  "calories": 3000 }
+            { "dietCaloriesId": 69, "calories": 2500 },
+            { "dietCaloriesId": 70, "calories": 3000 },
           ],
-          "defaultOption": true
-        }
-      ]
-    }
+          "defaultOption": true,
+        },
+      ],
+    },
   ],
   "discounts": [
-    { "discount": 5.0,  "minimumDays": 5,  "discountType": "PERCENTAGE" },
-    { "discount": 10.0, "minimumDays": 10, "discountType": "PERCENTAGE" }
-  ]
+    { "discount": 5.0, "minimumDays": 5, "discountType": "PERCENTAGE" },
+    { "discount": 10.0, "minimumDays": 10, "discountType": "PERCENTAGE" },
+  ],
 }
 ```
 
@@ -315,14 +318,14 @@ Lightweight pricing snapshot.
   "dietPriceInfo": [
     {
       "dietId": 16,
-      "discountPrice": "73.50 zł",       // post-promo headline
-      "defaultPrice": "105.00 zł",       // pre-promo
+      "discountPrice": "73.50 zł", // post-promo headline
+      "defaultPrice": "105.00 zł", // pre-promo
       "dietCaloriesIds": [103, 104, 105], // every kcal node for this diet
-      "dietPriceInCompanyPromotion": true
-    }
+      "dietPriceInCompanyPromotion": true,
+    },
   ],
   "companySettings": { "ordersEnabled": true, "deliveryEnabled": true },
-  "companyPriceCategory": "AVERAGE",     // CHEAP / AVERAGE / EXPENSIVE
+  "companyPriceCategory": "AVERAGE", // CHEAP / AVERAGE / EXPENSIVE
   "awarded": true,
   "citySearchResult": {
     "cityId": 986283,
@@ -330,13 +333,13 @@ Lightweight pricing snapshot.
     "sectorId": 66,
     "deliveryFee": null,
     "deliveryTime": [
-      { "deliveryTimeId": 107, "timeFrom": "23:59:59", "timeTo": "06:00:00" }
-    ]
+      { "deliveryTimeId": 107, "timeFrom": "23:59:59", "timeTo": "06:00:00" },
+    ],
   },
   "lowestPrice": {
-    "standard": "54.60 zł",              // cheapest fixed diet
-    "menuConfiguration": "60.90 zł"      // cheapest menu-config diet
-  }
+    "standard": "54.60 zł", // cheapest fixed diet
+    "menuConfiguration": "60.90 zł", // cheapest menu-config diet
+  },
 }
 ```
 
@@ -391,34 +394,34 @@ Response (no promo):
 ```jsonc
 {
   "cart": {
-    "totalCostToPay": 67.00,                       // float, PLN, post-discounts
-    "totalCostWithoutDiscounts": 67.00,
-    "totalLowest30DaysCostWithoutDiscounts": null,  // Omnibus disclosure, set when promo applied
-    "totalDeliveryCost": 0.00,
+    "totalCostToPay": 67.0, // float, PLN, post-discounts
+    "totalCostWithoutDiscounts": 67.0,
+    "totalLowest30DaysCostWithoutDiscounts": null, // Omnibus disclosure, set when promo applied
+    "totalDeliveryCost": 0.0,
     "totalPromoCodeDiscount": 0,
     "totalPromoCodeDiscountInfo": "",
-    "totalOrderLengthDiscount": 0.00,
-    "totalDeliveriesOnDateDiscount": 0.00,
-    "totalLoyaltyPointsDiscount": 0.00,
-    "totalPickupPointDiscount": 0.00,
+    "totalOrderLengthDiscount": 0.0,
+    "totalDeliveriesOnDateDiscount": 0.0,
+    "totalLoyaltyPointsDiscount": 0.0,
+    "totalPickupPointDiscount": 0.0,
     "totalOneTimeSideOrdersCost": 0,
     "totalAwardedLoyaltyProgramPoints": 0,
-    "totalAwardedGlobalLoyaltyProgramPoints": 0
+    "totalAwardedGlobalLoyaltyProgramPoints": 0,
   },
   "items": [
     {
       "itemId": "company-visiting-card-quick-order",
-      "perDayDietCost": 67.00,
-      "perDayDietWithDiscountsCost": 67.00,
-      "totalDietWithDiscountsAndSideOrdersCost": 67.00,
-      "totalDietWithSideOrdersCost": 67.00,
-      "totalDietWithoutSideOrdersCost": 67.00,
-      "totalSideOrdersCost": 0.00,
-      "totalCutleryCost": 0.00,
-      "totalSideOrdersWithoutCutleryCost": 0.00,
-      "totalMealsChosenCost": 0
-    }
-  ]
+      "perDayDietCost": 67.0,
+      "perDayDietWithDiscountsCost": 67.0,
+      "totalDietWithDiscountsAndSideOrdersCost": 67.0,
+      "totalDietWithSideOrdersCost": 67.0,
+      "totalDietWithoutSideOrdersCost": 67.0,
+      "totalSideOrdersCost": 0.0,
+      "totalCutleryCost": 0.0,
+      "totalSideOrdersWithoutCutleryCost": 0.0,
+      "totalMealsChosenCost": 0,
+    },
+  ],
 }
 ```
 
@@ -456,9 +459,9 @@ Body:
   "loyaltyProgramPointsGlobal": 0,
   "simpleOrders": [
     {
-      "itemId": "Ll5v-YFDomCtdwOP4KyRQ",      // client-generated, opaque
+      "itemId": "Ll5v-YFDomCtdwOP4KyRQ", // client-generated, opaque
       "deliveryDates": ["2026-04-29", "2026-04-30", "..."],
-      "customDeliveryMeals": {},                // per-date overrides; empty = same meals every day
+      "customDeliveryMeals": {}, // per-date overrides; empty = same meals every day
       "deliveryMeals": [
         { "amount": 1, "dietCaloriesMealId": 676 },
         { "amount": 1, "dietCaloriesMealId": 680 },
@@ -580,14 +583,14 @@ City-scoped marketing banners. Each banner has:
 ```jsonc
 {
   "name": "ROBIM30",
-  "code": "ROBIM30",                                  // promo code string (or campaign name)
-  "url": "https://ml-assets.com/images/...",          // banner image
+  "code": "ROBIM30", // promo code string (or campaign name)
+  "url": "https://ml-assets.com/images/...", // banner image
   "validFrom": "2026-04-13T09:30:00+02:00",
-  "validTo":   "2026-04-26T23:59:00+02:00",
+  "validTo": "2026-04-26T23:59:00+02:00",
   "deepLink": "dietly://mobile/catering-dietetyczny-firma/robinfood",
-  "target": "DASHBOARD",                              // DASHBOARD / SAVED_MEALS / COMPANIES
-  "priority": 1,                                       // lower = shown first
-  "type": "CAMPAIGN"                                   // CAMPAIGN / STANDALONE
+  "target": "DASHBOARD", // DASHBOARD / SAVED_MEALS / COMPANIES
+  "priority": 1, // lower = shown first
+  "type": "CAMPAIGN", // CAMPAIGN / STANDALONE
 }
 ```
 
@@ -641,13 +644,13 @@ both work.
   "name": "Standardowa",
   "locativeName": "Standardowej",
   "additionalName": "dieta standard",
-  "calories": [1200, 1500, 1800, 2000, 2500],         // typical kcal options
+  "calories": [1200, 1500, 1800, 2000, 2500], // typical kcal options
   "main": true,
   "priority": 1,
   "urlName": "standardowa",
   "imageUrl": "https://miscellaneous-images.s3.eu-central-1.amazonaws.com/dietly-diets/STANDARD.jpg",
   "dietTagBulletPoints": ["...", "...", "..."],
-  "dietDescriptions": [ { "title": "...", "description": "..." } ]
+  "dietDescriptions": [{ "title": "...", "description": "..." }],
 }
 ```
 
@@ -671,8 +674,8 @@ Catalogue-wide side-orders (cross-company defaults).
     "maxQuantity": 100,
     "limitedByMaximumSelectedMeals": true,
     "customDates": false,
-    "type": "DEFAULT"
-  }
+    "type": "DEFAULT",
+  },
 ]
 ```
 

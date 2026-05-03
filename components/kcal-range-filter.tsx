@@ -1,7 +1,8 @@
 "use client";
 
-import * as React from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import * as React from "react";
+
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -21,7 +22,9 @@ interface Props {
 const URL_DEBOUNCE_MS = 200;
 
 function clamp(n: number, lo: number, hi: number): number {
-  if (Number.isNaN(n)) return lo;
+  if (Number.isNaN(n)) {
+    return lo;
+  }
   return Math.max(lo, Math.min(hi, n));
 }
 
@@ -51,8 +54,11 @@ export function KcalRangeFilter({
     (patch: Record<string, string | number | undefined>) => {
       const sp = new URLSearchParams(searchParams.toString());
       for (const [k, v] of Object.entries(patch)) {
-        if (v === undefined) sp.delete(k);
-        else sp.set(k, String(v));
+        if (v === undefined) {
+          sp.delete(k);
+        } else {
+          sp.set(k, String(v));
+        }
       }
       // First page on filter change.
       sp.delete("page");
@@ -65,14 +71,22 @@ export function KcalRangeFilter({
   const debounceRef = React.useRef<number | null>(null);
   const commit = React.useCallback(
     (rawMin: string, rawMax: string) => {
-      if (debounceRef.current != null) window.clearTimeout(debounceRef.current);
+      if (debounceRef.current != null) {
+        window.clearTimeout(debounceRef.current);
+      }
       debounceRef.current = window.setTimeout(() => {
-        let mn = clamp(parseInt(rawMin, 10), dataMin, dataMax);
-        let mx = clamp(parseInt(rawMax, 10), dataMin, dataMax);
-        if (Number.isNaN(parseInt(rawMin, 10))) mn = activeMin;
-        if (Number.isNaN(parseInt(rawMax, 10))) mx = activeMax;
-        if (mn > mx) [mn, mx] = [mx, mn];
-        setUrl({ kcal_min: mn, kcal_max: mx });
+        let mn = clamp(Number.parseInt(rawMin, 10), dataMin, dataMax);
+        let mx = clamp(Number.parseInt(rawMax, 10), dataMin, dataMax);
+        if (Number.isNaN(Number.parseInt(rawMin, 10))) {
+          mn = activeMin;
+        }
+        if (Number.isNaN(Number.parseInt(rawMax, 10))) {
+          mx = activeMax;
+        }
+        if (mn > mx) {
+          [mn, mx] = [mx, mn];
+        }
+        setUrl({ kcal_max: mx, kcal_min: mn });
       }, URL_DEBOUNCE_MS);
     },
     [activeMin, activeMax, dataMin, dataMax, setUrl]
@@ -81,7 +95,7 @@ export function KcalRangeFilter({
   const onPreset = (k: number) => {
     setMinStr(String(k));
     setMaxStr(String(k));
-    setUrl({ kcal_min: k, kcal_max: k });
+    setUrl({ kcal_max: k, kcal_min: k });
   };
 
   const showRangeReset =
@@ -120,7 +134,7 @@ export function KcalRangeFilter({
               onClick={() => {
                 setMinStr(String(dataMin));
                 setMaxStr(String(dataMax));
-                setUrl({ kcal_min: dataMin, kcal_max: dataMax });
+                setUrl({ kcal_max: dataMax, kcal_min: dataMin });
               }}
               className="text-[12px] text-[var(--color-ink-3)] hover:text-[var(--color-ink)] underline-offset-2 hover:underline ml-1"
             >
@@ -137,7 +151,9 @@ export function KcalRangeFilter({
               <Pill
                 key={k}
                 active={isActive}
-                onClick={() => onPreset(k)}
+                onClick={() => {
+                  onPreset(k);
+                }}
                 title={`${k} kcal — kliknij, by zawęzić`}
               >
                 {k}
@@ -155,8 +171,14 @@ export function KcalRangeFilter({
             <Pill
               key={d}
               active={d === activeDays}
-              onClick={() => setUrl({ days: d })}
-              title={d === 1 ? "Cena bez rabatu długościowego" : `${d} dni — z rabatem`}
+              onClick={() => {
+                setUrl({ days: d });
+              }}
+              title={
+                d === 1
+                  ? "Cena bez rabatu długościowego"
+                  : `${d} dni — z rabatem`
+              }
             >
               {d}
             </Pill>
@@ -211,7 +233,9 @@ function NumberCell({
       inputMode="numeric"
       pattern="[0-9]*"
       value={value}
-      onChange={(e) => onChange(e.target.value)}
+      onChange={(e) => {
+        onChange(e.target.value);
+      }}
       aria-label={ariaLabel}
       className={cn(
         "w-[68px] px-2 py-1 text-[14px] tnum text-right",

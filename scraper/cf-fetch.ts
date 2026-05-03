@@ -15,27 +15,40 @@
 // keeps cookies across runs, so cf_clearance / __cf_bm stay warm between
 // scrapes. Delete the dir to force a clean session.
 
-import type { BrowserContext, APIRequestContext } from 'patchright';
-import { isCloudflareChallenge, launchCfBrowser, USER_DATA_DIR } from './cf-shared.js';
+import type { BrowserContext, APIRequestContext } from "patchright";
 
-const HEADLESS = process.env.CF_HEADLESS !== '0';
+import {
+  isCloudflareChallenge,
+  launchCfBrowser,
+  USER_DATA_DIR,
+} from "./cf-shared";
 
-let ctxPromise: Promise<{ ctx: BrowserContext; req: APIRequestContext }> | null = null;
+const HEADLESS = process.env.CF_HEADLESS !== "0";
 
-async function getCtx(): Promise<{ ctx: BrowserContext; req: APIRequestContext }> {
-  if (ctxPromise) return ctxPromise;
+let ctxPromise: Promise<{
+  ctx: BrowserContext;
+  req: APIRequestContext;
+}> | null = null;
+
+async function getCtx(): Promise<{
+  ctx: BrowserContext;
+  req: APIRequestContext;
+}> {
+  if (ctxPromise) {
+    return ctxPromise;
+  }
   ctxPromise = (async () => {
     process.stderr.write(
-      `[cf-fetch] launching chrome (headless=${HEADLESS}) profile=${USER_DATA_DIR}\n`,
+      `[cf-fetch] launching chrome (headless=${HEADLESS}) profile=${USER_DATA_DIR}\n`
     );
     const ctx = await launchCfBrowser({ headless: HEADLESS });
 
     // Best-effort cleanup. SIGINT/SIGTERM await close so chrome dies cleanly;
     // 'exit' is sync-only — chrome will be reaped with the parent regardless.
-    const close = () => ctx.close().catch(() => {});
-    process.on('exit', () => void close());
-    process.on('SIGINT', () => void close().then(() => process.exit(130)));
-    process.on('SIGTERM', () => void close().then(() => process.exit(143)));
+    const close = async () => ctx.close().catch(() => {});
+    process.on("exit", () => void close());
+    process.on("SIGINT", () => void close().then(() => process.exit(130)));
+    process.on("SIGTERM", () => void close().then(() => process.exit(143)));
 
     return { ctx, req: ctx.request };
   })();
@@ -46,23 +59,34 @@ async function getCtx(): Promise<{ ctx: BrowserContext; req: APIRequestContext }
 // (which would itself look bot-like to CF).
 let challengeSolveLock: Promise<void> = Promise.resolve();
 
-async function solveChallengeInPage(ctx: BrowserContext, url: string): Promise<void> {
+async function solveChallengeInPage(
+  ctx: BrowserContext,
+  url: string
+): Promise<void> {
   const prev = challengeSolveLock;
   let release!: () => void;
-  challengeSolveLock = new Promise<void>(r => (release = r));
+  challengeSolveLock = new Promise<void>((r) => {
+    release = r;
+  });
   await prev;
   try {
     process.stderr.write(`[cf-fetch] CF challenge — solving in page: ${url}\n`);
     const page = await ctx.newPage();
     try {
-      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30_000 }).catch(() => {});
+      await page
+        .goto(url, { timeout: 30_000, waitUntil: "domcontentloaded" })
+        .catch(() => {});
       await page
         .waitForFunction(
           () => {
-            const t = (document.title || '') + ' ' + (document.body?.innerText || '').slice(0, 200);
-            return !/Just a moment|Verify you are human|Checking if the site connection is secure/i.test(t);
+            const t = `${document.title || ""} ${(
+              document.body?.textContent || ""
+            ).slice(0, 200)}`;
+            return !/Just a moment|Verify you are human|Checking if the site connection is secure/i.test(
+              t
+            );
           },
-          { polling: 500, timeout: 30_000 },
+          { polling: 500, timeout: 30_000 }
         )
         .catch(() => {});
     } finally {
@@ -77,19 +101,19 @@ async function rawFetch(
   req: APIRequestContext,
   url: string,
   init: RequestInit,
-  timeoutMs: number,
+  timeoutMs: number
 ): Promise<{ status: number; headers: Headers; body: string }> {
-  const method = (init.method ?? 'GET').toUpperCase();
+  const method = (init.method ?? "GET").toUpperCase();
   const res = await req.fetch(url, {
-    method,
-    headers: init.headers as Record<string, string> | undefined,
     data: init.body as string | undefined,
-    timeout: timeoutMs,
     failOnStatusCode: false,
+    headers: init.headers as Record<string, string> | undefined,
     maxRedirects: 5,
+    method,
+    timeout: timeoutMs,
   });
   const body = await res.text();
-  return { status: res.status(), headers: new Headers(res.headers()), body };
+  return { body, headers: new Headers(res.headers()), status: res.status() };
 }
 
 /**
@@ -97,7 +121,11 @@ async function rawFetch(
  * challenge response, opens the URL in a real Page so chrome's JS engine
  * solves it (sets cf_clearance in the shared cookie jar), then retries.
  */
-export async function cfFetch(url: string, init: RequestInit = {}, timeoutMs = 25_000): Promise<Response> {
+export async function cfFetch(
+  url: string,
+  init: RequestInit = {},
+  timeoutMs = 25_000
+): Promise<Response> {
   const { ctx, req } = await getCtx();
 
   let result = await rawFetch(req, url, init, timeoutMs);
@@ -106,5 +134,8 @@ export async function cfFetch(url: string, init: RequestInit = {}, timeoutMs = 2
     result = await rawFetch(req, url, init, timeoutMs);
   }
 
-  return new Response(result.body, { status: result.status, headers: result.headers });
+  return new Response(result.body, {
+    headers: result.headers,
+    status: result.status,
+  });
 }

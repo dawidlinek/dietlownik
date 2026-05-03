@@ -9,11 +9,11 @@ const inputSchema = z.object({
     .boolean()
     .default(false)
     .describe(
-      "Set to true to skip the in-tool confirmation step. Used as a fallback when the host doesn't support spec elicitation (the tool returns a summary on the first call; re-call with confirmed:true after the user agrees).",
+      "Set to true to skip the in-tool confirmation step. Used as a fallback when the host doesn't support spec elicitation (the tool returns a summary on the first call; re-call with confirmed:true after the user agrees)."
     ),
   delivery_dates: z.array(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)).min(1),
   diet_calories_id: z.number().int().positive(),
-  email: z.string().email(),
+  email: z.email(),
   meal_selections: z
     .array(
       z.object({
@@ -21,9 +21,9 @@ const inputSchema = z.object({
         meals: z.array(
           z.object({
             diet_calories_meal_id: z.number().int().positive(),
-          }),
+          })
         ),
-      }),
+      })
     )
     .min(1),
   profile_address_id: z.number().int().positive(),
@@ -40,7 +40,7 @@ interface DeliveryMealPayload {
 }
 
 interface PlaceOrderResponse {
-  orders?: Array<{ orderId?: number }>;
+  orders?: { orderId?: number }[];
   paymentUrl?: {
     paymentUrl?: string;
     paymentUrlWithCost?: { url?: string };
@@ -50,7 +50,7 @@ interface PlaceOrderResponse {
 function summarizeOrder(input: PlaceOrderInput): string {
   const totalMeals = input.meal_selections.reduce(
     (sum, sel) => sum + sel.meals.length,
-    0,
+    0
   );
   const days = input.delivery_dates.length;
   const lines = [
@@ -58,10 +58,14 @@ function summarizeOrder(input: PlaceOrderInput): string {
     `Email: ${input.email}`,
     `Profile address: ${input.profile_address_id}`,
     `Diet calories ID: ${input.diet_calories_id}`,
-    ...(input.tier_diet_option_id ? [`Tier diet option: ${input.tier_diet_option_id}`] : []),
+    ...(input.tier_diet_option_id
+      ? [`Tier diet option: ${input.tier_diet_option_id}`]
+      : []),
     `Delivery: ${days} day${days === 1 ? "" : "s"} (${input.delivery_dates[0]} → ${input.delivery_dates[days - 1]})`,
     `Total meals: ${totalMeals}`,
-    ...(input.promo_codes?.length ? [`Promo codes: ${input.promo_codes.join(", ")}`] : []),
+    ...(input.promo_codes?.length
+      ? [`Promo codes: ${input.promo_codes.join(", ")}`]
+      : []),
     `Test order: ${input.test_order ? "YES (no charge)" : "no — REAL CHARGE"}`,
   ];
   return lines.join("\n");
@@ -77,7 +81,10 @@ function jsonResult(data: unknown): CallToolResult {
   };
 }
 
-async function executeOrder(input: PlaceOrderInput, client: import("@/mcp/client").DietlyClient) {
+async function executeOrder(
+  input: PlaceOrderInput,
+  client: import("@/mcp/client").DietlyClient
+) {
   const customDeliveryMeals: Record<string, DeliveryMealPayload[]> = {};
   for (const selection of input.meal_selections) {
     customDeliveryMeals[selection.date] = selection.meals.map((m) => ({
@@ -115,7 +122,7 @@ async function executeOrder(input: PlaceOrderInput, client: import("@/mcp/client
         dietCaloriesId: input.diet_calories_id,
         hourPreference: "",
         invoice: false,
-        itemId: crypto.randomUUID().replace(/-/g, "").slice(0, 20),
+        itemId: crypto.randomUUID().replaceAll("-", "").slice(0, 20),
         note: "",
         paymentNote: "",
         paymentType: "ONLINE",
@@ -136,7 +143,7 @@ async function executeOrder(input: PlaceOrderInput, client: import("@/mcp/client
     input.email,
     "/api/mobile/profile/shopping-cart/order",
     payload,
-    input.company_id,
+    input.company_id
   );
 
   const payment_url =

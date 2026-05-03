@@ -1,26 +1,27 @@
 import type { Metadata } from "next";
 import { Fraunces, Plus_Jakarta_Sans } from "next/font/google";
+
 import "./globals.css";
 
 const fraunces = Fraunces({
-  variable: "--font-fraunces",
-  subsets: ["latin", "latin-ext"],
-  weight: "variable",
   axes: ["SOFT", "opsz"],
   display: "swap",
+  subsets: ["latin", "latin-ext"],
+  variable: "--font-fraunces",
+  weight: "variable",
 });
 
 const jakarta = Plus_Jakarta_Sans({
-  variable: "--font-jakarta",
-  subsets: ["latin", "latin-ext"],
-  weight: "variable",
   display: "swap",
+  subsets: ["latin", "latin-ext"],
+  variable: "--font-jakarta",
+  weight: "variable",
 });
 
 export const metadata: Metadata = {
-  title: "dietlownik",
   description:
     "Porównywarka cen cateringów dietetycznych — Wrocław, dane z dietly.pl.",
+  title: "dietlownik",
 };
 
 export default function RootLayout({

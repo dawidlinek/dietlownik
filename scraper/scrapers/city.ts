@@ -1,18 +1,21 @@
-import { get } from '../api.js';
-import { q } from '../db.js';
-import type { City, TopSearchResponse } from '../types.js';
+import { get } from "../api.js";
+import { q } from "../db.js";
+import type { City, TopSearchResponse } from "../types.js";
 
-export async function scrapeCity(cityName = 'Wrocław'): Promise<City> {
+export async function scrapeCity(cityName = "Wrocław"): Promise<City> {
   console.log(`[city] resolving "${cityName}"...`);
   const data = await get<TopSearchResponse>(
-    `/api/open/search/top-search?query=${encodeURIComponent(cityName)}&citiesSize=10&companiesSize=0`,
+    `/api/open/search/top-search?query=${encodeURIComponent(cityName)}&citiesSize=10&companiesSize=0`
   );
 
   const city =
-    data.cities.find(c => c.cityStatus && c.name.toLowerCase() === cityName.toLowerCase()) ??
-    data.cities.find(c => c.cityStatus);
+    data.cities.find(
+      (c) => c.cityStatus && c.name.toLowerCase() === cityName.toLowerCase()
+    ) ?? data.cities.find((c) => c.cityStatus);
 
-  if (!city) throw new Error(`City not found: ${cityName}`);
+  if (!city) {
+    throw new Error(`City not found: ${cityName}`);
+  }
 
   await q(
     `INSERT INTO cities
@@ -24,12 +27,20 @@ export async function scrapeCity(cityName = 'Wrocław'): Promise<City> {
        number_of_companies = EXCLUDED.number_of_companies,
        updated_at          = NOW()`,
     [
-      city.cityId, city.name, city.sanitizedName, city.countyName,
-      city.municipalityName, city.provinceName, city.cityStatus,
-      city.numberOfCompanies, city.largestCityForName ?? false,
-    ],
+      city.cityId,
+      city.name,
+      city.sanitizedName,
+      city.countyName,
+      city.municipalityName,
+      city.provinceName,
+      city.cityStatus,
+      city.numberOfCompanies,
+      city.largestCityForName ?? false,
+    ]
   );
 
-  console.log(`[city] ✓ ${city.name} id=${city.cityId} (${city.numberOfCompanies} caterings)`);
+  console.log(
+    `[city] ✓ ${city.name} id=${city.cityId} (${city.numberOfCompanies} caterings)`
+  );
   return city;
 }

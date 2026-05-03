@@ -1,6 +1,6 @@
-import { post, futureWeekdays } from '../api.js';
-import { q } from '../db.js';
-import type { PriceRequestBody, PriceResponse, PriceLeaf } from '../types.js';
+import { post, futureWeekdays } from "../api.js";
+import { q } from "../db.js";
+import type { PriceRequestBody, PriceResponse, PriceLeaf } from "../types.js";
 
 const ORDER_DAY_TIERS = [5, 10, 20];
 const CONCURRENCY = 8;
@@ -16,22 +16,28 @@ const CONCURRENCY = 8;
  * case-insensitive: a campaign that surfaces both `Fit` and `FIT` for the
  * same company collapses to one quote with whichever spelling came first.
  */
-export async function getActivePromoCodes(companyId: string): Promise<string[]> {
+export async function getActivePromoCodes(
+  companyId: string
+): Promise<string[]> {
   const { rows } = await q<{ code: string }>(
     `SELECT DISTINCT code FROM campaigns
       WHERE is_active = TRUE
         AND company_id = $1
         AND (deadline IS NULL OR deadline >= CURRENT_DATE)
         AND (valid_to IS NULL OR valid_to >= NOW())`,
-    [companyId],
+    [companyId]
   );
   const seen = new Set<string>();
   const out: string[] = [];
   for (const r of rows) {
-    const code = (r.code ?? '').trim();
-    if (!code) continue;
+    const code = (r.code ?? "").trim();
+    if (!code) {
+      continue;
+    }
     const key = code.toLowerCase();
-    if (seen.has(key)) continue;
+    if (seen.has(key)) {
+      continue;
+    }
     seen.add(key);
     out.push(code);
   }
@@ -62,7 +68,7 @@ async function getLeaves(companyId: string): Promise<PriceLeaf[]> {
        AND dc.valid_to IS NULL
        AND d.valid_to   IS NULL
        AND (dc.diet_option_id IS NULL OR do2.valid_to IS NULL)`,
-    [companyId],
+    [companyId]
   );
   return rows;
 }
@@ -84,16 +90,16 @@ interface PriceJob {
 export async function fetchAndInsert(
   job: PriceJob,
   companyId: string,
-  cityId: number,
+  cityId: number
 ): Promise<boolean> {
   const { leaf, days, deliveryDates, promoCodes } = job;
 
   const body: PriceRequestBody = {
-    promoCodes,
+    cityId,
     deliveryDates,
     dietCaloriesId: leaf.diet_calories_id,
+    promoCodes,
     testOrder: false,
-    cityId,
     ...(leaf.is_menu_configuration && leaf.tier_diet_option_id
       ? { tierDietOptionId: leaf.tier_diet_option_id }
       : {}),
@@ -104,12 +110,12 @@ export async function fetchAndInsert(
     result = await post<PriceResponse>(
       `/api/mobile/open/company-card/${companyId}/quick-order/calculate-price`,
       body,
-      { companyId },
+      { companyId }
     );
-  } catch (err) {
-    const codeTag = promoCodes.length ? ` code=${promoCodes.join(',')}` : '';
+  } catch (error) {
+    const codeTag = promoCodes.length ? ` code=${promoCodes.join(",")}` : "";
     console.warn(
-      `[prices] skip cal=${leaf.diet_calories_id} days=${days}${codeTag}: ${(err as Error).message}`,
+      `[prices] skip cal=${leaf.diet_calories_id} days=${days}${codeTag}: ${(error as Error).message}`
     );
     return false;
   }
@@ -126,9 +132,12 @@ export async function fetchAndInsert(
         total_promo_code_discount, total_delivery_discount)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
     [
-      leaf.diet_calories_id, companyId, cityId,
+      leaf.diet_calories_id,
+      companyId,
+      cityId,
       leaf.tier_diet_option_id ?? null,
-      days, promoCodes,
+      days,
+      promoCodes,
       item.perDayDietCost ?? null,
       item.perDayDietWithDiscountsCost ?? null,
       cart.totalCostToPay ?? null,
@@ -137,7 +146,7 @@ export async function fetchAndInsert(
       cart.totalOrderLengthDiscount ?? null,
       cart.totalPromoCodeDiscount ?? null,
       cart.totalDeliveriesOnDateDiscount ?? null,
-    ],
+    ]
   );
 
   return true;
@@ -147,7 +156,7 @@ async function runConcurrent(
   jobs: PriceJob[],
   companyId: string,
   cityId: number,
-  concurrency: number = CONCURRENCY,
+  concurrency: number = CONCURRENCY
 ): Promise<number> {
   let inserted = 0;
   const queue = [...jobs];
@@ -156,15 +165,20 @@ async function runConcurrent(
     Array.from({ length: concurrency }, async () => {
       while (queue.length > 0) {
         const job = queue.shift()!;
-        if (await fetchAndInsert(job, companyId, cityId)) inserted++;
+        if (await fetchAndInsert(job, companyId, cityId)) {
+          inserted++;
+        }
       }
-    }),
+    })
   );
 
   return inserted;
 }
 
-export async function scrapePrices(companyId: string, cityId: number): Promise<void> {
+export async function scrapePrices(
+  companyId: string,
+  cityId: number
+): Promise<void> {
   console.log(`[prices] ${companyId} / city=${cityId}`);
   const leaves = await getLeaves(companyId);
 
@@ -175,37 +189,44 @@ export async function scrapePrices(companyId: string, cityId: number): Promise<v
 
   const codes = await getActivePromoCodes(companyId);
   if (codes.length > 0) {
-    console.log(`[prices]   active codes for ${companyId}: ${codes.join(', ')}`);
+    console.log(
+      `[prices]   active codes for ${companyId}: ${codes.join(", ")}`
+    );
   }
 
   const includeSaturday = leaves[0]?.delivery_on_saturday ?? false;
-  const includeSunday   = leaves[0]?.delivery_on_sunday   ?? false;
+  const includeSunday = leaves[0]?.delivery_on_sunday ?? false;
 
   // Pre-compute delivery date arrays once per order length
   const datesByDays = Object.fromEntries(
-    ORDER_DAY_TIERS.map(days => [days, futureWeekdays(days, { includeSaturday, includeSunday })]),
+    ORDER_DAY_TIERS.map((days) => [
+      days,
+      futureWeekdays(days, { includeSaturday, includeSunday }),
+    ])
   );
 
   // For each (leaf, days), one no-code quote and one quote per active code.
   // The dashboard's cheapest-pick per (company, leaf, days) takes care of
   // selecting the winning row downstream.
-  const promoVariants: string[][] = [[], ...codes.map(c => [c])];
-  const jobs: PriceJob[] = leaves.flatMap(leaf =>
-    ORDER_DAY_TIERS.flatMap(days =>
-      promoVariants.map(promoCodes => ({
-        leaf,
+  const promoVariants: string[][] = [[], ...codes.map((c) => [c])];
+  const jobs: PriceJob[] = leaves.flatMap((leaf) =>
+    ORDER_DAY_TIERS.flatMap((days) =>
+      promoVariants.map((promoCodes) => ({
         days,
         deliveryDates: datesByDays[days],
+        leaf,
         promoCodes,
-      })),
-    ),
+      }))
+    )
   );
 
   const t0 = Date.now();
   const inserted = await runConcurrent(jobs, companyId, cityId);
   const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
 
-  console.log(`[prices] ✓ ${companyId}: ${inserted}/${jobs.length} rows inserted (${elapsed}s)`);
+  console.log(
+    `[prices] ✓ ${companyId}: ${inserted}/${jobs.length} rows inserted (${elapsed}s)`
+  );
 }
 
 // Exported for the backfill script.

@@ -102,8 +102,12 @@ LIMIT 50
 `;
 
 function toNumber(value: string | number | null): number | null {
-  if (value == null) return null;
-  if (typeof value === "number") return value;
+  if (value == null) {
+    return null;
+  }
+  if (typeof value === "number") {
+    return value;
+  }
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
 }
@@ -131,13 +135,13 @@ export const search_caterings = defineTool({
     if (typeof input.max_price_per_day === "number") {
       const cap = input.max_price_per_day;
       rows = rows.filter(
-        (row) => row.price_per_day_num !== null && row.price_per_day_num <= cap,
+        (row) => row.price_per_day_num !== null && row.price_per_day_num <= cap
       );
     }
     if (typeof input.min_score === "number") {
       const floor = input.min_score;
       rows = rows.filter(
-        (row) => row.avg_score_num !== null && row.avg_score_num >= floor,
+        (row) => row.avg_score_num !== null && row.avg_score_num >= floor
       );
     }
     if (input.with_promo_only) {
@@ -145,9 +149,15 @@ export const search_caterings = defineTool({
     }
 
     rows.sort((a, b) => {
-      if (a.price_per_day_num == null && b.price_per_day_num == null) return 0;
-      if (a.price_per_day_num == null) return 1;
-      if (b.price_per_day_num == null) return -1;
+      if (a.price_per_day_num == null && b.price_per_day_num == null) {
+        return 0;
+      }
+      if (a.price_per_day_num == null) {
+        return 1;
+      }
+      if (b.price_per_day_num == null) {
+        return -1;
+      }
       return a.price_per_day_num - b.price_per_day_num;
     });
 

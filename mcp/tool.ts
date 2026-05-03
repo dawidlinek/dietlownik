@@ -47,17 +47,21 @@ const formatZodIssues = (error: z.ZodError): string =>
  * tool callers continue to see the same actionable next-step messages.
  */
 const recoveryHint = (status: number, body: string): string => {
-  if (status === 401)
+  if (status === 401) {
     return "Session likely expired — call `login` again with the same email.";
+  }
   if (
     status === 403 &&
     /Just a moment|cf-browser-verification|__cf_chl_/i.test(body)
-  )
+  ) {
     return "Cloudflare rate-limited the request. Retry in 5–30s.";
-  if (status === 404)
+  }
+  if (status === 404) {
     return "ID not found. Re-resolve via `search_caterings` or `get_meal_options`.";
-  if (status === 400)
+  }
+  if (status === 400) {
     return "Bad request — check that all IDs come from `search_caterings`/`get_meal_options` (not invented).";
+  }
   return "";
 };
 
@@ -111,7 +115,7 @@ export const callTool = async (
     }
     // structuredContent must be a non-array object per spec — arrays /
     // primitives go in the JSON text payload only.
-    const data: unknown = validated.data;
+    const { data } = validated;
     const structured =
       data !== null && typeof data === "object" && !Array.isArray(data)
         ? // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- narrowed by the object/!array guard above
