@@ -21,7 +21,9 @@
     "migrate:v5": "node db/migrate_v5.js",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:integration": "INTEGRATION=1 vitest run scraper/__tests__/api.integration.test.ts"
+    "test:integration": "INTEGRATION=1 vitest run scraper/__tests__/api.integration.test.ts",
+    "check": "ultracite check",
+    "fix": "ultracite fix"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
@@ -49,12 +51,17 @@
     "@types/pg": "^8.11.10",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "lefthook": "^2.1.6",
+    "oxfmt": "^0.47.0",
+    "oxlint": "^1.62.0",
+    "oxlint-tsgolint": "^0.22.1",
     "patchright": "^1.59.4",
     "tailwindcss": "^4",
     "tsx": "^4.19.0",
     "tw-animate-css": "^1.2.0",
     "typescript": "^5.7.0",
-    "vitest": "^3.2.4"
+    "ultracite": "^7.6.2",
+    "vitest": "~4.1.4"
   },
   "ignoreScripts": [
     "sharp",
