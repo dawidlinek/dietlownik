@@ -7,6 +7,12 @@ export const getProfileInputSchema = z.object({
 
 export type GetProfileInput = z.infer<typeof getProfileInputSchema>;
 
+export const getProfileOutputSchema = z.object({
+  email: z.string(),
+  profile: z.unknown(),
+  profile_address_ids: z.array(z.number()),
+});
+
 function normalizeProfileResponse(raw: unknown) {
   const root = (raw as { profile?: unknown } | null)?.profile ?? raw;
   const profile = (root ?? {}) as {

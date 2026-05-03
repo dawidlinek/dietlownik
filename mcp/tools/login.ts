@@ -9,6 +9,13 @@ export const loginInputSchema = z.object({
 
 export type LoginInput = z.infer<typeof loginInputSchema>;
 
+export const loginOutputSchema = z.object({
+  email: z.string(),
+  authenticated: z.boolean(),
+  profile: z.unknown(),
+  profile_address_ids: z.array(z.number()),
+});
+
 function normalizeProfileResponse(raw: unknown) {
   const root = (raw as { profile?: unknown } | null)?.profile ?? raw;
   const profile = (root ?? {}) as {

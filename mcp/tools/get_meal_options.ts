@@ -1,17 +1,35 @@
 import { z } from "zod";
 import { anonGet } from "@/mcp/api";
 
-export const getMealOptionsInputSchema = z.object({
-  company_id: z.string().min(1),
-  diet_calories_id: z.number().int().positive(),
-  city_id: z.number().int().positive(),
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  base_meal_ids: z.array(z.number().int().positive()).optional(),
-  is_menu_configuration: z.boolean(),
-  tier_id: z.number().int().positive().optional(),
-});
+export const getMealOptionsInputSchema = z
+  .object({
+    company_id: z.string().min(1),
+    diet_calories_id: z.number().int().positive(),
+    city_id: z.number().int().positive(),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    base_meal_ids: z.array(z.number().int().positive()).optional(),
+    is_menu_configuration: z.boolean(),
+    tier_id: z.number().int().positive().optional(),
+  })
+  .refine((v) => !v.is_menu_configuration || !!v.tier_id, {
+    message: "tier_id is required when is_menu_configuration is true",
+    path: ["tier_id"],
+  })
+  .refine(
+    (v) => !v.is_menu_configuration || (v.base_meal_ids && v.base_meal_ids.length > 0),
+    {
+      message: "base_meal_ids must be non-empty when is_menu_configuration is true",
+      path: ["base_meal_ids"],
+    },
+  );
 
 export type GetMealOptionsInput = z.infer<typeof getMealOptionsInputSchema>;
+
+export const getMealOptionsOutputSchema = z.object({
+  date: z.string(),
+  calories: z.number().nullable(),
+  meals: z.array(z.unknown()),
+});
 
 interface MealOptionShape {
   dietCaloriesMealId?: number;
@@ -61,19 +79,13 @@ export async function getMealOptionsTool(input: GetMealOptionsInput) {
   let response: MealApiResponse;
 
   if (input.is_menu_configuration) {
-    if (!input.base_meal_ids || input.base_meal_ids.length === 0) {
-      throw new Error("base_meal_ids is required for menu-configuration diets");
-    }
-    if (!input.tier_id) {
-      throw new Error("tier_id is required for menu-configuration diets");
-    }
-
+    // Schema refinements guarantee both are present when this branch runs.
     const params = new URLSearchParams({
       date: input.date,
       cityId: String(input.city_id),
       dietCaloriesId: String(input.diet_calories_id),
-      dietCaloriesMealIds: input.base_meal_ids.join(","),
-      tierId: String(input.tier_id),
+      dietCaloriesMealIds: input.base_meal_ids!.join(","),
+      tierId: String(input.tier_id!),
     });
 
     response = await anonGet<MealApiResponse>(

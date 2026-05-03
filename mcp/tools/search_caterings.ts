@@ -11,6 +11,11 @@ export const searchCateringsInputSchema = z.object({
 
 export type SearchCateringsInput = z.infer<typeof searchCateringsInputSchema>;
 
+export const searchCateringsOutputSchema = z.object({
+  total: z.number(),
+  caterings: z.array(z.unknown()),
+});
+
 interface SearchRow {
   company_id: string;
   company_name: string | null;
@@ -142,5 +147,6 @@ export async function searchCateringsTool(input: SearchCateringsInput) {
     return a.price_per_day_num - b.price_per_day_num;
   });
 
-  return rows.slice(0, 50);
+  const caterings = rows.slice(0, 50);
+  return { total: caterings.length, caterings };
 }

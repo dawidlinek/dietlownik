@@ -1,4 +1,5 @@
-import { HttpError } from "@/scraper/api";
+import { HttpError, sleep } from "@/scraper/api";
+import { isCloudflareChallenge } from "@/scraper/cf-shared";
 import { getSession, setSession, type DietlySession } from "@/mcp/session";
 
 const BASE = "https://aplikacja.dietly.pl";
@@ -55,15 +56,6 @@ function refreshSessionFromResponse(
     : currentSession.sessionCookie;
 
   setSession(email, rememberMe, sessionCookie);
-}
-
-function isCloudflareChallenge(status: number, body: string): boolean {
-  if (status !== 403 && status !== 503 && status !== 429) return false;
-  return body.includes("Just a moment") || body.includes("cf-browser-verification") || body.includes("__cf_chl_");
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
 }
 
 async function fetchWithRetry(url: string, init: RequestInit): Promise<Response> {
