@@ -1,7 +1,7 @@
 // Shared Cloudflare bits — single-source for the regex, browser launch
-// config, and `.cf-session.json` payload. Imported by `api.ts` (legacy
-// fetch path), `cf-fetch.ts` (patchright transport), and the two
-// `scripts/cf-session*.ts` refresh helpers.
+// config, and `.cf_session.json` payload. Imported by `api.ts` (legacy
+// fetch path), `cf_fetch.ts` (patchright transport), and the two
+// `scripts/cf_session*.ts` refresh helpers.
 
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
@@ -26,7 +26,7 @@ export const isCloudflareChallenge = (
   return CF_CHALLENGE_RE.test(body);
 };
 
-// ── .cf-session.json ─────────────────────────────────────────────────────────
+// ── .cf_session.json ─────────────────────────────────────────────────────────
 
 export interface CfSession {
   cookie?: string;
@@ -35,7 +35,7 @@ export interface CfSession {
 }
 
 export const CF_SESSION_PATH =
-  process.env.DIETLY_SESSION_FILE ?? resolve(process.cwd(), ".cf-session.json");
+  process.env.DIETLY_SESSION_FILE ?? resolve(process.cwd(), ".cf_session.json");
 
 export const loadCfSession = (): CfSession => {
   const fromEnv: CfSession = {

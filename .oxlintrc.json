@@ -17,7 +17,10 @@
   "rules": {
     "eqeqeq": ["error", "always", { "null": "ignore" }],
     "no-eq-null": "off",
-    "unicorn/filename-case": "off",
+    "unicorn/filename-case": [
+      "error",
+      { "case": "snakeCase", "ignore": ["next-env\\.d\\.ts"] }
+    ],
     "import/no-named-as-default-member": "off"
   }
 }

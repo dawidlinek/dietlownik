@@ -4,8 +4,8 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import * as React from "react";
 
-import { PriceHistoryChart } from "@/components/price-history-chart";
-import type { HistoryPoint } from "@/components/price-history-chart";
+import { PriceHistoryChart } from "@/components/price_history_chart";
+import type { HistoryPoint } from "@/components/price_history_chart";
 import {
   formatDate,
   formatDelta,
@@ -482,7 +482,7 @@ const CateringDrilldown = ({
     setHistoryState({ history: null, loading: true });
     void (async () => {
       try {
-        const u = new URL("/api/price-history", window.location.origin);
+        const u = new URL("/api/price_history", window.location.origin);
         u.searchParams.set("company_id", cheapest.company_id);
         u.searchParams.set(
           "diet_calories_id",
@@ -495,7 +495,7 @@ const CateringDrilldown = ({
           return;
         }
         const data = res.ok
-          ? // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- API contract enforced by /api/price-history route
+          ? // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- API contract enforced by /api/price_history route
             ((await res.json()) as { history: HistoryPoint[] })
           : { history: [] };
         if (!ctrl.signal.aborted) {
@@ -537,7 +537,7 @@ const CateringDrilldown = ({
     );
     void (async () => {
       try {
-        const u = new URL("/api/variant-meals", window.location.origin);
+        const u = new URL("/api/variant_meals", window.location.origin);
         u.searchParams.set("company_id", leaf.company_id);
         u.searchParams.set("diet_calories_id", String(leaf.diet_calories_id));
         if (leaf.tier_id != null) {
@@ -548,7 +548,7 @@ const CateringDrilldown = ({
           return;
         }
         const data = res.ok
-          ? // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- API contract enforced by /api/variant-meals route
+          ? // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- API contract enforced by /api/variant_meals route
             ((await res.json()) as { meals: VariantMealRow[] })
           : { meals: [] };
         if (ctrl.signal.aborted) {

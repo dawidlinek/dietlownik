@@ -1,6 +1,6 @@
-import { CateringList } from "@/components/catering-list";
+import { CateringList } from "@/components/catering_list";
 import { Header } from "@/components/header";
-import { KcalRangeFilter } from "@/components/kcal-range-filter";
+import { KcalRangeFilter } from "@/components/kcal_range_filter";
 import {
   getActiveCampaigns,
   getCateringPage,
