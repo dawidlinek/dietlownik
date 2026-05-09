@@ -9,7 +9,7 @@ export const scrapeDietTags = async (): Promise<void> => {
 
   for (const tag of tags) {
     await q(
-      `INSERT INTO diet-tags (tag_code, label, description, image_url)
+      `INSERT INTO "diet_tags" (tag_code, label, description, image_url)
        VALUES ($1,$2,$3,$4)
        ON CONFLICT (tag_code) DO UPDATE SET
          label     = EXCLUDED.label,
