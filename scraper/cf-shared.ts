@@ -72,6 +72,10 @@ export const USER_DATA_DIR =
   process.env.CF_USER_DATA_DIR ??
   join(homedir(), ".cache", "dietlownik-cf-profile");
 
+export const PLAYWRIGHT_BROWSERS_PATH =
+  process.env.PLAYWRIGHT_BROWSERS_PATH ??
+  join(homedir(), ".cache", "ms-playwright");
+
 // Headless Chrome leaks "HeadlessChrome/…" in navigator.userAgent — CF uses
 // it as a kill-signal under load. Override at context level.
 export const FORCED_UA =
@@ -85,7 +89,6 @@ export const launchCfBrowser = (
 ): Promise<BrowserContext> => {
   mkdirSync(USER_DATA_DIR, { recursive: true });
   return chromium.launchPersistentContext(USER_DATA_DIR, {
-    channel: "chrome",
     headless: opts.headless,
     userAgent: opts.headless ? FORCED_UA : undefined,
     viewport: null,
