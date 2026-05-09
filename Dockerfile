@@ -68,8 +68,9 @@ COPY --from=builder --chown=nextjs:nextjs /app/node_modules ./node_modules
 # Install Chromium from Alpine packages (handles all deps correctly) as root,
 # then hand off to nextjs.
 RUN apk add --no-cache chromium \
+  && mkdir -p /home/nextjs/.cache \
   && rm -rf /home/nextjs/.cache/ms-playwright \
-  && chown -R nextjs:nextjs /home/nextjs/.cache
+  && chown -R nextjs:nextjs /home/nextjs
 
 USER nextjs
 EXPOSE 3000
