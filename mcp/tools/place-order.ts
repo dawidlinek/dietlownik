@@ -250,8 +250,8 @@ export const place_order = defineTool({
     "Place a real Dietly order from an `offer_id` (from `find_diets`). " +
     "IRREVERSIBLE — incurs a charge unless `test_order: true`. " +
     "For menu-configuration diets, `picks` (from `get_menu`) is required; " +
-    "fixed diets accept defaults when `picks` is omitted. First call shows " +
-    "a summary and asks for confirmation; re-call with `confirmed: true` to submit.",
+    "fixed diets accept defaults when `picks` is omitted. " +
+    "Requires MCP elicitation support — the host must prompt the user to confirm before placing.",
   // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- ctx (ToolContext) embeds the DietlyClient class instance and the SDK Server (used for elicitation); tool only invokes their public methods
   execute: async (input, ctx) => {
     const offer = parseOfferId(input.offer_id);
@@ -305,38 +305,35 @@ export const place_order = defineTool({
     if (!input.confirmed) {
       const totalPicks = countPicks(input.picks);
       const summary = summarizeOrder(input, offer, resolvedEmail, totalPicks);
-      // Try elicitation if the host advertises support; otherwise return a
-      // text fallback that asks the agent to re-call with confirmed:true.
-      if (ctx.server?.getClientCapabilities()?.elicitation) {
-        const r = await ctx.server.elicitInput({
-          message: `Place this order?\n\n${summary}`,
-          requestedSchema: {
-            properties: {
-              confirm: {
-                title:
-                  input.test_order === true
-                    ? "Place test order"
-                    : "Place real order (will charge)",
-                type: "boolean",
-              },
+      if (!ctx.server?.getClientCapabilities()?.elicitation) {
+        throw new Error(
+          `Order confirmation required but MCP host does not support elicitation. ` +
+            `Summary:\n${summary}\n\n` +
+            `Re-call with \`confirmed: true\` to confirm the order.`
+        );
+      }
+      const r = await ctx.server.elicitInput({
+        message: `Place this order?\n\n${summary}`,
+        requestedSchema: {
+          properties: {
+            confirm: {
+              title:
+                input.test_order === true
+                  ? "Place test order"
+                  : "Place real order (will charge)",
+              type: "boolean",
             },
-            required: ["confirm"],
-            type: "object",
           },
-        });
-        if (
-          r.action !== "accept" ||
-          // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- elicitation result content is freeform per MCP spec; we expect { confirm: boolean }
-          (r.content as { confirm?: boolean } | undefined)?.confirm !== true
-        ) {
-          return jsonResult({ reason: r.action, status: "cancelled", summary });
-        }
-      } else {
-        return jsonResult({
-          next: "Show the user this summary. If they agree, re-call place_order with `confirmed: true`.",
-          status: "confirmation_required",
-          summary,
-        });
+          required: ["confirm"],
+          type: "object",
+        },
+      });
+      if (
+        r.action !== "accept" ||
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- elicitation result content is freeform per MCP spec; we expect { confirm: boolean }
+        (r.content as { confirm?: boolean } | undefined)?.confirm !== true
+      ) {
+        return jsonResult({ reason: r.action, status: "cancelled", summary });
       }
     }
 

@@ -77,11 +77,31 @@ const fromApi = async (input: string): Promise<ResolvedCity | undefined> => {
     (c: Readonly<TopSearchCity>) =>
       c.cityStatus !== false && norm(c.name) === wanted
   );
-  const any = cities.find(
-    (c: Readonly<TopSearchCity>) => c.cityStatus !== false
+  return exact === undefined
+    ? undefined
+    : { id: exact.cityId, name: exact.name };
+};
+
+const suggestCities = async (input: string): Promise<string[]> => {
+  const url = `https://aplikacja.dietly.pl/api/open/search/top-search?query=${encodeURIComponent(input)}&citiesSize=10&companiesSize=0`;
+  const res = await fetchWithRetry(url, {
+    cache: "no-store",
+    headers: {
+      accept: "application/json",
+      "accept-language": "pl-PL",
+      "x-launcher-type": "ANDROID_APP",
+      "x-mobile-version": "4.0.0",
+    },
+    method: "GET",
+  });
+  const data = await parseResponse<TopSearchResponse>(
+    res,
+    "GET",
+    "/api/open/search/top-search"
   );
-  const pick = exact ?? any;
-  return pick === undefined ? undefined : { id: pick.cityId, name: pick.name };
+  return (data.cities ?? [])
+    .filter((c: Readonly<TopSearchCity>) => c.cityStatus !== false)
+    .map((c: Readonly<TopSearchCity>) => c.name);
 };
 
 // oxlint-disable-next-line max-classes-per-file -- CityResolveError is the resolver's domain error; co-locating keeps the surface single-import
@@ -105,8 +125,13 @@ export class CityResolver {
       this.memo.set(key, apiHit);
       return apiHit;
     }
+    const suggestions = await suggestCities(input);
+    const suggestionMsg =
+      suggestions.length > 0
+        ? ` Did you mean: ${suggestions.slice(0, 5).join(", ")}?`
+        : "";
     throw new CityResolveError(
-      `City "${input}" not found. Try the Polish name (e.g. "Warszawa", "Kraków", "Wrocław").`
+      `City "${input}" not found. Try the Polish name (e.g. "Warszawa", "Kraków", "Wrocław").${suggestionMsg}`
     );
   };
 }

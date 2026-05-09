@@ -1,3 +1,5 @@
+import cron from "node-cron";
+
 import { pool } from "./db";
 import { scrapeCatalog } from "./scrapers/catalog";
 import { scrapeCity } from "./scrapers/city";
@@ -18,6 +20,9 @@ const SKIP_MENUS = process.env.SKIP_MENUS === "1";
 const SKIP_PROMOS = process.env.SKIP_PROMOS === "1";
 const SKIP_PRICES = process.env.SKIP_PRICES === "1";
 const SKIP_TAGS = process.env.SKIP_TAGS === "1";
+
+const REPEAT =
+  process.env.SCRAPE_SCHEDULER === "1" || process.argv.includes("--repeat");
 
 const errMsg = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
@@ -137,8 +142,30 @@ const run = async (): Promise<void> => {
   }
 };
 
-// oxlint-disable-next-line promise/prefer-await-to-callbacks, promise/prefer-await-to-then -- top-level entry point
-run().catch((error: unknown) => {
-  console.error("[run] fatal:", error);
-  process.exit(1);
-});
+const shutdown = (): void => {
+  console.log("\n[run] shutting down scheduler...");
+  // oxlint-disable-next-line promise/prefer-await-to-callbacks, promise/prefer-await-to-then -- fire-and-forget cleanup, exit follows immediately
+  pool.end().catch((error: unknown) => {
+    console.error(error);
+  });
+  process.exit(0);
+};
+
+if (REPEAT) {
+  console.log("[run] scheduler mode — daily at 06:00 (Warsaw time)");
+  cron.schedule("0 6 * * *", () => {
+    // oxlint-disable-next-line promise/prefer-await-to-callbacks, promise/prefer-await-to-then -- cron callback must return void; .catch() handles errors correctly
+    run().catch((error: unknown) => {
+      console.error("[run] fatal:", error);
+      process.exit(1);
+    });
+  });
+  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", shutdown);
+} else {
+  // oxlint-disable-next-line promise/prefer-await-to-callbacks, promise/prefer-await-to-then -- top-level entry point
+  run().catch((error: unknown) => {
+    console.error("[run] fatal:", error);
+    process.exit(1);
+  });
+}

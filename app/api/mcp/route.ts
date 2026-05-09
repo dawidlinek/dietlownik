@@ -22,20 +22,52 @@ import { buildServer } from "@/mcp/server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-interface SessionBinding {
+interface SessionEntry {
   readonly client: DietlyClient;
   // eslint-disable-next-line @typescript-eslint/no-deprecated -- see import
   readonly server: Server;
   readonly transport: WebStandardStreamableHTTPServerTransport;
+  lastAccess: number;
 }
 
-const sessions = new Map<string, SessionBinding>();
+// 30 minutes
+const SESSION_TTL_MS = 30 * 60 * 1000;
 
-const createSessionBinding = async (): Promise<SessionBinding> => {
+const sessions = new Map<string, SessionEntry>();
+
+const cleanupExpiredSessions = async () => {
+  const now = Date.now();
+  for (const [id, entry] of sessions) {
+    if (now - entry.lastAccess > SESSION_TTL_MS) {
+      try {
+        await entry.server.close();
+      } catch (error) {
+        console.error("[mcp] error closing expired session", id, error);
+      }
+      sessions.delete(id);
+    }
+  }
+};
+
+// Run every 5 minutes
+setInterval(
+  () => {
+    void cleanupExpiredSessions();
+  },
+  5 * 60 * 1000
+);
+
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- entry.lastAccess mutation is intentional
+const touchSession = (id: string, entry: SessionEntry) => {
+  entry.lastAccess = Date.now();
+  sessions.set(id, entry);
+};
+
+const createSessionBinding = async (): Promise<SessionEntry> => {
   // Holder so the transport's `onsessioninitialized` callback can reach the
   // binding that we construct *after* the transport (chicken-and-egg: the
   // callback closure is needed at transport construction time).
-  const holder: { current: SessionBinding | undefined } = {
+  const holder: { current: SessionEntry | undefined } = {
     current: undefined,
   };
 
@@ -60,7 +92,7 @@ const createSessionBinding = async (): Promise<SessionBinding> => {
   const server = buildServer(client);
   await server.connect(transport);
 
-  holder.current = { client, server, transport };
+  holder.current = { client, lastAccess: Date.now(), server, transport };
   return holder.current;
 };
 
@@ -68,11 +100,12 @@ const resolveBinding = async (
   // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- Web standard Request has methods (.json/.text) and Headers; cannot be made deeply readonly
   request: Request,
   parsedBody: unknown
-): Promise<SessionBinding | Response> => {
+): Promise<SessionEntry | Response> => {
   const sessionId = request.headers.get("mcp-session-id");
   if (sessionId !== null && sessionId !== "") {
     const existing = sessions.get(sessionId);
     if (existing) {
+      touchSession(sessionId, existing);
       return existing;
     }
   }

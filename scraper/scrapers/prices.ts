@@ -7,7 +7,7 @@ import type {
   PriceLeaf,
 } from "../types";
 
-const ORDER_DAY_TIERS = [5, 10, 20];
+const ORDER_DAY_TIERS = [1, 5, 10, 20];
 const CONCURRENCY = 8;
 
 const errMessage = (error: unknown): string =>

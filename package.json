@@ -36,8 +36,10 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.0.4",
+    "concurrently": "^9.1.2",
     "dotenv": "^17.4.2",
     "next": "16.2.4",
+    "node-cron": "^3.0.3",
     "pg": "^8.13.3",
     "react": "19.2.4",
     "react-dom": "19.2.4",
@@ -48,6 +50,7 @@
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^22.0.0",
+    "@types/node-cron": "^3.0.11",
     "@types/pg": "^8.11.10",
     "@types/react": "^19",
     "@types/react-dom": "^19",

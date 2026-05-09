@@ -65,4 +65,4 @@ COPY --from=builder --chown=nextjs:nextjs /app/node_modules ./node_modules
 USER nextjs
 EXPOSE 3000
 
-CMD ["node", "server.js"]
+CMD ["node", "start.js"]
