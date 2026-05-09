@@ -64,12 +64,14 @@ COPY --from=builder --chown=nextjs:nextjs /app/tsconfig.json ./tsconfig.json
 # + dotenv + the rest of devDependencies so the scraper TypeScript runs as-is.
 COPY --from=builder --chown=nextjs:nextjs /app/node_modules ./node_modules
 
+# Install Playwright Chromium as root, then hand off to nextjs user.
+RUN rm -rf /home/nextjs/.cache/ms-playwright \
+  && PLAYWRIGHT_BROWSERS_PATH=/home/nextjs/.cache/ms-playwright \
+  && mkdir -p /home/nextjs/.cache/ms-playwright \
+  && npx playwright install chromium \
+  && chown -R nextjs:nextjs /home/nextjs/.cache
+
 USER nextjs
 EXPOSE 3000
-
-RUN PLAYWRIGHT_BROWSERS_PATH=/home/nextjs/.cache/ms-playwright \
-  mkdir -p /home/nextjs/.cache/ms-playwright && \
-  npx playwright install chromium 2>&1; \
-  chown -R nextjs:nextjs /home/nextjs/.cache 2>/dev/null || true
 
 CMD ["node", "start.js"]
