@@ -76,6 +76,9 @@ export const PLAYWRIGHT_BROWSERS_PATH =
   process.env.PLAYWRIGHT_BROWSERS_PATH ??
   join(homedir(), ".cache", "ms-playwright");
 
+export const CHROMIUM_EXECUTABLE_PATH =
+  process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ?? undefined;
+
 // Headless Chrome leaks "HeadlessChrome/…" in navigator.userAgent — CF uses
 // it as a kill-signal under load. Override at context level.
 export const FORCED_UA =
@@ -92,6 +95,7 @@ export const launchCfBrowser = (
     headless: opts.headless,
     userAgent: opts.headless ? FORCED_UA : undefined,
     viewport: null,
+    ...(CHROMIUM_EXECUTABLE_PATH ? { executablePath: CHROMIUM_EXECUTABLE_PATH } : {}),
   });
 };
 

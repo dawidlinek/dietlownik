@@ -45,6 +45,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 ENV PLAYWRIGHT_BROWSERS_PATH=/home/nextjs/.cache/ms-playwright
+ENV PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium
 ENV CF_USER_DATA_DIR=/home/nextjs/.cache/dietlownik-cf-profile
 
 RUN addgroup --system --gid 1001 nextjs \
@@ -64,11 +65,10 @@ COPY --from=builder --chown=nextjs:nextjs /app/tsconfig.json ./tsconfig.json
 # + dotenv + the rest of devDependencies so the scraper TypeScript runs as-is.
 COPY --from=builder --chown=nextjs:nextjs /app/node_modules ./node_modules
 
-# Install Playwright Chromium as root, then hand off to nextjs user.
-RUN rm -rf /home/nextjs/.cache/ms-playwright \
-  && PLAYWRIGHT_BROWSERS_PATH=/home/nextjs/.cache/ms-playwright \
-  && mkdir -p /home/nextjs/.cache/ms-playwright \
-  && npx playwright install chromium \
+# Install Chromium from Alpine packages (handles all deps correctly) as root,
+# then hand off to nextjs.
+RUN apk add --no-cache chromium \
+  && rm -rf /home/nextjs/.cache/ms-playwright \
   && chown -R nextjs:nextjs /home/nextjs/.cache
 
 USER nextjs
