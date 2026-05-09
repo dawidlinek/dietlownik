@@ -65,4 +65,9 @@ COPY --from=builder --chown=nextjs:nextjs /app/node_modules ./node_modules
 USER nextjs
 EXPOSE 3000
 
+RUN PLAYWRIGHT_BROWSERS_PATH=/home/nextjs/.cache/ms-playwright \
+  mkdir -p /home/nextjs/.cache/ms-playwright && \
+  npx playwright install chromium 2>&1; \
+  chown -R nextjs:nextjs /home/nextjs/.cache 2>/dev/null || true
+
 CMD ["node", "start.js"]
