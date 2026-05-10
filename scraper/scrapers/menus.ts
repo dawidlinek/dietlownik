@@ -234,7 +234,7 @@ const parseMacros = (
 const mealFieldsFromOption = (option: DeepReadonly<MealOption>): MealFields => {
   const { details } = option;
   const macros = parseMacros(details, option.info);
-  const name = option.name ?? details.name ?? null;
+  const name = option.name ?? details?.name ?? null;
   const reviews_number = option.reviewsNumber ?? null;
   const reviews_score = option.reviewsScore ?? null;
 
@@ -243,7 +243,7 @@ const mealFieldsFromOption = (option: DeepReadonly<MealOption>): MealFields => {
     api_meal_slot_id: option.dietCaloriesMealId,
     carbs_g: macros.carbs_g,
     fat_g: macros.fat_g,
-    fiber_g: parseGrams(details.dietaryFiber),
+    fiber_g: parseGrams(details?.dietaryFiber),
     fingerprint: fingerprintOf({
       carbs_g: macros.carbs_g,
       fat_g: macros.fat_g,
@@ -253,7 +253,7 @@ const mealFieldsFromOption = (option: DeepReadonly<MealOption>): MealFields => {
       reviews_number,
       reviews_score,
     }),
-    image_url: details.imageUrl ?? null,
+    image_url: details?.imageUrl ?? null,
     ingredients: extractIngredients(details),
     kcal: macros.kcal,
     label: option.label ?? null,
@@ -261,10 +261,10 @@ const mealFieldsFromOption = (option: DeepReadonly<MealOption>): MealFields => {
     protein_g: macros.protein_g,
     reviews_number,
     reviews_score,
-    salt_g: parseGrams(details.salt),
-    saturated_fat_g: parseGrams(details.saturatedFattyAcids),
-    sugar_g: parseGrams(details.sugar),
-    thermo: option.thermo ?? details.thermo ?? null,
+    salt_g: parseGrams(details?.salt),
+    saturated_fat_g: parseGrams(details?.saturatedFattyAcids),
+    sugar_g: parseGrams(details?.sugar),
+    thermo: option.thermo ?? details?.thermo ?? null,
   };
 };
 

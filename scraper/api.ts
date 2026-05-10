@@ -26,13 +26,16 @@ const BASE = process.env.DIETLY_API_BASE ?? "https://aplikacja.dietly.pl";
 const USE_PATCHRIGHT = process.env.DIETLY_USE_PATCHRIGHT !== "0";
 
 // Tunables. With USE_PATCHRIGHT (the default), all requests funnel through a
-// single Chrome instance — keep concurrency modest so we don't trip CF's
-// bot-management rate threshold. Without patchright, the previous values
-// (32 / 0) hold; raise via env if running on a private API server.
+// single Chrome instance. CF's Bot Management triggers on burst rate, not just
+// fingerprint — keep concurrency low and add a minimum inter-request gap so
+// the per-IP request rate stays below CF's automated-traffic threshold.
+// Without patchright, the previous values (32 / 0) hold.
 const MAX_IN_FLIGHT = Number(
-  process.env.MAX_IN_FLIGHT ?? (USE_PATCHRIGHT ? 6 : 32)
+  process.env.MAX_IN_FLIGHT ?? (USE_PATCHRIGHT ? 3 : 32)
 );
-const MIN_INTERVAL_MS = Number(process.env.MIN_INTERVAL_MS ?? 0);
+const MIN_INTERVAL_MS = Number(
+  process.env.MIN_INTERVAL_MS ?? (USE_PATCHRIGHT ? 300 : 0)
+);
 const RETRY_MAX = Number(process.env.RETRY_MAX ?? 3);
 const RETRY_BASE_MS = Number(process.env.RETRY_BASE_MS ?? 500);
 const REQUEST_TIMEOUT_MS = Number(process.env.REQUEST_TIMEOUT_MS ?? 25_000);
