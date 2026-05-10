@@ -481,7 +481,7 @@ const processOneMenu = async (
     throw error;
   }
 
-  if (!Array.isArray(response.meals)) {
+  if (!response || !Array.isArray(response.meals)) {
     return { dailyMenuRows: 0, fetched: true, mealsTouched: 0 };
   }
 

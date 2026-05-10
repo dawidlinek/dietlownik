@@ -264,6 +264,11 @@ const performAttempt = async <T>(
     const res = USE_PATCHRIGHT
       ? await cfFetch(url, init, REQUEST_TIMEOUT_MS)
       : await fetch(url, init);
+    // status 0 = transport-level error already logged by cf-fetch; skip silently.
+    if (res.status === 0) {
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- transport error: no value to return
+      return { done: true, value: undefined as T };
+    }
     if (!res.ok) {
       let text = "";
       try {

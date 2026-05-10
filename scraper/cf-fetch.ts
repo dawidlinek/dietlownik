@@ -189,39 +189,47 @@ const rawFetch = async (
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- RequestInit.body is BodyInit; we only ever set string bodies in this codepath
   const body = (init.body as string | undefined) ?? null;
 
-  const result = await page.evaluate(
-    // oxlint-disable-next-line typescript/no-unsafe-return -- runs inside Chrome; return value is JSON-serialized by Playwright
-    async (args: {
-      url: string;
-      method: string;
-      headers: Record<string, string>;
-      body: string | null;
-      timeoutMs: number;
-    }): Promise<PageFetchResult> => {
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => {
-        ctrl.abort();
-      }, args.timeoutMs);
-      try {
-        const r = await fetch(args.url, {
-          method: args.method,
-          headers: args.headers,
-          ...(args.body !== null ? { body: args.body } : {}),
-          signal: ctrl.signal,
-        });
-        const text = await r.text();
-        const h: Record<string, string> = {};
-        // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- forEach callback; Headers.forEach signature uses mutable params
-        r.headers.forEach((v: string, k: string) => {
-          h[k] = v;
-        });
-        return { body: text, headers: h, status: r.status };
-      } finally {
-        clearTimeout(timer);
-      }
-    },
-    { body, headers, method, timeoutMs, url }
-  );
+  let result: PageFetchResult;
+  try {
+    result = await page.evaluate(
+      // oxlint-disable-next-line typescript/no-unsafe-return -- runs inside Chrome; return value is JSON-serialized by Playwright
+      async (args: {
+        url: string;
+        method: string;
+        headers: Record<string, string>;
+        body: string | null;
+        timeoutMs: number;
+      }): Promise<PageFetchResult> => {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => {
+          ctrl.abort();
+        }, args.timeoutMs);
+        try {
+          const r = await fetch(args.url, {
+            method: args.method,
+            headers: args.headers,
+            ...(args.body !== null ? { body: args.body } : {}),
+            signal: ctrl.signal,
+          });
+          const text = await r.text();
+          const h: Record<string, string> = {};
+          // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- forEach callback; Headers.forEach signature uses mutable params
+          r.headers.forEach((v: string, k: string) => {
+            h[k] = v;
+          });
+          return { body: text, headers: h, status: r.status };
+        } finally {
+          clearTimeout(timer);
+        }
+      },
+      { body, headers, method, timeoutMs, url }
+    );
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    process.stderr.write(`[cf-fetch] ${method} ${url} — ${msg}\n`);
+    // Return status 0 so callers can detect and skip without throwing.
+    return { body: "", headers: new Headers(), status: 0 };
+  }
 
   return {
     body: result.body,
