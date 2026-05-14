@@ -1,6 +1,9 @@
 pre-commit:
   parallel: true
   jobs:
+    - name: oxlint
+      run: bunx oxlint
+
     - name: check
       run: bun run check
 

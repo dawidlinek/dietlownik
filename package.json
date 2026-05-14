@@ -7,6 +7,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "prepare": "lefthook install",
     "typecheck": "tsc --noEmit",
     "scrape": "tsx scraper/index.ts",
     "scrape:smoke": "COMPANY=robinfood SKIP_MENUS=1 tsx scraper/index.ts",

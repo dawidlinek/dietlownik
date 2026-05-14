@@ -15,8 +15,8 @@ This project exposes a Model Context Protocol (MCP) server inside the Next.js ap
 4. Call tools with the returned `mcp-session-id` header.
 
 ```bash
-npm install
-npm run dev
+bun install
+bun run dev
 ```
 
 Server URL while developing locally:
