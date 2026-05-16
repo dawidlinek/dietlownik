@@ -402,6 +402,40 @@ export interface RecommendedDiet {
   deliveryInfo?: { text: string | null; date: string | null };
 }
 
+// ── /feedback ────────────────────────────────────────────────────────────────
+
+export interface FeedbackResult {
+  /** Per-review primary key — composite string like "robinfood_7305". */
+  feedbackId: string;
+  /** "YYYY-MM-DD" — when the review was posted. */
+  date?: string | null;
+  lastDeliveryDate?: string | null;
+  /** Composite per-review score on the dietly UI (0..5 or 0..100, source-dependent). */
+  avgScore?: number | null;
+  scoreTaste?: number | null;
+  scoreAesthetics?: number | null;
+  scoreIngredientsQuality?: number | null;
+  scorePackaging?: number | null;
+  scoreVariety?: number | null;
+  scoreDelivery?: number | null;
+  orderDuration?: number | null;
+  verified?: boolean | null;
+  text?: string | null;
+  responseText?: string | null;
+  author?: string | null;
+  authorName?: string | null;
+  username?: string | null;
+  [key: string]: unknown;
+}
+
+export interface FeedbackResponse {
+  results: FeedbackResult[];
+  totalElements?: number | null;
+  totalPages?: number | null;
+  currentPage?: number | null;
+  aggregation?: unknown;
+}
+
 // ── Internal DB row types ─────────────────────────────────────────────────────
 
 export interface PriceLeaf {

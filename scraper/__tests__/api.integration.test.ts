@@ -192,7 +192,7 @@ describe.runIf(RUN)("integration: aplikacja.dietly.pl mobile API", () => {
     expect(typeof opt.info).toBe("string");
     // The "info" string is what parseInfoMacros consumes — assert the format
     // we depend on.
-    expect(opt.info).toMatch(/\d+\s*kcal/i);
+    expect(opt.info).toMatch(/\d+\s*kcal/iu);
   }, 20_000);
 
   it("/api/profile/coupons-search → 401 (unauthenticated)", async () => {

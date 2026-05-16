@@ -19,6 +19,7 @@
     "migrate:v3": "node db/migrate_v3.js",
     "migrate:v4": "node db/migrate_v4.js",
     "migrate:v5": "node db/migrate_v5.js",
+    "migrate:v6": "node db/migrate_v6.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:integration": "INTEGRATION=1 vitest run scraper/__tests__/api.integration.test.ts",

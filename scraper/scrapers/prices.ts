@@ -1,5 +1,6 @@
 import { post, futureWeekdays } from "../api";
 import { q } from "../db";
+import { recordScrapeError, getCurrentRunId } from "../scrape-run";
 import type {
   DeepReadonly,
   PriceRequestBody,
@@ -95,6 +96,7 @@ interface PriceJob {
  * failure. With-code failures are isolated: the no-code job is a separate
  * PriceJob, so its outcome is independent.
  */
+// oxlint-disable-next-line eslint/complexity -- straight-line fetch + insert; one branch per quote column is the goal
 export const fetchAndInsert = async (
   job: DeepReadonly<PriceJob>,
   companyId: string,
@@ -127,6 +129,11 @@ export const fetchAndInsert = async (
     console.warn(
       `[prices] skip cal=${leaf.diet_calories_id} days=${days}${codeTag}: ${errMessage(error)}`
     );
+    await recordScrapeError(getCurrentRunId(), "prices", {
+      companyId,
+      context: `cal=${leaf.diet_calories_id} days=${days}${codeTag}`,
+      error,
+    });
     return false;
   }
 
@@ -139,8 +146,15 @@ export const fetchAndInsert = async (
         per_day_cost, per_day_cost_with_discounts,
         total_cost, total_cost_without_discounts,
         total_delivery_cost, total_order_length_discount,
-        total_promo_code_discount, total_delivery_discount)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+        total_promo_code_discount, total_delivery_discount,
+        total_lowest_30days_cost_without_discounts,
+        total_loyalty_points_discount,
+        total_pickup_point_discount,
+        total_one_time_side_orders_cost,
+        total_awarded_loyalty_program_points,
+        total_awarded_global_loyalty_program_points,
+        total_promo_code_discount_info)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
     [
       leaf.diet_calories_id,
       companyId,
@@ -156,6 +170,13 @@ export const fetchAndInsert = async (
       cart.totalOrderLengthDiscount ?? null,
       cart.totalPromoCodeDiscount ?? null,
       cart.totalDeliveriesOnDateDiscount ?? null,
+      cart.totalLowest30DaysCostWithoutDiscounts ?? null,
+      cart.totalLoyaltyPointsDiscount ?? null,
+      cart.totalPickupPointDiscount ?? null,
+      cart.totalOneTimeSideOrdersCost ?? null,
+      cart.totalAwardedLoyaltyProgramPoints ?? null,
+      cart.totalAwardedGlobalLoyaltyProgramPoints ?? null,
+      cart.totalPromoCodeDiscountInfo ?? null,
     ]
   );
 

@@ -36,7 +36,7 @@ const API_ORIGIN = "https://aplikacja.dietly.pl";
 // Sleep after a successful solve before retrying the real request. CF's
 // per-IP bot management rate counters need a moment to settle; retrying
 // immediately into a burst of queued requests re-triggers the challenge.
-const POST_SOLVE_COOL_MS = 3_000;
+const POST_SOLVE_COOL_MS = 3000;
 
 const sleep = async (ms: number): Promise<void> => {
   // oxlint-disable-next-line promise/avoid-new -- low-level sleep primitive
@@ -107,7 +107,7 @@ const getCtx = (): Promise<{
       })();
     });
 
-    return { ctx, apiPage };
+    return { apiPage, ctx };
   })();
   return ctxPromise;
 };
@@ -185,6 +185,7 @@ const rawFetch = async (
 ): Promise<{ status: number; headers: Headers; body: string }> => {
   const method = (init.method ?? "GET").toUpperCase();
   // page.evaluate() args must be JSON-serializable.
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- RequestInit.headers is HeadersInit; we only ever set Record<string,string> in this codepath
   const headers = (init.headers ?? {}) as Record<string, string>;
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- RequestInit.body is BodyInit; we only ever set string bodies in this codepath
   const body = (init.body as string | undefined) ?? null;
@@ -192,7 +193,7 @@ const rawFetch = async (
   let result: PageFetchResult;
   try {
     result = await page.evaluate(
-      // oxlint-disable-next-line typescript/no-unsafe-return -- runs inside Chrome; return value is JSON-serialized by Playwright
+      // oxlint-disable-next-line typescript/no-unsafe-return, typescript/prefer-readonly-parameter-types -- runs inside Chrome; return value is JSON-serialized by Playwright; args is a plain bag of primitives
       async (args: {
         url: string;
         method: string;
@@ -205,18 +206,18 @@ const rawFetch = async (
           ctrl.abort();
         }, args.timeoutMs);
         try {
+          const hasBody = args.body !== null;
           const r = await fetch(args.url, {
-            method: args.method,
+            ...(hasBody ? { body: args.body } : {}),
             headers: args.headers,
-            ...(args.body !== null ? { body: args.body } : {}),
+            method: args.method,
             signal: ctrl.signal,
           });
           const text = await r.text();
           const h: Record<string, string> = {};
-          // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- forEach callback; Headers.forEach signature uses mutable params
-          r.headers.forEach((v: string, k: string) => {
+          for (const [k, v] of r.headers.entries()) {
             h[k] = v;
-          });
+          }
           return { body: text, headers: h, status: r.status };
         } finally {
           clearTimeout(timer);

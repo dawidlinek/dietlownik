@@ -43,7 +43,7 @@ export const readCookieValue = (
   cookieName: string
 ): string | null => {
   const joined = setCookieHeaders.join(", ");
-  const re = new RegExp(`${cookieName}=([^;,\\s]+)`, "i");
+  const re = new RegExp(`${cookieName}=([^;,\\s]+)`, "iu");
   const match = joined.match(re);
   return match ? match[1] : null;
 };

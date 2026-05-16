@@ -379,10 +379,10 @@ export const parsePrice = (val?: string | number | null): number | null => {
   }
   // Polish format may use comma as decimal: "1 234,50 zł" → 1234.50
   const cleaned = val
-    .replaceAll(/\s+/g, "")
-    .replaceAll(/zł/gi, "")
+    .replaceAll(/\s+/gu, "")
+    .replaceAll(/zł/giu, "")
     .replace(",", ".");
-  const n = Number.parseFloat(cleaned.replaceAll(/[^\d.-]/g, ""));
+  const n = Number.parseFloat(cleaned.replaceAll(/[^\d.-]/gu, ""));
   return Number.isNaN(n) ? null : n;
 };
 
@@ -408,19 +408,19 @@ export const parseInfoMacros = (
   if (info === null || info === undefined || info === "") {
     return out;
   }
-  const kcalMatch = /(\d+(?:[.,]\d+)?)\s*kcal/i.exec(info);
+  const kcalMatch = /(\d+(?:[.,]\d+)?)\s*kcal/iu.exec(info);
   if (kcalMatch) {
     out.kcal = Number.parseFloat(kcalMatch[1].replace(",", "."));
   }
-  const bMatch = /B:\s*(\d+(?:[.,]\d+)?)\s*g/i.exec(info);
+  const bMatch = /B:\s*(\d+(?:[.,]\d+)?)\s*g/iu.exec(info);
   if (bMatch) {
     out.protein_g = Number.parseFloat(bMatch[1].replace(",", "."));
   }
-  const wMatch = /W:\s*(\d+(?:[.,]\d+)?)\s*g/i.exec(info);
+  const wMatch = /W:\s*(\d+(?:[.,]\d+)?)\s*g/iu.exec(info);
   if (wMatch) {
     out.carbs_g = Number.parseFloat(wMatch[1].replace(",", "."));
   }
-  const tMatch = /T:\s*(\d+(?:[.,]\d+)?)\s*g/i.exec(info);
+  const tMatch = /T:\s*(\d+(?:[.,]\d+)?)\s*g/iu.exec(info);
   if (tMatch) {
     out.fat_g = Number.parseFloat(tMatch[1].replace(",", "."));
   }
@@ -437,7 +437,7 @@ export const parseKcalNumber = (
   if (typeof val === "number") {
     return val;
   }
-  const m = /(\d+(?:[.,]\d+)?)/.exec(val);
+  const m = /(\d+(?:[.,]\d+)?)/u.exec(val);
   return m ? Number.parseFloat(m[1].replace(",", ".")) : null;
 };
 
@@ -449,7 +449,7 @@ export const parseGrams = (val?: string | number | null): number | null => {
   if (typeof val === "number") {
     return val;
   }
-  const m = /(\d+(?:[.,]\d+)?)/.exec(val);
+  const m = /(\d+(?:[.,]\d+)?)/u.exec(val);
   return m ? Number.parseFloat(m[1].replace(",", ".")) : null;
 };
 

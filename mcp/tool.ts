@@ -55,7 +55,7 @@ const recoveryHint = (status: number, body: string): string => {
   }
   if (
     status === 403 &&
-    /Just a moment|cf-browser-verification|__cf_chl_/i.test(body)
+    /Just a moment|cf-browser-verification|__cf_chl_/iu.test(body)
   ) {
     return "Cloudflare rate-limited the request. Retry in 5–30s.";
   }

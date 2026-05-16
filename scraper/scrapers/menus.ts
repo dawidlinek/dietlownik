@@ -481,7 +481,8 @@ const processOneMenu = async (
     throw error;
   }
 
-  if (!response || !Array.isArray(response.meals)) {
+  // oxlint-disable-next-line eqeqeq -- intentional == for null/undefined; cf-fetch may yield undefined on transport error
+  if (response == null || !Array.isArray(response.meals)) {
     return { dailyMenuRows: 0, fetched: true, mealsTouched: 0 };
   }
 

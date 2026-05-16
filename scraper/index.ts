@@ -1,6 +1,7 @@
 import cron from "node-cron";
 
 import { pool } from "./db";
+import { recordScrapeError, withRun } from "./scrape-run";
 import { scrapeCatalog } from "./scrapers/catalog";
 import { scrapeCity } from "./scrapers/city";
 import { listCompanies } from "./scrapers/companies";
@@ -20,6 +21,7 @@ const SKIP_MENUS = process.env.SKIP_MENUS === "1";
 const SKIP_PROMOS = process.env.SKIP_PROMOS === "1";
 const SKIP_PRICES = process.env.SKIP_PRICES === "1";
 const SKIP_TAGS = process.env.SKIP_TAGS === "1";
+const SKIP_REVIEWS = process.env.SKIP_REVIEWS === "1";
 
 const REPEAT =
   process.env.SCRAPE_SCHEDULER === "1" || process.argv.includes("--repeat");
@@ -37,20 +39,35 @@ const runMenusForCompany = async (
     await m.scrapeMenus(companyId, cityId);
   } catch (error) {
     console.warn(`[run] menus skipped (${errMsg(error)})`);
+    await recordScrapeError(null, "menus", { companyId, error });
+  }
+};
+
+const runReviewsForCompany = async (companyId: string): Promise<void> => {
+  try {
+    const m = await import("./scrapers/reviews.js");
+    await m.scrapeReviews(companyId);
+  } catch (error) {
+    console.warn(`[run] reviews skipped (${errMsg(error)})`);
+    await recordScrapeError(null, "reviews", { companyId, error });
   }
 };
 
 const processCompany = async (
   companyId: string,
-  cityId: number
+  cityId: number,
+  extras: DeepReadonly<CompanySearchItem> | null
 ): Promise<void> => {
-  await scrapeCatalog(companyId, cityId);
+  await scrapeCatalog(companyId, cityId, extras);
   const work: Promise<unknown>[] = [];
   if (!SKIP_PRICES) {
     work.push(scrapePrices(companyId, cityId));
   }
   if (!SKIP_MENUS) {
     work.push(runMenusForCompany(companyId, cityId));
+  }
+  if (!SKIP_REVIEWS) {
+    work.push(runReviewsForCompany(companyId));
   }
   await Promise.all(work);
 };
@@ -90,7 +107,8 @@ const run = async (): Promise<void> => {
     `\n=== dietlownik scraper — city=${CITY}${hasCompany ? ` company=${COMPANY}` : ""} ===\n`
   );
 
-  try {
+  const scope = `${CITY}${hasCompany ? `/${COMPANY}` : ""}`;
+  await withRun("scrape", scope, async () => {
     const city = await scrapeCity(CITY);
 
     if (!SKIP_TAGS) {
@@ -122,7 +140,12 @@ const run = async (): Promise<void> => {
           console.warn("[run] company missing companyId, skipping");
           return;
         }
-        await processCompany(companyId, city.cityId);
+        try {
+          await processCompany(companyId, city.cityId, c);
+        } catch (error) {
+          await recordScrapeError(null, "catalog", { companyId, error });
+          throw error;
+        }
       }
     );
 
@@ -132,14 +155,14 @@ const run = async (): Promise<void> => {
         await scrapePromotions(city.cityId, companies);
       } catch (error) {
         console.warn(`[run] promotions skipped (${errMsg(error)})`);
+        await recordScrapeError(null, "promotions", { error });
       }
     }
 
     const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
     console.log(`\n=== done: ${ok} ok, ${fail} failed in ${elapsed}s ===\n`);
-  } finally {
-    await pool.end();
-  }
+    return { fail, ok, value: undefined };
+  });
 };
 
 const shutdown = (): void => {
@@ -163,8 +186,22 @@ if (REPEAT) {
   process.on("SIGTERM", shutdown);
   process.on("SIGINT", shutdown);
 } else {
+  const main = async (): Promise<void> => {
+    try {
+      await run();
+    } catch (error) {
+      console.error("[run] fatal:", error);
+      process.exitCode = 1;
+    } finally {
+      try {
+        await pool.end();
+      } catch (error) {
+        console.error(error);
+      }
+    }
+  };
   // oxlint-disable-next-line promise/prefer-await-to-callbacks, promise/prefer-await-to-then -- top-level entry point
-  run().catch((error: unknown) => {
+  main().catch((error: unknown) => {
     console.error("[run] fatal:", error);
     process.exit(1);
   });
