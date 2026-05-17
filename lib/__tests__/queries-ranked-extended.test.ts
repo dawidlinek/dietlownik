@@ -44,7 +44,7 @@ describe.skipIf(HEAVY_SKIP)("getRankedOffersForDay — channel mechanics", () =>
     // With zero scores, the tiebreaker is price ascending (NULLS LAST).
     const prices = result.offers.map((o) => o.price_per_day);
     const numeric = prices.filter((p): p is number => p !== null);
-    const sorted = [...numeric].sort((a, b) => a - b);
+    const sorted = [...numeric].toSorted((a, b) => a - b);
     expect(numeric).toEqual(sorted);
   });
 
@@ -81,7 +81,10 @@ describe.skipIf(HEAVY_SKIP)("getRankedOffersForDay — channel mechanics", () =>
     });
     expect(result.offers.length).toBeGreaterThan(0);
     // The bottom offer should be ≤ 0 (avoid-only inputs cannot net positive).
-    const last = result.offers[result.offers.length - 1];
+    const last = result.offers.at(-1);
+    if (last === undefined) {
+      return;
+    }
     expect(last.verdict.score_best).toBeLessThanOrEqual(0);
     for (const pick of last.picks) {
       for (const hit of pick.meal.hits) {
@@ -299,9 +302,7 @@ describe.skipIf(HEAVY_SKIP)("getRankedOffersForDay — channel mechanics", () =>
         // Reason should reference either the macro name or 'protein'.
         const r = hit.reason.toLowerCase();
         expect(
-          r.includes("protein") ||
-            r.includes("białk") ||
-            r.includes("bialk")
+          r.includes("protein") || r.includes("białk") || r.includes("bialk")
         ).toBe(true);
       }
     }
@@ -405,9 +406,8 @@ describe.skipIf(HEAVY_SKIP)("getWeeklyPlan — argmax + summary", () => {
   vi.setConfig({ testTimeout: 240_000 });
 
   it("argmaxes per-day independently and matches rank_day standalone", async () => {
-    const { getRankedOffersForDay, getWeeklyPlan } = await import(
-      "../queries.js"
-    );
+    const { getRankedOffersForDay, getWeeklyPlan } =
+      await import("../queries.js");
     const dates = ["2026-05-17", "2026-05-18"] as const;
     const plan = await getWeeklyPlan({
       altLimit: 0,

@@ -1,12 +1,6 @@
-import { DayByDayList } from "@/components/day-by-day-list";
 import { Header } from "@/components/header";
-import { MatchFilterStrip } from "@/components/match-filter-strip";
-import {
-  MOCK_ACTIVE_DAYS,
-  MOCK_AVOID,
-  MOCK_DAYS,
-  MOCK_PREFER,
-} from "@/lib/mock-match-data";
+import { MatchExperience } from "@/components/match-experience";
+import { MOCK_AVOID, MOCK_DAYS, MOCK_PREFER } from "@/lib/mock-match-data";
 
 export const dynamic = "force-dynamic";
 
@@ -22,21 +16,11 @@ const Page = () => (
       cities={MOCK_CITIES}
     />
 
-    <MatchFilterStrip
-      activeDays={MOCK_ACTIVE_DAYS}
-      activeMax={2000}
-      activeMin={1500}
-      dataMax={3000}
-      dataMin={1000}
-      dayOptions={[5, 7, 10, 14]}
+    <MatchExperience
+      days={MOCK_DAYS}
       initialAvoid={MOCK_AVOID}
       initialPrefer={MOCK_PREFER}
-      presets={[1200, 1500, 1800, 2000, 2500]}
     />
-
-    <main className="flex-1">
-      <DayByDayList avoid={MOCK_AVOID} days={MOCK_DAYS} prefer={MOCK_PREFER} />
-    </main>
 
     <footer className="border-t border-[var(--color-bone)] px-5 sm:px-8 lg:px-14 py-6 text-[12px] text-[var(--color-ink-3)]">
       <span>dietlownik · /match · mock · dane fikcyjne</span>

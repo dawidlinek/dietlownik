@@ -15,6 +15,7 @@ import type {
 } from "@/lib/mock-match-data";
 import { getMetric } from "@/lib/scatter-metrics";
 import type { MetricId } from "@/lib/scatter-metrics";
+import { usePersistedState } from "@/lib/use-persisted-state";
 import { cn } from "@/lib/utils";
 
 // ── Axis context (shared metric pickers across all scatter panels) ──────────
@@ -487,13 +488,37 @@ const OfferCell = ({
     </div>
 
     {/* Price + select */}
-    <div className="flex items-baseline gap-3 flex-wrap">
+    {/* Price · pre-promo strike · promo chip · select */}
+    <div className="flex items-baseline gap-2 flex-wrap">
       <span className="font-display tnum text-[22px] leading-none text-[var(--color-ink)]">
         {formatPriceNumber(offer.price_per_day)} zł
       </span>
       <span className="text-[12px] text-[var(--color-ink-3)] -ml-1">
         /dzień
       </span>
+      {offer.price_per_day_before_promo !== null && (
+        <span className="text-[11px] text-[var(--color-ink-3)]/70 line-through tnum">
+          {formatPriceNumber(offer.price_per_day_before_promo)}
+        </span>
+      )}
+      {offer.promos.map((p) => (
+        <span
+          className={cn(
+            "inline-flex items-baseline gap-1 rounded-sm px-1 py-px",
+            "text-[10px] uppercase tracking-[0.04em] tnum leading-none",
+            "bg-[var(--color-amber-tint)] text-[var(--color-amber-deep)]"
+          )}
+          key={p.code}
+          title={
+            p.ends_at === undefined
+              ? "kod bezterminowy"
+              : `kod ważny do ${p.ends_at}`
+          }
+        >
+          <span className="font-medium">{p.code}</span>
+          <span>−{p.discount_percent}%</span>
+        </span>
+      ))}
       <SelectButton onClick={onToggleSelect} selected={selected} />
     </div>
 
@@ -893,8 +918,8 @@ export const DayByDayList = ({
   const [overrides, setOverrides] = React.useState<Overrides>({});
   const [swaps, setSwaps] = React.useState<AllSwaps>({});
   const [selections, setSelections] = React.useState<Selections>({});
-  const [xId, setX] = React.useState<MetricId>("price");
-  const [yId, setY] = React.useState<MetricId>("score");
+  const [xId, setX] = usePersistedState<MetricId>("match.scatter.x", "price");
+  const [yId, setY] = usePersistedState<MetricId>("match.scatter.y", "score");
 
   const axisValue = React.useMemo<AxisContextValue>(
     () => ({ setX, setY, xId, yId }),

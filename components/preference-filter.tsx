@@ -160,45 +160,48 @@ const ChannelRow = ({
 );
 
 export interface PreferenceFilterProps {
-  readonly initialPrefer: readonly string[];
-  readonly initialAvoid: readonly string[];
+  readonly prefer: readonly string[];
+  readonly avoid: readonly string[];
+  readonly onPreferChange: (next: readonly string[]) => void;
+  readonly onAvoidChange: (next: readonly string[]) => void;
 }
 
-type Setter = React.Dispatch<React.SetStateAction<readonly string[]>>;
+const addValue =
+  (current: readonly string[], onChange: (next: readonly string[]) => void) =>
+  (value: string) => {
+    const lower = value.toLowerCase();
+    if (current.includes(lower)) {
+      return;
+    }
+    onChange([...current, lower]);
+  };
 
-const addTo = (setter: Setter) => (value: string) => {
-  setter((prev) =>
-    prev.includes(value.toLowerCase()) ? prev : [...prev, value.toLowerCase()]
-  );
-};
-
-const removeFrom = (setter: Setter) => (value: string) => {
-  setter((prev) => prev.filter((x) => x !== value));
-};
+const removeValue =
+  (current: readonly string[], onChange: (next: readonly string[]) => void) =>
+  (value: string) => {
+    onChange(current.filter((x) => x !== value));
+  };
 
 export const PreferenceFilter = ({
-  initialAvoid,
-  initialPrefer,
-}: Readonly<PreferenceFilterProps>) => {
-  const [prefer, setPrefer] = React.useState<readonly string[]>(initialPrefer);
-  const [avoid, setAvoid] = React.useState<readonly string[]>(initialAvoid);
-
-  return (
-    <div className="flex flex-col gap-2.5">
-      <ChannelRow
-        channel="prefer"
-        label="prefer"
-        onAdd={addTo(setPrefer)}
-        onRemove={removeFrom(setPrefer)}
-        values={prefer}
-      />
-      <ChannelRow
-        channel="avoid"
-        label="avoid"
-        onAdd={addTo(setAvoid)}
-        onRemove={removeFrom(setAvoid)}
-        values={avoid}
-      />
-    </div>
-  );
-};
+  avoid,
+  onAvoidChange,
+  onPreferChange,
+  prefer,
+}: Readonly<PreferenceFilterProps>) => (
+  <div className="flex flex-col gap-2.5">
+    <ChannelRow
+      channel="prefer"
+      label="prefer"
+      onAdd={addValue(prefer, onPreferChange)}
+      onRemove={removeValue(prefer, onPreferChange)}
+      values={prefer}
+    />
+    <ChannelRow
+      channel="avoid"
+      label="avoid"
+      onAdd={addValue(avoid, onAvoidChange)}
+      onRemove={removeValue(avoid, onAvoidChange)}
+      values={avoid}
+    />
+  </div>
+);

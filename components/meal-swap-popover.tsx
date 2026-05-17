@@ -7,7 +7,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import type { MockHit, MockMealOption, MockPick } from "@/lib/mock-match-data";
+import type { MockMealOption, MockPick } from "@/lib/mock-match-data";
 import { cn } from "@/lib/utils";
 
 const formatScore = (v: number): string => {
@@ -40,23 +40,6 @@ const SectionLabel = ({
     {children}
   </div>
 );
-
-const HitChip = ({ hit }: Readonly<{ hit: MockHit }>) => {
-  const isPrefer = hit.channel === "prefer";
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px]",
-        isPrefer
-          ? "bg-[var(--color-olive-tint)] text-[var(--color-olive)]"
-          : "bg-[var(--color-clay-tint)] text-[var(--color-clay)]"
-      )}
-    >
-      <span aria-hidden>{isPrefer ? "✓" : "⚠"}</span>
-      <span>{hit.keyword}</span>
-    </span>
-  );
-};
 
 const AllergenChip = ({ name }: Readonly<{ name: string }>) => (
   <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] bg-[var(--color-clay-tint)] text-[var(--color-clay)]">
@@ -114,32 +97,6 @@ const DishMeta = ({ option }: Readonly<{ option: MockMealOption }>) => (
         <MacroCell label="cukry" unit="g" value={option.sugar_g} />
       </div>
     </div>
-
-    {/* Hits / score breakdown */}
-    {option.hits.length > 0 && (
-      <div>
-        <SectionLabel>
-          dopasowanie{" "}
-          <span
-            className={cn(
-              "ml-1 tnum normal-case",
-              scoreColor(option.meal_score)
-            )}
-          >
-            {formatScore(option.meal_score)}
-          </span>
-        </SectionLabel>
-        <div className="flex flex-wrap gap-1">
-          {option.hits.map((h, i) => (
-            <HitChip
-              hit={h}
-              // oxlint-disable-next-line react/no-array-index-key -- mock hits not stably keyable
-              key={`${h.keyword}-${i}`}
-            />
-          ))}
-        </div>
-      </div>
-    )}
   </div>
 );
 
@@ -147,23 +104,30 @@ const DishMeta = ({ option }: Readonly<{ option: MockMealOption }>) => (
 
 interface AlternateRowProps {
   readonly option: MockMealOption;
-  readonly selected: boolean;
+  readonly previewed: boolean;
   readonly onPick: () => void;
+  readonly onPreview: () => void;
+  readonly onPreviewEnd: () => void;
 }
 
 const AlternateRow = ({
   onPick,
+  onPreview,
+  onPreviewEnd,
   option,
-  selected,
+  previewed,
 }: Readonly<AlternateRowProps>) => (
   <button
-    aria-pressed={selected}
     className={cn(
       "w-full text-left px-2.5 py-1.5 rounded-sm",
       "transition-colors flex items-baseline justify-between gap-2",
-      selected ? "bg-[var(--color-amber-tint)]" : "hover:bg-[var(--color-oat)]"
+      previewed ? "bg-[var(--color-amber-tint)]" : "hover:bg-[var(--color-oat)]"
     )}
+    onBlur={onPreviewEnd}
     onClick={onPick}
+    onFocus={onPreview}
+    onMouseEnter={onPreview}
+    onMouseLeave={onPreviewEnd}
     type="button"
   >
     <span className="text-[12px] text-[var(--color-ink)] leading-snug">
@@ -190,6 +154,7 @@ export const DishDetailsPopover = ({
   pick,
 }: Readonly<DishDetailsPopoverProps>) => {
   const [open, setOpen] = React.useState(false);
+  const [previewName, setPreviewName] = React.useState<string | null>(null);
   const alternates = pick.alternates ?? [];
   const currentAsOption: MockMealOption = {
     allergens: pick.allergens,
@@ -210,8 +175,22 @@ export const DishDetailsPopover = ({
   );
   const showSwap = onSwap !== undefined && others.length > 0;
 
+  // The option currently driving the header + DishMeta — preview wins over the
+  // committed pick so users can scan macros before clicking.
+  const previewed = others.find((o) => o.meal_name === previewName);
+  const displayed = previewed ?? currentAsOption;
+  const isPreviewing = previewed !== undefined;
+
   return (
-    <Popover onOpenChange={setOpen} open={open}>
+    <Popover
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (!next) {
+          setPreviewName(null);
+        }
+      }}
+      open={open}
+    >
       <PopoverTrigger asChild>
         <button
           className={cn(
@@ -236,23 +215,28 @@ export const DishDetailsPopover = ({
         <div className="px-3 pt-2.5 pb-2 border-b border-[var(--color-bone)]">
           <div className="text-[10px] uppercase tracking-[0.08em] text-[var(--color-ink-3)]">
             {pick.slot_name}
-            {pick.is_default && (
+            {displayed.is_default && (
               <span className="ml-2 text-[var(--color-ink-3)]">· default</span>
+            )}
+            {isPreviewing && (
+              <span className="ml-2 text-[var(--color-amber-deep)]">
+                · podgląd
+              </span>
             )}
           </div>
           <div className="font-display text-[15px] leading-snug text-[var(--color-ink)] mt-0.5">
-            {pick.meal_name}
+            {displayed.meal_name}
           </div>
         </div>
 
         {/* Body */}
-        <DishMeta option={currentAsOption} />
+        <DishMeta option={displayed} />
 
         {/* Swap section */}
         {showSwap && (
           <div className="border-t border-[var(--color-bone)] px-1.5 py-2">
             <div className="px-1 mb-1 text-[10px] uppercase tracking-[0.08em] text-[var(--color-ink-3)]">
-              inne opcje na ten slot · {others.length}
+              inne opcje na ten slot · {others.length} · kliknij aby wybrać
             </div>
             <div className="flex flex-col">
               {others.map((o) => (
@@ -260,10 +244,17 @@ export const DishDetailsPopover = ({
                   key={o.meal_name}
                   onPick={() => {
                     onSwap?.(o);
+                    setPreviewName(null);
                     setOpen(false);
                   }}
+                  onPreview={() => {
+                    setPreviewName(o.meal_name);
+                  }}
+                  onPreviewEnd={() => {
+                    setPreviewName((cur) => (cur === o.meal_name ? null : cur));
+                  }}
                   option={o}
-                  selected={false}
+                  previewed={previewName === o.meal_name}
                 />
               ))}
             </div>
