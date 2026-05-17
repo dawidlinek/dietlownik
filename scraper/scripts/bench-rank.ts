@@ -30,8 +30,8 @@ import {
 import { join } from "node:path";
 
 import { query } from "../../lib/db.js";
-import { CANDIDATES } from "./bench-embed-all.js";
-import type { Candidate } from "./bench-embed-all.js";
+import { CANDIDATES } from "./bench-candidates.js";
+import type { Candidate } from "./bench-candidates.js";
 
 const dir = import.meta.dirname;
 const VECTORS_DIR = join(dir, "..", "..", "bench", "vectors");
