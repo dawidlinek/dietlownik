@@ -75,7 +75,6 @@
     "vitest": "~4.1.4"
   },
   "ignoreScripts": [
-    "sharp",
     "unrs-resolver"
   ],
   "trustedDependencies": [
