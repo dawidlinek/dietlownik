@@ -126,22 +126,22 @@ SELECT
 FROM companies co
 JOIN diets d
   ON d.company_id = co.company_id
- AND d.valid_to IS NULL
+ AND d.is_active = TRUE
 JOIN tiers t
   ON t.company_id = co.company_id
  AND t.diet_id = d.diet_id
- AND t.valid_to IS NULL
+ AND t.is_active = TRUE
 JOIN diet_options do2
   ON do2.company_id = co.company_id
  AND do2.diet_id = d.diet_id
  AND do2.tier_id = t.tier_id
- AND do2.valid_to IS NULL
+ AND do2.is_active = TRUE
 JOIN diet_calories dc
   ON dc.company_id = co.company_id
  AND dc.diet_id = d.diet_id
  AND dc.tier_id = t.tier_id
  AND dc.diet_option_id = do2.diet_option_id
- AND dc.valid_to IS NULL
+ AND dc.is_active = TRUE
 JOIN company_cities cc
   ON cc.company_id = co.company_id
  AND cc.city_id = $1

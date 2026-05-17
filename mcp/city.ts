@@ -43,8 +43,8 @@ const fromDb = async (input: string): Promise<ResolvedCity | undefined> => {
   const res = await q<CityRow>(
     `SELECT city_id, name FROM cities
       WHERE LOWER(name) = LOWER($1) OR LOWER(sanitized_name) = LOWER($1)
-      ORDER BY largest_city_for_name DESC NULLS LAST,
-               number_of_companies   DESC NULLS LAST
+      ORDER BY number_of_companies DESC NULLS LAST,
+               city_id ASC
       LIMIT 1`,
     [input]
   );
