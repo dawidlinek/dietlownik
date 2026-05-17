@@ -312,8 +312,7 @@ export const OfferScatter = ({
   xMetric,
   yMetric,
 }: Readonly<OfferScatterProps>) => {
-  const [showAll, setShowAll] = React.useState(false);
-  // User deltas relative to the mode-default (top set or all companies).
+  // User deltas relative to the mode-default (top set).
   const [addedCompanies, setAddedCompanies] = React.useState<
     ReadonlySet<string>
   >(new Set());
@@ -357,13 +356,12 @@ export const OfferScatter = ({
     return out;
   }, [offers, xMetric, yMetric, cheapestId, selectedId]);
 
-  // The mode default set — the company-filter is pre-checked to this.
-  const modeDefaultCompanies = React.useMemo(() => {
-    if (showAll) {
-      return new Set(companies);
-    }
-    return new Set(topOffers.map((o) => o.company_name));
-  }, [showAll, companies, topOffers]);
+  // The default visible set — top-5 by X, top-5 by Y, plus cheapest +
+  // currently-selected dots. User can extend or trim via the filter popover.
+  const modeDefaultCompanies = React.useMemo(
+    () => new Set(topOffers.map((o) => o.company_name)),
+    [topOffers]
+  );
 
   // Visible = default ∪ added − excluded.
   const visibleCompanies = React.useMemo(() => {
@@ -381,12 +379,6 @@ export const OfferScatter = ({
     () => offers.filter((o) => visibleCompanies.has(o.company_name)),
     [offers, visibleCompanies]
   );
-
-  const setShowAllAndReset = (next: boolean) => {
-    setShowAll(next);
-    setAddedCompanies(new Set());
-    setExcludedCompanies(new Set());
-  };
 
   const toggleCompany = (name: string) => {
     const isVisible = visibleCompanies.has(name);
@@ -585,7 +577,6 @@ export const OfferScatter = ({
               }
             );
           };
-          const showingAllPresets = q === "";
           return (
             <>
               <div className="px-2 py-1 flex items-center justify-between text-[10px] uppercase tracking-[0.08em] text-[var(--color-ink-3)] border-b border-[var(--color-bone)]/60">
@@ -611,27 +602,6 @@ export const OfferScatter = ({
                       type="button"
                     >
                       odznacz
-                    </button>
-                  )}
-                  {showingAllPresets && (
-                    <button
-                      className={cn(
-                        "text-[10px] underline-offset-2 hover:underline normal-case",
-                        showAll
-                          ? "text-[var(--color-amber-deep)]"
-                          : "text-[var(--color-ink-3)] hover:text-[var(--color-ink)]"
-                      )}
-                      onClick={() => {
-                        setShowAllAndReset(!showAll);
-                      }}
-                      title={
-                        showAll
-                          ? `Zawęź do top: top ${TOP_N} po X + top ${TOP_N} po Y + najtańsza + wybrana`
-                          : "Pokaż wszystkie firmy"
-                      }
-                      type="button"
-                    >
-                      {showAll ? `top ${topOffers.length}` : "wszystkie"}
                     </button>
                   )}
                 </div>

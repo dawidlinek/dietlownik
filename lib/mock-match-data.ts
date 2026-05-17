@@ -145,6 +145,7 @@ const MEAL_MACROS: Readonly<Record<string, MealMacros>> = {
   "Owsianka z malinami i orzechami": macro(350, 10, 11, 52, 8, 18),
   "Pad thai z tofu i papryczką chili": macro(540, 22, 24, 56, 6, 14),
   "Pieczony łosoś z warzywami sezonowymi": macro(480, 32, 22, 28, 6, 6),
+  "Pierś z kurczaka z batatami i awokado": macro(540, 42, 18, 38, 7, 6),
   "Sałatka grecka z fetą i pomidorami": macro(320, 14, 22, 18, 4, 8),
   "Sałatka z grillowanym kurczakiem i komosą": macro(380, 32, 16, 22, 6, 4),
   "Skyr z borówkami i pestkami dyni": macro(200, 22, 4, 18, 3, 18),
@@ -217,6 +218,11 @@ const MEAL_DETAILS: Readonly<Record<string, MealDetails>> = {
     allergens: ["ryby"],
     ingredients_raw:
       "łosoś atlantycki, brokuły, marchew, cukinia, oliwa, koperek, cytryna, sól",
+  },
+  "Pierś z kurczaka z batatami i awokado": {
+    allergens: [],
+    ingredients_raw:
+      "pierś z kurczaka, batat, awokado, oliwa z oliwek, czosnek, papryka wędzona, limonka, kolendra, sól, pieprz",
   },
   "Sałatka grecka z fetą i pomidorami": {
     allergens: ["mleko"],
@@ -462,6 +468,24 @@ const tatarLososiowy = pick({
   slot_name: "kolacja",
 });
 
+// Premium pick used to showcase menu-config swaps — beats every PICK_COMBOS
+// option so the menu-config offer ranks #1 by score-desc on its day.
+const piersKurczakaBataty = pick({
+  hits: [
+    preferHit(
+      "embedding",
+      "kurczak",
+      1.1,
+      'silne dopasowanie "kurczak" (sim=0.93)'
+    ),
+    preferHit("macro", "dużo białka", 1.2, "protein 21g / 100kcal ≥ p90"),
+  ],
+  is_default: false,
+  meal_name: "Pierś z kurczaka z batatami i awokado",
+  meal_score: 2.3,
+  slot_name: "kolacja",
+});
+
 // ── Per-slot alternates ──────────────────────────────────────────────────────
 // For menu-config offers, each picked meal gets siblings from the same slot
 // so the user can swap. Built once from the pick library above.
@@ -484,6 +508,7 @@ const toOption = (p: MockPick): MockMealOption => ({
 const SLOT_ALTERNATES: Readonly<Record<string, readonly MockMealOption[]>> = {
   "ii śniadanie": [koktajlBialkowy, kanapkaSer].map(toOption),
   kolacja: [
+    piersKurczakaBataty,
     salataKurczak,
     salataFetaPomidor,
     hummusWarzywa,
@@ -1104,28 +1129,22 @@ const day_2026_05_20: RawDay = {
   weekday_short_pl: "śr",
 };
 
-// Menu-config best-fit: score_best > score_default (achievable via picks).
+// Menu-config showcase: the same offer is both cheapest and best-fit, so the
+// row collapses. score_best beats every extra in PICK_COMBOS, and the offer
+// is flagged is_menu_configuration so the user can swap meals per slot.
+const day_2026_05_21_menuConfig = offer(
+  "maczfit::elastyczny::1500",
+  "Maczfit",
+  "elastyczny",
+  "menu-config",
+  1500,
+  44,
+  [omletKurczak, koktajlBialkowy, kurczakRyz, skyrBorowki, piersKurczakaBataty],
+  { is_menu_configuration: true, score_default_override: 1.8 }
+);
 const day_2026_05_21: RawDay = {
-  best_fit: offer(
-    "bodychief::active::1500",
-    "bodychief",
-    "active",
-    "menu-config",
-    1500,
-    56.8,
-    [omletKurczak, koktajlBialkowy, indykCukinia, skyrBorowki, salataKurczak],
-    { is_menu_configuration: true, score_default_override: 1.2 }
-  ),
-  cheapest: offer(
-    "dieta-od-brzucha::std::1500",
-    "dieta od brzucha",
-    "standard",
-    null,
-    1500,
-    51.4,
-    [owsiankaMaliny, kanapkaSer, lososWarzywa, orzechyMigdaly, hummusWarzywa],
-    { promos: [PROMO_WELCOME5], score_default_override: 0 }
-  ),
+  best_fit: day_2026_05_21_menuConfig,
+  cheapest: day_2026_05_21_menuConfig,
   date: "2026-05-21",
   total_considered: 13,
   weekday_short_pl: "czw",
