@@ -1,8 +1,8 @@
-import { encodeOfferId } from "../mcp/offer.js";
+import { encodeOfferId } from "../mcp/offer";
 import { query } from "./db";
-import { toPgVector } from "./embeddings.js";
-import { routePreferences } from "./preference-router.js";
-import type { MacroField, RoutedIntents } from "./preference-router.js";
+import { toPgVector } from "./embeddings";
+import { routePreferences } from "./preference-router";
+import type { MacroField, RoutedIntents } from "./preference-router";
 
 export interface CityRow {
   readonly city_id: number;

@@ -1,16 +1,15 @@
 import "dotenv/config";
 import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 
 import pg from "pg";
 
 const { Client } = pg;
 
-const __dir = import.meta.dirname;
+const here = import.meta.dirname;
 
 const { DATABASE_URL } = process.env;
-if (!DATABASE_URL) {
+if (DATABASE_URL === undefined || DATABASE_URL === "") {
   console.error("DATABASE_URL is not set");
   process.exit(1);
 }
@@ -21,11 +20,31 @@ const seedTaxonomy = flags.has("--seed-taxonomy");
 // It exists as an explicit affirmation for callers who want to be loud about intent.
 const explicitReset = flags.has("--reset");
 
-const schemaPath = join(__dir, "schema.sql");
-const taxonomyPath = join(__dir, "seed", "taxonomy.sql");
+const schemaPath = join(here, "schema.sql");
+const taxonomyPath = join(here, "seed", "taxonomy.sql");
 
 const schemaSql = readFileSync(schemaPath, "utf-8");
 const taxonomySql = seedTaxonomy ? readFileSync(taxonomyPath, "utf-8") : null;
+
+/**
+ * Pull a numeric scalar out of `pg`'s loosely typed query result. `pg` types
+ * `.rows` as `any[]`, so we narrow here to satisfy `no-unsafe-member-access`.
+ *
+ * @param {Readonly<{ rows: ReadonlyArray<Readonly<Record<string, unknown>>> }>} result the pg.QueryResult
+ * @param {string} col the column name to look up on the first row
+ * @returns {number | string | null} the scalar value, or null when absent or non-scalar
+ */
+const scalar = (result, col) => {
+  const [row] = result.rows;
+  if (row === undefined) {
+    return null;
+  }
+  const v = row[col];
+  if (typeof v === "number" || typeof v === "string") {
+    return v;
+  }
+  return null;
+};
 
 const main = async () => {
   const client = new Client({ connectionString: DATABASE_URL });
@@ -50,7 +69,7 @@ const main = async () => {
     console.log(`[migrate_fresh] executing ${schemaPath}`);
     await client.query(schemaSql);
 
-    if (seedTaxonomy && taxonomySql) {
+    if (seedTaxonomy && taxonomySql !== null && taxonomySql !== "") {
       console.log(`[migrate_fresh] executing ${taxonomyPath}`);
       await client.query(taxonomySql);
     }
@@ -67,7 +86,7 @@ const main = async () => {
       "SELECT COUNT(*)::int AS n FROM pg_extension WHERE extname IN ('vector', 'pg_trgm')"
     );
     console.log(
-      `[migrate_fresh] done — tables=${tableCount.rows[0].n}, views=${viewCount.rows[0].n}, target extensions=${extCount.rows[0].n}/2`
+      `[migrate_fresh] done — tables=${scalar(tableCount, "n")}, views=${scalar(viewCount, "n")}, target extensions=${scalar(extCount, "n")}/2`
     );
 
     if (seedTaxonomy) {
@@ -78,7 +97,7 @@ const main = async () => {
         "SELECT COUNT(*)::int AS members FROM ingredient_taxonomy_members"
       );
       console.log(
-        `[migrate_fresh] taxonomy seeded — categories=${taxRows.rows[0].categories}, members=${memberRows.rows[0].members}`
+        `[migrate_fresh] taxonomy seeded — categories=${scalar(taxRows, "categories")}, members=${scalar(memberRows, "members")}`
       );
     }
   } catch (error) {
@@ -87,9 +106,13 @@ const main = async () => {
     } catch {
       /* ignore — connection may already be in a bad state */
     }
-    console.error("[migrate_fresh] failed:", error.message);
-    if (error.stack) {
-      console.error(error.stack);
+    if (error instanceof Error) {
+      console.error("[migrate_fresh] failed:", error.message);
+      if (error.stack !== undefined && error.stack !== "") {
+        console.error(error.stack);
+      }
+    } else {
+      console.error("[migrate_fresh] failed:", error);
     }
     process.exitCode = 1;
   } finally {
@@ -97,7 +120,9 @@ const main = async () => {
   }
 };
 
-main().catch((error) => {
+try {
+  await main();
+} catch (error) {
   console.error("[migrate_fresh] uncaught:", error);
   process.exit(1);
-});
+}

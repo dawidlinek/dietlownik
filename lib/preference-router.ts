@@ -12,8 +12,8 @@
 // The router does NOT enforce the per-channel max-15 limit; that's the
 // MCP layer's job. We just iterate.
 
-import { query } from "./db.js";
-import { embedKeyword } from "./embeddings.js";
+import { query } from "./db";
+import { embedKeyword } from "./embeddings";
 
 export type Channel = "prefer" | "avoid";
 

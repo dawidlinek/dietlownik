@@ -1,7 +1,7 @@
 import { pipeline } from "@xenova/transformers";
 import type { FeatureExtractionPipeline } from "@xenova/transformers";
 
-import { query } from "./db.js";
+import { query } from "./db";
 
 // NOTE on `server-only`: the upstream plan calls for `import 'server-only';`
 // at the very top of this module to guard against accidental client-side
@@ -40,11 +40,15 @@ declare global {
     | undefined;
 }
 
-const loadPipeline = async (): Promise<FeatureExtractionPipeline> => {
+// Returns the cached in-flight or resolved pipeline promise. Caching the
+// Promise itself (not the resolved value) is intentional — concurrent first
+// callers must share one load, not race two.
+// oxlint-disable-next-line typescript-eslint/promise-function-async -- caching the promise itself is the point; wrapping in async would defeat the singleton
+const loadPipeline = (): Promise<FeatureExtractionPipeline> => {
   // oxlint-disable-next-line no-underscore-dangle -- HMR-safe singleton key
-  if (global.__dietlownikEmbedderPromise) {
-    // oxlint-disable-next-line no-underscore-dangle -- HMR-safe singleton key
-    return global.__dietlownikEmbedderPromise;
+  const existing = global.__dietlownikEmbedderPromise;
+  if (existing) {
+    return existing;
   }
   // The upstream plan asks for `dtype: 'fp32'`. That option is a v3-only flag
   // on `@huggingface/transformers`; this project pins `@xenova/transformers`
@@ -62,7 +66,17 @@ const loadPipeline = async (): Promise<FeatureExtractionPipeline> => {
   return p;
 };
 
+// Narrow tensor.data (typed as a broader union by the library) to Float32Array
+// at runtime. All feature-extraction outputs we use are float32.
+const toFloat32Array = (data: unknown): Float32Array => {
+  if (data instanceof Float32Array) {
+    return data;
+  }
+  throw new TypeError("tensor.data is not a Float32Array");
+};
+
 const sliceTensorRow = (
+  // oxlint-disable-next-line typescript-eslint/prefer-readonly-parameter-types -- Float32Array has no true readonly variant in lib.es5.d.ts
   flat: Float32Array,
   rowIndex: number,
   width: number
@@ -85,7 +99,7 @@ export const getEmbedder = async (): Promise<Embedder> => {
       });
       // Output shape: [1, dim]. Tensor.data is a typed array (Float32Array for
       // float32 models). Copy out to detach from the tensor's buffer.
-      const data = tensor.data as Float32Array;
+      const data = toFloat32Array(tensor.data);
       return sliceTensorRow(data, 0, DIM);
     },
     async embedBatch(
@@ -98,7 +112,7 @@ export const getEmbedder = async (): Promise<Embedder> => {
         normalize: true,
         pooling: "mean",
       });
-      const data = tensor.data as Float32Array;
+      const data = toFloat32Array(tensor.data);
       const out: Float32Array[] = [];
       for (let i = 0; i < texts.length; i += 1) {
         out.push(sliceTensorRow(data, i, DIM));
@@ -111,8 +125,9 @@ export const getEmbedder = async (): Promise<Embedder> => {
 // Postgres `vector(N)` accepts a text literal in the form `[v1,v2,...]`. The
 // pgvector docs are explicit: that representation, cast with `::vector`, is
 // the canonical input shape from a parameterised query.
+// oxlint-disable-next-line typescript-eslint/prefer-readonly-parameter-types -- Float32Array has no true readonly variant in lib.es5.d.ts
 export const toPgVector = (v: Float32Array): string => {
-  const parts = new Array<string>(v.length);
+  const parts: string[] = Array.from({ length: v.length });
   for (let i = 0; i < v.length; i += 1) {
     parts[i] = String(v[i]);
   }
@@ -121,6 +136,7 @@ export const toPgVector = (v: Float32Array): string => {
 
 // Cosine similarity assuming both inputs are already L2-normalised (which is
 // what the pipeline returns with `normalize: true`). Equivalent to dot product.
+// oxlint-disable-next-line typescript-eslint/prefer-readonly-parameter-types -- Float32Array has no true readonly variant in lib.es5.d.ts
 export const cosine = (a: Float32Array, b: Float32Array): number => {
   const n = Math.min(a.length, b.length);
   let dot = 0;

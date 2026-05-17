@@ -6,12 +6,16 @@ export const register = async () => {
     return;
   }
   try {
-    const { warmEmbedder } = await import("./lib/embeddings.js");
+    const { warmEmbedder } = await import("./lib/embeddings");
     // Fire-and-forget — don't block server start while the ~570 MB bge-m3 ONNX
     // file streams down on first boot.
-    warmEmbedder().catch((error: unknown) => {
-      console.warn("warmEmbedder failed:", error);
-    });
+    void (async () => {
+      try {
+        await warmEmbedder();
+      } catch (error: unknown) {
+        console.warn("warmEmbedder failed:", error);
+      }
+    })();
   } catch (error: unknown) {
     // lib/embeddings.ts not yet implemented (backend rewrite plan in flight).
     console.warn(

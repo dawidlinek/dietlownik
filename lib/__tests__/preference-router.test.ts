@@ -7,6 +7,11 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 
 const HEAVY_SKIP = process.env.SKIP_HEAVY_TESTS === "1";
+// Category routing hits the live taxonomy table; the rest of routePreferences
+// is in-memory. Skip the DB-touching cases when DATABASE_URL is absent so the
+// suite still exercises allergen + macro + empty-input paths in CI.
+const NO_DB =
+  process.env.DATABASE_URL === undefined || process.env.DATABASE_URL === "";
 
 describe.skipIf(HEAVY_SKIP)("routePreferences", () => {
   // Test 4 cold-loads bge-m3 (~570 MB int8 weights) and may also download
@@ -15,6 +20,9 @@ describe.skipIf(HEAVY_SKIP)("routePreferences", () => {
   vi.setConfig({ testTimeout: 300_000 });
 
   beforeAll(async () => {
+    if (NO_DB) {
+      return;
+    }
     // Drop any cached taxonomy so the live DB is exercised once per file.
     const mod = await import("../preference-router.js");
     mod.resetTaxonomyCache();
@@ -57,67 +65,76 @@ describe.skipIf(HEAVY_SKIP)("routePreferences", () => {
     expect(result.embedding).toHaveLength(0);
   });
 
-  it("routes a taxonomy category ('psiankowate') with members and channel 'avoid'", async () => {
-    const { routePreferences } = await import("../preference-router.js");
-    const result = await routePreferences({
-      avoid: ["psiankowate"],
-      prefer: [],
-    });
-    expect(result.category).toHaveLength(1);
-    const [cat] = result.category;
-    expect(cat.source).toBe("category");
-    expect(cat.channel).toBe("avoid");
-    expect(cat.category).toBe("psiankowate");
-    expect(cat.keyword).toBe("psiankowate");
-    expect(cat.patterns.length).toBeGreaterThan(0);
-    expect(cat.patterns).toContain("pomidor");
-    expect(result.allergen).toHaveLength(0);
-    expect(result.macro).toHaveLength(0);
-    expect(result.embedding).toHaveLength(0);
-  });
-
-  it("routes unmatched keywords to embedding with per-channel tagging", async () => {
-    const { routePreferences } = await import("../preference-router.js");
-    const result = await routePreferences({
-      avoid: ["pomidor"],
-      prefer: ["kurczak"],
-    });
-    expect(result.embedding).toHaveLength(2);
-    expect(result.allergen).toHaveLength(0);
-    expect(result.category).toHaveLength(0);
-    expect(result.macro).toHaveLength(0);
-
-    const preferHit = result.embedding.find(
-      (e: { readonly channel: string }) => e.channel === "prefer"
-    );
-    const avoidHit = result.embedding.find(
-      (e: { readonly channel: string }) => e.channel === "avoid"
-    );
-    expect(preferHit).toBeDefined();
-    expect(avoidHit).toBeDefined();
-    if (preferHit === undefined || avoidHit === undefined) {
-      return;
+  it.skipIf(NO_DB)(
+    "routes a taxonomy category ('psiankowate') with members and channel 'avoid'",
+    async () => {
+      const { routePreferences } = await import("../preference-router.js");
+      const result = await routePreferences({
+        avoid: ["psiankowate"],
+        prefer: [],
+      });
+      expect(result.category).toHaveLength(1);
+      const [cat] = result.category;
+      expect(cat.source).toBe("category");
+      expect(cat.channel).toBe("avoid");
+      expect(cat.category).toBe("psiankowate");
+      expect(cat.keyword).toBe("psiankowate");
+      expect(cat.patterns.length).toBeGreaterThan(0);
+      expect(cat.patterns).toContain("pomidor");
+      expect(result.allergen).toHaveLength(0);
+      expect(result.macro).toHaveLength(0);
+      expect(result.embedding).toHaveLength(0);
     }
-    expect(preferHit.keyword).toBe("kurczak");
-    expect(preferHit.vector).toBeInstanceOf(Float32Array);
-    expect(preferHit.vector.length).toBe(1024);
-    expect(avoidHit.keyword).toBe("pomidor");
-    expect(avoidHit.vector).toBeInstanceOf(Float32Array);
-    expect(avoidHit.vector.length).toBe(1024);
-  });
+  );
 
-  it("emits two embedding intents when the same keyword appears in both arrays", async () => {
-    const { routePreferences } = await import("../preference-router.js");
-    const result = await routePreferences({
-      avoid: ["kurczak"],
-      prefer: ["kurczak"],
-    });
-    expect(result.embedding).toHaveLength(2);
-    const channels = result.embedding
-      .map((e: { readonly channel: string }) => e.channel)
-      .toSorted();
-    expect(channels).toEqual(["avoid", "prefer"]);
-  });
+  it.skipIf(NO_DB)(
+    "routes unmatched keywords to embedding with per-channel tagging",
+    async () => {
+      const { routePreferences } = await import("../preference-router.js");
+      const result = await routePreferences({
+        avoid: ["pomidor"],
+        prefer: ["kurczak"],
+      });
+      expect(result.embedding).toHaveLength(2);
+      expect(result.allergen).toHaveLength(0);
+      expect(result.category).toHaveLength(0);
+      expect(result.macro).toHaveLength(0);
+
+      const preferHit = result.embedding.find(
+        (e: { readonly channel: string }) => e.channel === "prefer"
+      );
+      const avoidHit = result.embedding.find(
+        (e: { readonly channel: string }) => e.channel === "avoid"
+      );
+      expect(preferHit).toBeDefined();
+      expect(avoidHit).toBeDefined();
+      if (preferHit === undefined || avoidHit === undefined) {
+        return;
+      }
+      expect(preferHit.keyword).toBe("kurczak");
+      expect(preferHit.vector).toBeInstanceOf(Float32Array);
+      expect(preferHit.vector.length).toBe(1024);
+      expect(avoidHit.keyword).toBe("pomidor");
+      expect(avoidHit.vector).toBeInstanceOf(Float32Array);
+      expect(avoidHit.vector.length).toBe(1024);
+    }
+  );
+
+  it.skipIf(NO_DB)(
+    "emits two embedding intents when the same keyword appears in both arrays",
+    async () => {
+      const { routePreferences } = await import("../preference-router.js");
+      const result = await routePreferences({
+        avoid: ["kurczak"],
+        prefer: ["kurczak"],
+      });
+      expect(result.embedding).toHaveLength(2);
+      const channels = result.embedding
+        .map((e: { readonly channel: string }) => e.channel)
+        .toSorted();
+      expect(channels).toEqual(["avoid", "prefer"]);
+    }
+  );
 
   it("maps 'wysokokaloryczne' to high kcal", async () => {
     const { routePreferences } = await import("../preference-router.js");
