@@ -1,0 +1,1136 @@
+{
+  "_meta": {
+    "version": 1,
+    "description": "Embedding benchmark query set. Each query is what a real user would type into the /match dashboard. The query is the RAW token (not 'prefer X' / 'avoid X') — the channel direction is applied downstream in scoring.",
+    "label_sources": {
+      "auto": "labels are derived from structured fields (meal_ingredients, diet_tags, macro quartiles) — no LLM call needed",
+      "llm": "labels come from a Sonnet 4.5 oracle that rates each meal 0..10 for the query"
+    }
+  },
+
+  "queries": [
+    {
+      "_": "──────────── single ingredient (auto-labelable from meal_ingredients) ────────────"
+    },
+    {
+      "text": "kurczak",
+      "family": "ingredient",
+      "expected_channel": "category",
+      "label_source": "auto"
+    },
+    {
+      "text": "łosoś",
+      "family": "ingredient",
+      "expected_channel": "category",
+      "label_source": "auto"
+    },
+    {
+      "text": "dorsz",
+      "family": "ingredient",
+      "expected_channel": "category",
+      "label_source": "auto"
+    },
+    {
+      "text": "tuńczyk",
+      "family": "ingredient",
+      "expected_channel": "category",
+      "label_source": "auto"
+    },
+    {
+      "text": "indyk",
+      "family": "ingredient",
+      "expected_channel": "category",
+      "label_source": "auto"
+    },
+    {
+      "text": "wołowina",
+      "family": "ingredient",
+      "expected_channel": "category",
+      "label_source": "auto"
+    },
+    {
+      "text": "wieprzowina",
+      "family": "ingredient",
+      "expected_channel": "category",
+      "label_source": "auto"
+    },
+    {
+      "text": "jajko",
+      "family": "ingredient",
+      "expected_channel": "category",
+      "label_source": "auto"
+    },
+    {
+      "text": "ser",
+      "family": "ingredient",
+      "expected_channel": "category",
+      "label_source": "auto"
+    },
+    {
+      "text": "twaróg",
+      "family": "ingredient",
+      "expected_channel": "category",
+      "label_source": "auto"
+    },
+    {
+      "text": "awokado",
+      "family": "ingredient",
+      "expected_channel": "category",
+      "label_source": "auto"
+    },
+    {
+      "text": "brokuł",
+      "family": "ingredient",
+      "expected_channel": "category",
+      "label_source": "auto"
+    },
+    {
+      "text": "szpinak",
+      "family": "ingredient",
+      "expected_channel": "category",
+      "label_source": "auto"
+    },
+    {
+      "text": "pomidor",
+      "family": "ingredient",
+      "expected_channel": "category",
+      "label_source": "auto"
+    },
+    {
+      "text": "ziemniak",
+      "family": "ingredient",
+      "expected_channel": "category",
+      "label_source": "auto"
+    },
+    {
+      "text": "ryż",
+      "family": "ingredient",
+      "expected_channel": "category",
+      "label_source": "auto"
+    },
+    {
+      "text": "kasza gryczana",
+      "family": "ingredient",
+      "expected_channel": "category",
+      "label_source": "auto"
+    },
+    {
+      "text": "makaron",
+      "family": "ingredient",
+      "expected_channel": "category",
+      "label_source": "auto"
+    },
+    {
+      "text": "soczewica",
+      "family": "ingredient",
+      "expected_channel": "category",
+      "label_source": "auto"
+    },
+    {
+      "text": "ciecierzyca",
+      "family": "ingredient",
+      "expected_channel": "category",
+      "label_source": "auto"
+    },
+    {
+      "text": "tofu",
+      "family": "ingredient",
+      "expected_channel": "category",
+      "label_source": "auto"
+    },
+
+    { "_": "──────────── botanical / structured category ────────────" },
+    {
+      "text": "psiankowate",
+      "family": "category",
+      "expected_channel": "category",
+      "label_source": "auto",
+      "notes": "exists in ingredient_taxonomy"
+    },
+    {
+      "text": "warzywa psiankowate",
+      "family": "category",
+      "expected_channel": "category",
+      "label_source": "auto",
+      "notes": "compound noun — tests phrase routing"
+    },
+    {
+      "text": "strączkowe",
+      "family": "category",
+      "expected_channel": "category",
+      "label_source": "auto"
+    },
+    {
+      "text": "owoce morza",
+      "family": "category",
+      "expected_channel": "category",
+      "label_source": "auto"
+    },
+    {
+      "text": "ryby",
+      "family": "category",
+      "expected_channel": "category",
+      "label_source": "auto"
+    },
+    {
+      "text": "orzechy",
+      "family": "category",
+      "expected_channel": "category",
+      "label_source": "auto"
+    },
+    {
+      "text": "nabiał",
+      "family": "category",
+      "expected_channel": "category",
+      "label_source": "auto"
+    },
+    {
+      "text": "owoce",
+      "family": "category_gap",
+      "expected_channel": "embedding",
+      "label_source": "llm",
+      "notes": "no taxonomy category; LLM must label"
+    },
+    {
+      "text": "warzywa",
+      "family": "category_gap",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+    {
+      "text": "kasze",
+      "family": "category_gap",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+
+    {
+      "_": "──────────── color × category (no structured truth — needs LLM) ────────────"
+    },
+    {
+      "text": "czerwone owoce",
+      "family": "color_category",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+    {
+      "text": "zielone warzywa",
+      "family": "color_category",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+    {
+      "text": "białe mięso",
+      "family": "color_category",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+    {
+      "text": "czerwone mięso",
+      "family": "color_category",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+    {
+      "text": "tłuste ryby",
+      "family": "color_category",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+    {
+      "text": "chude mięso",
+      "family": "color_category",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+    {
+      "text": "ciemne pieczywo",
+      "family": "color_category",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+
+    {
+      "_": "──────────── macro-derived (auto-labelable from kcal/macros) ────────────"
+    },
+    {
+      "text": "wysokobiałkowe",
+      "family": "macro",
+      "expected_channel": "macro",
+      "label_source": "auto"
+    },
+    {
+      "text": "dużo białka",
+      "family": "macro",
+      "expected_channel": "macro",
+      "label_source": "auto"
+    },
+    {
+      "text": "mało białka",
+      "family": "macro",
+      "expected_channel": "macro",
+      "label_source": "auto"
+    },
+    {
+      "text": "niskotłuszczowe",
+      "family": "macro",
+      "expected_channel": "macro",
+      "label_source": "auto"
+    },
+    {
+      "text": "mało tłuszczu",
+      "family": "macro",
+      "expected_channel": "macro",
+      "label_source": "auto"
+    },
+    {
+      "text": "dużo tłuszczu",
+      "family": "macro",
+      "expected_channel": "macro",
+      "label_source": "auto"
+    },
+    {
+      "text": "dużo węgli",
+      "family": "macro",
+      "expected_channel": "macro",
+      "label_source": "auto",
+      "notes": "tests Polish inflection (węgli/węglowodanów)"
+    },
+    {
+      "text": "mało węgli",
+      "family": "macro",
+      "expected_channel": "macro",
+      "label_source": "auto"
+    },
+    {
+      "text": "niskowęglowodanowe",
+      "family": "macro",
+      "expected_channel": "macro",
+      "label_source": "auto"
+    },
+    {
+      "text": "dużo cukru",
+      "family": "macro",
+      "expected_channel": "macro",
+      "label_source": "auto"
+    },
+    {
+      "text": "mało cukru",
+      "family": "macro",
+      "expected_channel": "macro",
+      "label_source": "auto"
+    },
+    {
+      "text": "dużo błonnika",
+      "family": "macro",
+      "expected_channel": "macro",
+      "label_source": "auto"
+    },
+    {
+      "text": "niskokaloryczne",
+      "family": "macro",
+      "expected_channel": "macro",
+      "label_source": "auto"
+    },
+
+    {
+      "_": "──────────── diet tag (auto from diet_tags + tag-synonym map) ────────────"
+    },
+    {
+      "text": "wegańskie",
+      "family": "tag",
+      "expected_channel": "tag",
+      "label_source": "auto"
+    },
+    {
+      "text": "wegetariańskie",
+      "family": "tag",
+      "expected_channel": "tag",
+      "label_source": "auto"
+    },
+    {
+      "text": "bez glutenu",
+      "family": "tag",
+      "expected_channel": "tag",
+      "label_source": "auto"
+    },
+    {
+      "text": "bez nabiału",
+      "family": "tag",
+      "expected_channel": "tag",
+      "label_source": "auto"
+    },
+    {
+      "text": "bez laktozy",
+      "family": "tag",
+      "expected_channel": "tag",
+      "label_source": "auto"
+    },
+    {
+      "text": "bez ryb",
+      "family": "tag",
+      "expected_channel": "tag",
+      "label_source": "auto"
+    },
+    {
+      "text": "niskie ig",
+      "family": "tag",
+      "expected_channel": "tag",
+      "label_source": "auto"
+    },
+    {
+      "text": "niski indeks glikemiczny",
+      "family": "tag",
+      "expected_channel": "tag",
+      "label_source": "auto"
+    },
+    {
+      "text": "keto",
+      "family": "tag",
+      "expected_channel": "tag",
+      "label_source": "auto"
+    },
+    {
+      "text": "paleo",
+      "family": "tag",
+      "expected_channel": "tag",
+      "label_source": "auto"
+    },
+    {
+      "text": "sportowa",
+      "family": "tag",
+      "expected_channel": "tag",
+      "label_source": "auto"
+    },
+    {
+      "text": "dla mam",
+      "family": "tag",
+      "expected_channel": "tag",
+      "label_source": "auto"
+    },
+    {
+      "text": "dla dzieci",
+      "family": "tag",
+      "expected_channel": "tag",
+      "label_source": "auto"
+    },
+    {
+      "text": "odchudzająca",
+      "family": "tag",
+      "expected_channel": "tag",
+      "label_source": "auto"
+    },
+    {
+      "text": "dla cukrzyków",
+      "family": "tag",
+      "expected_channel": "tag",
+      "label_source": "auto",
+      "notes": "synonym of DIABETIC tag"
+    },
+    {
+      "text": "dla Hashimoto",
+      "family": "tag",
+      "expected_channel": "tag",
+      "label_source": "auto"
+    },
+
+    {
+      "_": "──────────── subjective / flavor / wholeness (LLM only) ────────────"
+    },
+    {
+      "text": "zdrowe",
+      "family": "subjective",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+    {
+      "text": "lekkie",
+      "family": "subjective",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+    {
+      "text": "sycące",
+      "family": "subjective",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+    {
+      "text": "klasyczne",
+      "family": "subjective",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+    {
+      "text": "egzotyczne",
+      "family": "subjective",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+    {
+      "text": "domowe",
+      "family": "subjective",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+    {
+      "text": "ostre",
+      "family": "flavor",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+    {
+      "text": "łagodne",
+      "family": "flavor",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+    {
+      "text": "słodkie",
+      "family": "flavor",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+    {
+      "text": "kwaśne",
+      "family": "flavor",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+    {
+      "text": "kremowe",
+      "family": "flavor",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+    {
+      "text": "chrupiące",
+      "family": "flavor",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+
+    { "_": "──────────── meal style / cuisine ────────────" },
+    {
+      "text": "azjatyckie",
+      "family": "cuisine",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+    {
+      "text": "włoskie",
+      "family": "cuisine",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+    {
+      "text": "polskie",
+      "family": "cuisine",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+    {
+      "text": "meksykańskie",
+      "family": "cuisine",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+    {
+      "text": "śródziemnomorskie",
+      "family": "cuisine",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+
+    {
+      "_": "──────────── clinical / condition (LLM with grounding) ────────────"
+    },
+    {
+      "text": "na łuszczycy",
+      "family": "clinical",
+      "expected_channel": "embedding",
+      "label_source": "llm",
+      "notes": "anti-inflammatory, often nightshade-free"
+    },
+    {
+      "text": "przeciwzapalne",
+      "family": "clinical",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+    {
+      "text": "antycukrzycowe",
+      "family": "clinical",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+    {
+      "text": "dla nadciśnienia",
+      "family": "clinical",
+      "expected_channel": "embedding",
+      "label_source": "llm",
+      "notes": "low salt"
+    },
+    {
+      "text": "po treningu",
+      "family": "clinical",
+      "expected_channel": "embedding",
+      "label_source": "llm",
+      "notes": "high protein, replenish carbs"
+    },
+    {
+      "text": "dla jelit",
+      "family": "clinical",
+      "expected_channel": "embedding",
+      "label_source": "llm",
+      "notes": "fiber, fermentables"
+    },
+
+    { "_": "──────────── meal type / slot ────────────" },
+    {
+      "text": "śniadanie",
+      "family": "meal_type",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+    {
+      "text": "koktajl",
+      "family": "meal_type",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+    {
+      "text": "zupa",
+      "family": "meal_type",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+    {
+      "text": "sałatka",
+      "family": "meal_type",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+    {
+      "text": "pierogi",
+      "family": "meal_type",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+    {
+      "text": "omlet",
+      "family": "meal_type",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+    {
+      "text": "owsianka",
+      "family": "meal_type",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+
+    { "_": "──────────── adversarial: Polish polysemy traps ────────────" },
+    {
+      "text": "kurka",
+      "family": "adversarial",
+      "expected_channel": "embedding",
+      "label_source": "llm",
+      "notes": "ambiguous — mushroom (chanterelle) AND diminutive of hen (kura)"
+    },
+    {
+      "text": "biały",
+      "family": "adversarial",
+      "expected_channel": "embedding",
+      "label_source": "llm",
+      "notes": "color modifier — biały ser vs biały chleb"
+    },
+    {
+      "text": "ostry",
+      "family": "adversarial",
+      "expected_channel": "embedding",
+      "label_source": "llm",
+      "notes": "spicy vs sharp (cheese)"
+    },
+    {
+      "text": "serce",
+      "family": "adversarial",
+      "expected_channel": "embedding",
+      "label_source": "llm",
+      "notes": "organ meat — must NOT match ser"
+    },
+
+    { "_": "──────────── adversarial: typos & morphology ────────────" },
+    {
+      "text": "kuczak",
+      "family": "typo",
+      "expected_channel": "embedding",
+      "label_source": "llm",
+      "notes": "should still match kurczak"
+    },
+    {
+      "text": "borkuł",
+      "family": "typo",
+      "expected_channel": "embedding",
+      "label_source": "llm",
+      "notes": "brokuł"
+    },
+    {
+      "text": "lososs",
+      "family": "typo",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+    {
+      "text": "kurczakiem",
+      "family": "inflection",
+      "expected_channel": "embedding",
+      "label_source": "llm",
+      "notes": "instrumental case"
+    },
+    {
+      "text": "z kurczakiem",
+      "family": "inflection",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+    {
+      "text": "bez kurczaka",
+      "family": "negation",
+      "expected_channel": "embedding",
+      "label_source": "llm",
+      "notes": "negation — meals WITHOUT chicken"
+    },
+    {
+      "text": "bez cebuli",
+      "family": "negation",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+
+    {
+      "_": "──────────── cooking method (new family — was missing) ────────────"
+    },
+    {
+      "text": "surowe",
+      "family": "cooking_method",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+    {
+      "text": "pieczone",
+      "family": "cooking_method",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+    {
+      "text": "smażone",
+      "family": "cooking_method",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+    {
+      "text": "grillowane",
+      "family": "cooking_method",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+    {
+      "text": "duszone",
+      "family": "cooking_method",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+    {
+      "text": "gotowane na parze",
+      "family": "cooking_method",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+    {
+      "text": "wędzone",
+      "family": "cooking_method",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+    {
+      "text": "panierowane",
+      "family": "cooking_method",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+
+    {
+      "_": "──────────── cooking method × ingredient compounds (user's example family) ────────────"
+    },
+    {
+      "text": "surowe pomidory",
+      "family": "cooking_compound",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+    {
+      "text": "pieczony kurczak",
+      "family": "cooking_compound",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+    {
+      "text": "wędzony łosoś",
+      "family": "cooking_compound",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+    {
+      "text": "grillowane warzywa",
+      "family": "cooking_compound",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+    {
+      "text": "smażone jajko",
+      "family": "cooking_compound",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+    {
+      "text": "duszone mięso",
+      "family": "cooking_compound",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+    {
+      "text": "panierowany kotlet",
+      "family": "cooking_compound",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+
+    {
+      "_": "──────────── high-frequency ingredients from real data (top 30 in meal_ingredients) ────────────"
+    },
+    {
+      "text": "cebula",
+      "family": "ingredient",
+      "expected_channel": "category",
+      "label_source": "auto",
+      "notes": "3527 meals contain it — workhorse test"
+    },
+    {
+      "text": "czosnek",
+      "family": "ingredient",
+      "expected_channel": "category",
+      "label_source": "auto",
+      "notes": "4252 meals"
+    },
+    {
+      "text": "marchew",
+      "family": "ingredient",
+      "expected_channel": "category",
+      "label_source": "auto"
+    },
+    {
+      "text": "papryka",
+      "family": "ingredient",
+      "expected_channel": "category",
+      "label_source": "auto",
+      "notes": "compound — may match sweet, hot, smoked variants"
+    },
+    {
+      "text": "natka pietruszki",
+      "family": "ingredient",
+      "expected_channel": "category",
+      "label_source": "auto"
+    },
+    {
+      "text": "oliwa z oliwek",
+      "family": "ingredient",
+      "expected_channel": "category",
+      "label_source": "auto"
+    },
+    {
+      "text": "mleko",
+      "family": "ingredient",
+      "expected_channel": "allergen",
+      "label_source": "auto",
+      "notes": "primary allergen + ingredient — routing collision test"
+    },
+    {
+      "text": "masło",
+      "family": "ingredient",
+      "expected_channel": "category",
+      "label_source": "auto"
+    },
+    {
+      "text": "miód",
+      "family": "ingredient",
+      "expected_channel": "category",
+      "label_source": "auto"
+    },
+    {
+      "text": "szczypiorek",
+      "family": "ingredient",
+      "expected_channel": "category",
+      "label_source": "auto"
+    },
+
+    {
+      "_": "──────────── common avoidances 'bez X' (negation extended with allergen/ingredient surface) ────────────"
+    },
+    {
+      "text": "bez mleka",
+      "family": "negation",
+      "expected_channel": "tag",
+      "label_source": "llm",
+      "notes": "tag LACTOSE FREE; also allergen-equivalent"
+    },
+    {
+      "text": "bez jajek",
+      "family": "negation",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+    {
+      "text": "bez orzechów",
+      "family": "negation",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+    {
+      "text": "bez soi",
+      "family": "negation",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+    {
+      "text": "bez selera",
+      "family": "negation",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+    {
+      "text": "bez gorczycy",
+      "family": "negation",
+      "expected_channel": "embedding",
+      "label_source": "llm",
+      "notes": "3187 meals contain it"
+    },
+    {
+      "text": "bez glutaminianu",
+      "family": "negation",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+    {
+      "text": "bez czosnku",
+      "family": "negation",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+    {
+      "text": "bez konserwantów",
+      "family": "negation",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+
+    { "_": "──────────── sugar / sweetener nuances ────────────" },
+    {
+      "text": "ksylitol",
+      "family": "substitute",
+      "expected_channel": "embedding",
+      "label_source": "llm",
+      "notes": "1071 meals — sugar substitute"
+    },
+    {
+      "text": "erytrol",
+      "family": "substitute",
+      "expected_channel": "embedding",
+      "label_source": "llm",
+      "notes": "1071 meals — sugar substitute"
+    },
+    {
+      "text": "stewia",
+      "family": "substitute",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+    {
+      "text": "słodziki",
+      "family": "substitute",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+
+    {
+      "_": "──────────── diet_tag coverage extended (29 tags exist; cover the unused ones) ────────────"
+    },
+    {
+      "text": "DASH",
+      "family": "tag",
+      "expected_channel": "tag",
+      "label_source": "auto",
+      "notes": "low-sodium hypertension diet"
+    },
+    {
+      "text": "FODMAP",
+      "family": "tag",
+      "expected_channel": "tag",
+      "label_source": "auto",
+      "notes": "Low FODMAP"
+    },
+    {
+      "text": "SIRTFOOD",
+      "family": "tag",
+      "expected_channel": "tag",
+      "label_source": "auto"
+    },
+    {
+      "text": "Intermittent Fasting",
+      "family": "tag",
+      "expected_channel": "tag",
+      "label_source": "auto"
+    },
+    {
+      "text": "post warzywno-owocowy",
+      "family": "tag",
+      "expected_channel": "tag",
+      "label_source": "auto"
+    },
+    {
+      "text": "samurai",
+      "family": "tag",
+      "expected_channel": "tag",
+      "label_source": "auto",
+      "notes": "Samuraja — Polish niche diet"
+    },
+    {
+      "text": "dieta lunchowa",
+      "family": "tag",
+      "expected_channel": "tag",
+      "label_source": "auto",
+      "notes": "OFFICE tag synonym"
+    },
+
+    {
+      "_": "──────────── adversarial: casing variants (data has Sezam/SEZAM split — router must handle) ────────────"
+    },
+    {
+      "text": "Gluten",
+      "family": "adversarial_casing",
+      "expected_channel": "allergen",
+      "label_source": "auto",
+      "notes": "router should normalize"
+    },
+    {
+      "text": "Sezam",
+      "family": "adversarial_casing",
+      "expected_channel": "allergen",
+      "label_source": "auto"
+    },
+    {
+      "text": "SEZAM",
+      "family": "adversarial_casing",
+      "expected_channel": "allergen",
+      "label_source": "auto",
+      "notes": "all-caps allergen — common in data"
+    },
+    {
+      "text": "PSZENICA",
+      "family": "adversarial_casing",
+      "expected_channel": "allergen",
+      "label_source": "auto"
+    },
+
+    { "_": "──────────── more subjective / wellness phrasings ────────────" },
+    {
+      "text": "świeże",
+      "family": "subjective",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+    {
+      "text": "domowe smaki",
+      "family": "subjective",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+    {
+      "text": "z lokalnych składników",
+      "family": "subjective",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+    {
+      "text": "bez sztucznych dodatków",
+      "family": "subjective",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+    {
+      "text": "sezonowe",
+      "family": "subjective",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+
+    { "_": "──────────── more clinical / dietary patterns ────────────" },
+    {
+      "text": "dla nadciśnienia",
+      "family": "clinical",
+      "expected_channel": "embedding",
+      "label_source": "llm",
+      "notes": "duplicate of existing; check we don't double-add"
+    },
+    {
+      "text": "dla tarczycy",
+      "family": "clinical",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+    {
+      "text": "dla wątroby",
+      "family": "clinical",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+    {
+      "text": "anti-aging",
+      "family": "clinical",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+    {
+      "text": "dla seniorów",
+      "family": "clinical",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+
+    { "_": "──────────── flavor / texture extended ────────────" },
+    {
+      "text": "umami",
+      "family": "flavor",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+    {
+      "text": "gorzkie",
+      "family": "flavor",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+    {
+      "text": "gładkie",
+      "family": "flavor",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    },
+    {
+      "text": "gęste",
+      "family": "flavor",
+      "expected_channel": "embedding",
+      "label_source": "llm"
+    }
+  ]
+}

@@ -20,6 +20,12 @@ coverage/
 # scraper Cloudflare session (cookie + user-agent, refreshed by hand)
 .cf-session.json
 
+# embedding-benchmark caches and outputs
+bench/vectors/
+bench/report*.md
+eval-*.log
+scrape-*.log
+
 # typescript / next
 *.tsbuildinfo
 next-env.d.ts
