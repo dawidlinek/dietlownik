@@ -628,11 +628,19 @@ const currentDiscountsFp = async (
     return null;
   }
   const sorted = canonicalSortDiscounts(
-    rows.map((r) => ({
-      discount: Number(r.discount),
-      discount_type: r.discount_type,
-      minimum_days: r.minimum_days,
-    }))
+    rows.map(
+      (
+        r: Readonly<{
+          discount: string;
+          minimum_days: number;
+          discount_type: string;
+        }>
+      ) => ({
+        discount: Number(r.discount),
+        discount_type: r.discount_type,
+        minimum_days: r.minimum_days,
+      })
+    )
   );
   return fingerprintOf({ discounts: sorted });
 };
@@ -652,7 +660,7 @@ const syncDietDiscounts = async (
     discount_type: string;
   }[] = [];
   for (const d of apiDiscounts) {
-    const discount = Number(d.discount);
+    const { discount } = d;
     seen.push({
       discount,
       discount_type: d.discountType,
@@ -731,6 +739,7 @@ const keyDiscount = (
 
 const deactivateMissing = async (
   companyId: string,
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- DeepReadonly<SeenSets> wraps inner Sets in ReadonlySet; oxlint's rule doesn't accept methods (`.has`, `.size`) on Readonly* collections as readonly even when the type is.
   seen: DeepReadonly<SeenSets>
 ): Promise<void> => {
   // leaves — keyed by diet_calories_id (globally unique)

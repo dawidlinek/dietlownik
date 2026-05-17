@@ -29,15 +29,15 @@ export const drainQueue = (): readonly number[] => {
 export const queueSize = (): number => queued.size;
 
 interface MealRow {
-  id: number;
-  fingerprint: string | null;
-  name: string | null;
-  label: string | null;
-  ingredients_raw: string | null;
-  allergens: string[] | null;
+  readonly id: number;
+  readonly fingerprint: string | null;
+  readonly name: string | null;
+  readonly label: string | null;
+  readonly ingredients_raw: string | null;
+  readonly allergens: readonly string[] | null;
 }
 
-const buildPassage = (m: Readonly<MealRow>): string => {
+const buildPassage = (m: MealRow): string => {
   const lines = [
     m.name ?? "",
     `Wariant: ${m.label ?? ""}`,

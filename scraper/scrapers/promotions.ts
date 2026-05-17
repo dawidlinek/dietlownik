@@ -29,8 +29,10 @@ interface PromoObservation {
   company_id: string | null;
   discount_percent: number | null;
   title: string | null;
-  starts_at: string | null; // YYYY-MM-DD
-  ends_at: string | null; // YYYY-MM-DD
+  // YYYY-MM-DD
+  starts_at: string | null;
+  // YYYY-MM-DD
+  ends_at: string | null;
 }
 
 // Convert ISO 8601 (banner valid_from / valid_to) to YYYY-MM-DD; pass through
@@ -178,7 +180,8 @@ export const recordPromosFromConstants = async (
     constant: DeepReadonly<ConstantResponse>;
   }>[]
 ): Promise<void> => {
-  void cityId; // kept for call-site symmetry; not used by the new schema.
+  // kept for call-site symmetry; not used by the new schema.
+  void cityId;
   const obs: PromoObservation[] = [];
   for (const { companyId, constant } of entries) {
     const info = constant.companyHeader.activePromotionInfo ?? null;

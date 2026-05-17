@@ -5,12 +5,12 @@ import { getEmbedder, toPgVector } from "../../lib/embeddings.js";
 const BATCH_SIZE = 16;
 
 interface MealRow {
-  id: number;
-  fingerprint: string | null;
-  name: string | null;
-  label: string | null;
-  ingredients_raw: string | null;
-  allergens: string[] | null;
+  readonly id: number;
+  readonly fingerprint: string | null;
+  readonly name: string | null;
+  readonly label: string | null;
+  readonly ingredients_raw: string | null;
+  readonly allergens: readonly string[] | null;
 }
 
 const buildPassage = (m: MealRow): string => {
@@ -120,11 +120,10 @@ const main = async (): Promise<number> => {
   return terminated ? 130 : 0;
 };
 
-main()
-  .then((code) => {
-    process.exit(code);
-  })
-  .catch((error) => {
-    console.error("embed-meals failed:", error);
-    process.exit(1);
-  });
+try {
+  const code = await main();
+  process.exit(code);
+} catch (error) {
+  console.error("embed-meals failed:", error);
+  process.exit(1);
+}

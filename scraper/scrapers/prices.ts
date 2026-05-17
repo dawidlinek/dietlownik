@@ -8,8 +8,24 @@ import type {
   PriceLeaf,
 } from "../types";
 
-const ORDER_DAY_TIERS = [1, 5, 10, 20];
-const CONCURRENCY = 8;
+// Order-length tiers to quote. Default: day-1 only — cuts prices volume by
+// ~4× vs the legacy [1, 5, 10, 20] sweep, which is the single biggest scrape-
+// time win short of buying proxies. Override via env when a one-off needs the
+// longer-order discount snapshot, e.g. `ORDER_DAY_TIERS=1,5,10,20`.
+const parseTiers = (raw: string | undefined): number[] => {
+  if (raw === undefined || raw.trim() === "") {
+    return [1];
+  }
+  return raw
+    .split(",")
+    .map((s) => Number.parseInt(s.trim(), 10))
+    .filter((n) => Number.isFinite(n) && n > 0);
+};
+const ORDER_DAY_TIERS = parseTiers(process.env.ORDER_DAY_TIERS);
+// Internal price-job concurrency. Match the global limiter cap (MAX_IN_FLIGHT=3
+// by default) so 8 workers don't pile up requests that all hit CF in a burst.
+// Higher values added queueing pressure without unlocking throughput.
+const CONCURRENCY = 3;
 
 const errMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
@@ -163,7 +179,8 @@ export const fetchAndInsert = async (
       cart.totalCostWithoutDiscounts ?? null,
       cart.totalLowest30DaysCostWithoutDiscounts ?? null,
       cart.totalDeliveryCost ?? null,
-      null, // total_delivery_discount — no direct equivalent in the API response
+      // total_delivery_discount — no direct equivalent in the API response
+      null,
       cart.totalPromoCodeDiscount ?? null,
       cart.totalPromoCodeDiscountInfo ?? null,
       cart.totalOrderLengthDiscount ?? null,

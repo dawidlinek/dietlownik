@@ -1,5 +1,6 @@
 import cron from "node-cron";
 
+import { dumpApiMetrics } from "./api";
 import { pool } from "./db";
 import { recordScrapeError, withRun } from "./scrape-run";
 import { scrapeCatalog } from "./scrapers/catalog";
@@ -148,6 +149,7 @@ const run = async (): Promise<void> => {
 
     const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
     console.log(`\n=== done: ${ok} ok, ${fail} failed in ${elapsed}s ===\n`);
+    dumpApiMetrics();
 
     // End-of-run hook: embed any meals queued during this scrape. Lazy-load
     // the helper so cold start doesn't pull in @xenova/transformers when
@@ -184,6 +186,24 @@ if (REPEAT) {
   process.on("SIGTERM", shutdown);
   process.on("SIGINT", shutdown);
 } else {
+  // Dump API metrics on Ctrl-C / SIGTERM so we get a summary even when we
+  // stop a long scrape early.
+  const earlyShutdown = (sig: string): void => {
+    console.log(`\n[run] ${sig} — dumping metrics and exiting`);
+    try {
+      dumpApiMetrics();
+    } catch {
+      // best-effort
+    }
+    process.exit(130);
+  };
+  process.on("SIGINT", () => {
+    earlyShutdown("SIGINT");
+  });
+  process.on("SIGTERM", () => {
+    earlyShutdown("SIGTERM");
+  });
+
   const main = async (): Promise<void> => {
     try {
       await run();

@@ -28,9 +28,12 @@ import { createHash } from "node:crypto";
 import { q } from "./db";
 
 export interface CaptureDriftArgs<T> {
-  readonly table: string; // informational; used in error context
-  readonly snapshotTable: string; // e.g. "diet_snapshots"
-  readonly keyCols: readonly string[]; // e.g. ["company_id", "diet_id"]
+  // informational; used in error context
+  readonly table: string;
+  // e.g. "diet_snapshots"
+  readonly snapshotTable: string;
+  // e.g. ["company_id", "diet_id"]
+  readonly keyCols: readonly string[];
   readonly keyValues: readonly unknown[];
   readonly newFingerprint: string;
   readonly payload: Readonly<Record<string, unknown>> &
@@ -124,6 +127,11 @@ export const captureDrift = async <T>(
 // SHA-256 returns a 64-char hex string. The full digest is preserved — the
 // snapshot tables use `TEXT` so storage is fine.
 
+const isPlainRecord = (
+  value: unknown
+): value is Readonly<Record<string, unknown>> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
 const canonicalise = (value: unknown): unknown => {
   if (value === null || value === undefined) {
     return "";
@@ -143,16 +151,24 @@ const canonicalise = (value: unknown): unknown => {
   if (Array.isArray(value)) {
     return value.map(canonicalise);
   }
-  if (typeof value === "object") {
-    const obj = value as Record<string, unknown>;
-    const keys = Object.keys(obj).toSorted();
+  if (isPlainRecord(value)) {
+    const keys = Object.keys(value).toSorted();
     const out: Record<string, unknown> = {};
     for (const k of keys) {
-      out[k] = canonicalise(obj[k]);
+      out[k] = canonicalise(value[k]);
     }
     return out;
   }
-  return String(value);
+  if (typeof value === "bigint") {
+    return value.toString();
+  }
+  if (typeof value === "symbol") {
+    return value.toString();
+  }
+  if (typeof value === "function") {
+    return value.toString();
+  }
+  return "";
 };
 
 export const fingerprintOf = (
