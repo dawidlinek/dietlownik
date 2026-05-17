@@ -47,40 +47,69 @@ const sleep = async (ms: number): Promise<void> => {
 
 const HEADLESS = process.env.CF_HEADLESS !== "0";
 
-let ctxPromise: Promise<{
+// Pool of parked API-origin pages. Each page.evaluate() call serializes on
+// its own CDP channel; sharing a single page across concurrent requests
+// makes them queue at the CDP layer. Pages share one BrowserContext (and
+// so one cookie jar) so cf_clearance is global.
+//
+// Default 1: at MAX_IN_FLIGHT=3 + MIN_INTERVAL_MS=300 the limiter caps
+// throughput long before CDP becomes the bottleneck, so a multi-page pool
+// pays only its cold-start cost (+15–30s) without measurable steady-state
+// gain. Bump via env when MAX_IN_FLIGHT goes up.
+const PAGE_POOL_SIZE = Math.max(1, Number(process.env.CF_PAGE_POOL ?? 1));
+
+interface CtxBundle {
   ctx: BrowserContext;
-  apiPage: Page;
-}> | null = null;
+  pages: Page[];
+  cursor: { i: number };
+}
+
+let ctxPromise: Promise<CtxBundle> | null = null;
 
 // oxlint-disable-next-line typescript/promise-function-async -- caches a Promise; making it async would create an extra await wrapper per call
-const getCtx = (): Promise<{
-  ctx: BrowserContext;
-  apiPage: Page;
-}> => {
+const getCtx = (): Promise<CtxBundle> => {
   if (ctxPromise) {
     return ctxPromise;
   }
   ctxPromise = (async () => {
     process.stderr.write(
-      `[cf-fetch] launching chrome (headless=${HEADLESS}) profile=${USER_DATA_DIR}\n`
+      `[cf-fetch] launching chrome (headless=${HEADLESS}) profile=${USER_DATA_DIR} pool=${PAGE_POOL_SIZE}\n`
     );
     const ctx = await launchCfBrowser({ headless: HEADLESS });
 
-    // Park a persistent page at the API origin. All fetch() calls from this
-    // page are same-origin — Chrome's full network stack handles TLS, cookies,
-    // and HTTP/2 exactly as a real browser would. This also warms cf_clearance
-    // before the first API call goes out.
-    const apiPage = await ctx.newPage();
+    // Open the first page sequentially so any CF challenge is solved
+    // exactly once; subsequent pages reuse the resulting cf_clearance.
+    const firstPage = await ctx.newPage();
     try {
-      await apiPage.goto(`${API_ORIGIN}/`, {
+      await firstPage.goto(`${API_ORIGIN}/`, {
         timeout: 30_000,
         waitUntil: "domcontentloaded",
       });
-      await waitForChallengeCleared(apiPage, Date.now() + 30_000);
+      await waitForChallengeCleared(firstPage, Date.now() + 30_000);
     } catch {
       // best-effort; proceed even if warm-up fails
     }
-    process.stderr.write("[cf-fetch] warm-up done\n");
+
+    const pages: Page[] = [firstPage];
+    if (PAGE_POOL_SIZE > 1) {
+      const rest = await Promise.all(
+        Array.from({ length: PAGE_POOL_SIZE - 1 }, async () => {
+          const p = await ctx.newPage();
+          try {
+            await p.goto(`${API_ORIGIN}/`, {
+              timeout: 30_000,
+              waitUntil: "domcontentloaded",
+            });
+            await waitForChallengeCleared(p, Date.now() + 30_000);
+          } catch {
+            // best-effort; proceed even if warm-up fails
+          }
+          return p;
+        })
+      );
+      pages.push(...rest);
+    }
+    process.stderr.write(`[cf-fetch] warm-up done (${pages.length} pages)\n`);
 
     // Best-effort cleanup. SIGINT/SIGTERM await close so chrome dies cleanly;
     // 'exit' is sync-only — chrome will be reaped with the parent regardless.
@@ -107,7 +136,7 @@ const getCtx = (): Promise<{
       })();
     });
 
-    return { apiPage, ctx };
+    return { ctx, cursor: { i: 0 }, pages };
   })();
   return ctxPromise;
 };
@@ -251,16 +280,101 @@ export const cfFetch = async (
   init: RequestInit = {},
   timeoutMs = 25_000
 ): Promise<Response> => {
-  const { ctx, apiPage } = await getCtx();
+  const { ctx, pages, cursor } = await getCtx();
 
-  let result = await rawFetch(apiPage, url, init, timeoutMs);
+  // Round-robin across the page pool to spread CDP load. The upstream
+  // Limiter is what bounds true concurrency seen by CF; the pool only
+  // removes the CDP-serialization bottleneck inside Chrome.
+  const page = pages[cursor.i % pages.length];
+  cursor.i = (cursor.i + 1) % pages.length;
+
+  let result = await rawFetch(page, url, init, timeoutMs);
   if (isCloudflareChallenge(result.status, result.body)) {
     await solveChallengeViaOrigin(ctx);
-    result = await rawFetch(apiPage, url, init, timeoutMs);
+    result = await rawFetch(page, url, init, timeoutMs);
   }
 
   return new Response(result.body, {
     headers: result.headers,
     status: result.status,
   });
+};
+
+// ── plain-fetch fast path support (S3) ────────────────────────────────────────
+//
+// Read the live cf_clearance cookie + Chrome UA out of the running browser so
+// `scraper/api.ts` can try a plain node/bun fetch for the common (no-CF) case
+// and only fall back to the patchright transport when CF actually challenges.
+// Cached for CF_COOKIE_TTL_MS to avoid hammering Chrome's CDP for every call.
+
+const CF_COOKIE_TTL_MS = Math.max(
+  1,
+  Number(process.env.CF_COOKIE_TTL_MS ?? 300_000)
+);
+
+interface CfClearance {
+  cookieHeader: string;
+  userAgent: string;
+}
+
+let clearanceCache: { value: CfClearance; expires: number } | null = null;
+let clearancePromise: Promise<CfClearance | null> | null = null;
+
+const fetchClearance = async (): Promise<CfClearance | null> => {
+  const { ctx, pages } = await getCtx();
+  try {
+    const cookies = await ctx.cookies(API_ORIGIN);
+    const cookieHeader = cookies
+      .map(
+        (c: Readonly<{ name: string; value: string }>) => `${c.name}=${c.value}`
+      )
+      .join("; ");
+    if (cookieHeader === "") {
+      return null;
+    }
+    const userAgent = await pages[0].evaluate(() => navigator.userAgent);
+    if (typeof userAgent !== "string" || userAgent === "") {
+      return null;
+    }
+    return { cookieHeader, userAgent };
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    process.stderr.write(`[cf-fetch] getCfClearance — ${msg}\n`);
+    return null;
+  }
+};
+
+/**
+ * Return the current Chrome-sourced cookie header + UA for the API origin, or
+ * null if the browser isn't ready or has no cookies yet. Cached for
+ * CF_COOKIE_TTL_MS. Use `forceRefresh=true` after a CF challenge on the plain
+ * fast path to bypass the cache.
+ */
+// oxlint-disable-next-line typescript/promise-function-async -- caches a Promise; making it async would create an extra await wrapper per call
+export const getCfClearance = (
+  forceRefresh = false
+): Promise<CfClearance | null> => {
+  const now = Date.now();
+  if (
+    !forceRefresh &&
+    clearanceCache !== null &&
+    clearanceCache.expires > now
+  ) {
+    return Promise.resolve(clearanceCache.value);
+  }
+  if (clearancePromise) {
+    return clearancePromise;
+  }
+  clearancePromise = (async () => {
+    try {
+      const v = await fetchClearance();
+      if (v) {
+        clearanceCache = { expires: Date.now() + CF_COOKIE_TTL_MS, value: v };
+      }
+      return v;
+    } finally {
+      clearancePromise = null;
+    }
+  })();
+  return clearancePromise;
 };
