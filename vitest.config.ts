@@ -12,6 +12,6 @@ export default defineConfig({
     // No live API or DB calls — keep them out by default.
     environment: "node",
     globals: false,
-    include: ["{scraper,mcp}/__tests__/**/*.test.ts"],
+    include: ["{lib,scraper,mcp}/__tests__/**/*.test.ts"],
   },
 });
