@@ -68,8 +68,7 @@ const listTargets = async (): Promise<CompanyTarget[]> => {
        FROM campaigns
       WHERE is_active = TRUE
         AND company_id IS NOT NULL
-        AND (deadline IS NULL OR deadline >= CURRENT_DATE)
-        AND (valid_to IS NULL OR valid_to >= NOW())
+        AND (ends_at IS NULL OR ends_at >= CURRENT_DATE)
       GROUP BY company_id
       ORDER BY company_id`
   );

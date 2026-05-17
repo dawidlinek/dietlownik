@@ -21,7 +21,6 @@ const SKIP_MENUS = process.env.SKIP_MENUS === "1";
 const SKIP_PROMOS = process.env.SKIP_PROMOS === "1";
 const SKIP_PRICES = process.env.SKIP_PRICES === "1";
 const SKIP_TAGS = process.env.SKIP_TAGS === "1";
-const SKIP_REVIEWS = process.env.SKIP_REVIEWS === "1";
 
 const REPEAT =
   process.env.SCRAPE_SCHEDULER === "1" || process.argv.includes("--repeat");
@@ -43,16 +42,6 @@ const runMenusForCompany = async (
   }
 };
 
-const runReviewsForCompany = async (companyId: string): Promise<void> => {
-  try {
-    const m = await import("./scrapers/reviews.js");
-    await m.scrapeReviews(companyId);
-  } catch (error) {
-    console.warn(`[run] reviews skipped (${errMsg(error)})`);
-    await recordScrapeError(null, "reviews", { companyId, error });
-  }
-};
-
 const processCompany = async (
   companyId: string,
   cityId: number,
@@ -66,9 +55,7 @@ const processCompany = async (
   if (!SKIP_MENUS) {
     work.push(runMenusForCompany(companyId, cityId));
   }
-  if (!SKIP_REVIEWS) {
-    work.push(runReviewsForCompany(companyId));
-  }
+  // reviews dropped from the new schema scope.
   await Promise.all(work);
 };
 
@@ -161,6 +148,17 @@ const run = async (): Promise<void> => {
 
     const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
     console.log(`\n=== done: ${ok} ok, ${fail} failed in ${elapsed}s ===\n`);
+
+    // End-of-run hook: embed any meals queued during this scrape. Lazy-load
+    // the helper so cold start doesn't pull in @xenova/transformers when
+    // SKIP_MENUS=1 produces nothing to embed. Non-fatal.
+    try {
+      const { flushEmbeddings } = await import("./embed-queue.js");
+      await flushEmbeddings();
+    } catch (error) {
+      console.warn(`[run] embed flush failed: ${errMsg(error)}`);
+    }
+
     return { fail, ok, value: undefined };
   });
 };

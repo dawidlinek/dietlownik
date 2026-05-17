@@ -20,23 +20,20 @@ export const scrapeCity = async (cityName = "Wrocław"): Promise<City> => {
 
   await q(
     `INSERT INTO cities
-       (city_id, name, sanitized_name, county_name, municipality_name, province_name,
-        city_status, number_of_companies, largest_city_for_name)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+       (city_id, name, sanitized_name, province_name, number_of_companies)
+     VALUES ($1,$2,$3,$4,$5)
      ON CONFLICT (city_id) DO UPDATE SET
        name                = EXCLUDED.name,
+       sanitized_name      = EXCLUDED.sanitized_name,
+       province_name       = EXCLUDED.province_name,
        number_of_companies = EXCLUDED.number_of_companies,
        updated_at          = NOW()`,
     [
       city.cityId,
       city.name,
       city.sanitizedName,
-      city.countyName,
-      city.municipalityName,
       city.provinceName,
-      city.cityStatus,
       city.numberOfCompanies,
-      city.largestCityForName ?? false,
     ]
   );
 

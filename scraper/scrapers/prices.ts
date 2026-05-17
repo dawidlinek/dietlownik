@@ -15,25 +15,22 @@ const errMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
 
 /**
- * Active per-company promo codes from the campaigns SCD. The mobile API
- * doesn't stack promo-code with order-length discounts — it picks whichever
- * is bigger. So we quote each leaf both with `[]` (order-length-only) and
- * once per active code; the dashboard's cheapest-pick per (company, leaf,
- * days) takes care of the rest.
+ * Active per-company promo codes from the campaigns table (mutable, no
+ * history in the new schema). The mobile API doesn't stack promo-code with
+ * order-length discounts — it picks whichever is bigger. So we quote each
+ * leaf both with `[]` (order-length-only) and once per active code; the
+ * dashboard's cheapest-pick per (company, leaf, days) takes care of the rest.
  *
- * Returns deduped, trimmed, non-empty codes. Comparison is
- * case-insensitive: a campaign that surfaces both `Fit` and `FIT` for the
- * same company collapses to one quote with whichever spelling came first.
+ * Returns deduped, trimmed, non-empty codes. Comparison is case-insensitive.
  */
 export const getActivePromoCodes = async (
   companyId: string
 ): Promise<string[]> => {
-  const { rows } = await q<{ code: string }>(
+  const { rows } = await q<{ code: string | null }>(
     `SELECT DISTINCT code FROM campaigns
       WHERE is_active = TRUE
         AND company_id = $1
-        AND (deadline IS NULL OR deadline >= CURRENT_DATE)
-        AND (valid_to IS NULL OR valid_to >= NOW())`,
+        AND (ends_at IS NULL OR ends_at >= CURRENT_DATE)`,
     [companyId]
   );
   const seen = new Set<string>();
@@ -74,9 +71,9 @@ const getLeaves = async (companyId: string): Promise<PriceLeaf[]> => {
       AND d.company_id = dc.company_id
      JOIN companies co ON co.company_id = dc.company_id
      WHERE dc.company_id = $1
-       AND dc.valid_to IS NULL
-       AND d.valid_to   IS NULL
-       AND (dc.diet_option_id IS NULL OR do2.valid_to IS NULL)`,
+       AND dc.is_active = TRUE
+       AND d.is_active  = TRUE
+       AND (do2.is_active IS NULL OR do2.is_active = TRUE)`,
     [companyId]
   );
   return rows;
@@ -142,41 +139,40 @@ export const fetchAndInsert = async (
 
   await q(
     `INSERT INTO prices
-       (diet_calories_id, company_id, city_id, tier_diet_option_id, order_days, promo_codes,
+       (diet_calories_id, company_id, city_id, order_days, promo_codes,
         per_day_cost, per_day_cost_with_discounts,
         total_cost, total_cost_without_discounts,
-        total_delivery_cost, total_order_length_discount,
-        total_promo_code_discount, total_delivery_discount,
         total_lowest_30days_cost_without_discounts,
-        total_loyalty_points_discount,
-        total_pickup_point_discount,
+        total_delivery_cost, total_delivery_discount,
+        total_promo_code_discount, total_promo_code_discount_info,
+        total_order_length_discount, total_deliveries_on_date_discount,
+        total_loyalty_points_discount, total_pickup_point_discount,
         total_one_time_side_orders_cost,
         total_awarded_loyalty_program_points,
-        total_awarded_global_loyalty_program_points,
-        total_promo_code_discount_info)
+        total_awarded_global_loyalty_program_points)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
     [
       leaf.diet_calories_id,
       companyId,
       cityId,
-      leaf.tier_diet_option_id ?? null,
       days,
       promoCodes,
       item?.perDayDietCost ?? null,
       item?.perDayDietWithDiscountsCost ?? null,
       cart.totalCostToPay ?? null,
       cart.totalCostWithoutDiscounts ?? null,
-      cart.totalDeliveryCost ?? null,
-      cart.totalOrderLengthDiscount ?? null,
-      cart.totalPromoCodeDiscount ?? null,
-      cart.totalDeliveriesOnDateDiscount ?? null,
       cart.totalLowest30DaysCostWithoutDiscounts ?? null,
+      cart.totalDeliveryCost ?? null,
+      null, // total_delivery_discount — no direct equivalent in the API response
+      cart.totalPromoCodeDiscount ?? null,
+      cart.totalPromoCodeDiscountInfo ?? null,
+      cart.totalOrderLengthDiscount ?? null,
+      cart.totalDeliveriesOnDateDiscount ?? null,
       cart.totalLoyaltyPointsDiscount ?? null,
       cart.totalPickupPointDiscount ?? null,
       cart.totalOneTimeSideOrdersCost ?? null,
       cart.totalAwardedLoyaltyProgramPoints ?? null,
       cart.totalAwardedGlobalLoyaltyProgramPoints ?? null,
-      cart.totalPromoCodeDiscountInfo ?? null,
     ]
   );
 
