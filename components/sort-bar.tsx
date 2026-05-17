@@ -51,6 +51,17 @@ const ArrowGlyph = ({ direction }: Readonly<{ direction: "asc" | "desc" }>) => (
 export const SortBar = ({ activeId, onChange }: Readonly<Props>) => {
   const basics = SORT_OPTIONS.filter((s) => s.group === "basic");
   const ratios = SORT_OPTIONS.filter((s) => s.group === "ratio");
+  const macros = SORT_OPTIONS.filter((s) => s.group === "macro");
+
+  // Auto-expand when an active macro sort comes in from persisted state so the
+  // user can see what's selected without hunting for it.
+  const macroActive = macros.some((s) => s.id === activeId);
+  const [macrosOpen, setMacrosOpen] = React.useState(macroActive);
+  React.useEffect(() => {
+    if (macroActive) {
+      setMacrosOpen(true);
+    }
+  }, [macroActive]);
 
   return (
     <div
@@ -75,6 +86,40 @@ export const SortBar = ({ activeId, onChange }: Readonly<Props>) => {
             <ArrowGlyph direction={s.direction} />
           </Chip>
         ))}
+        <button
+          aria-expanded={macrosOpen}
+          aria-label={
+            macrosOpen
+              ? "Schowaj sortowanie po makro"
+              : "Pokaż sortowanie po makro"
+          }
+          className={cn(
+            "rounded-full px-2.5 py-1 text-[13px] transition-colors whitespace-nowrap",
+            "text-[var(--color-ink-3)] hover:bg-[var(--color-oat)] hover:text-[var(--color-ink-2)]",
+            macroActive && "text-[var(--color-ink-2)]"
+          )}
+          onClick={() => {
+            setMacrosOpen((v) => !v);
+          }}
+          title="sortuj po makro"
+          type="button"
+        >
+          <span aria-hidden>{macrosOpen ? "×" : "⋯"}</span>
+        </button>
+        {macrosOpen &&
+          macros.map((s) => (
+            <Chip
+              active={activeId === s.id}
+              key={s.id}
+              onClick={() => {
+                onChange(s.id);
+              }}
+              title={s.hint}
+            >
+              {s.short}
+              <ArrowGlyph direction={s.direction} />
+            </Chip>
+          ))}
       </div>
 
       <span aria-hidden className="text-[var(--color-ink-3)]/40 select-none">

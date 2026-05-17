@@ -364,9 +364,22 @@ const SingleRow = ({
 
           {/* Identity */}
           <div className="text-[13px] text-[var(--color-ink-2)]">
-            <span className="text-[var(--color-ink)] font-medium">
+            <a
+              className={cn(
+                "text-[var(--color-ink)] font-medium",
+                "underline decoration-[var(--color-bone)] decoration-1 underline-offset-[3px]",
+                "hover:decoration-[var(--color-amber)] hover:text-[var(--color-amber-deep)]",
+                "transition-colors"
+              )}
+              href={`https://dietly.pl/catering-dietetyczny-firma/${encodeURIComponent(offer.company_name)}`}
+              onClick={stopRowClick}
+              onKeyDown={stopRowClick}
+              rel="noopener noreferrer"
+              target="_blank"
+              title={`Otwórz ${offer.company_name} na dietly.pl`}
+            >
               {offer.company_name}
-            </span>
+            </a>
             <span className="text-[var(--color-ink-3)]"> · </span>
             <span>{offer.diet_name}</span>
             {offer.tier_name !== null && offer.tier_name !== "" && (

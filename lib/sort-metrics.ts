@@ -7,7 +7,11 @@ export type SortId =
   | "protein-per-zl"
   | "fiber-per-zl"
   | "score-per-zl"
-  | "kcal-per-zl";
+  | "kcal-per-zl"
+  | "protein-desc"
+  | "fiber-desc"
+  | "fat-asc"
+  | "carbs-asc";
 
 export interface SortOption {
   readonly id: SortId;
@@ -15,8 +19,8 @@ export interface SortOption {
   readonly label: string;
   /** Tight label shown as a chip / column header (lowercase, no arrow). */
   readonly short: string;
-  /** Group bucket for the dropdown — basics vs. value-for-money ratios. */
-  readonly group: "basic" | "ratio";
+  /** Group bucket for the dropdown — basics, value-for-money ratios, or raw macros. */
+  readonly group: "basic" | "ratio" | "macro";
   /** Raw value used for ranking — direction below decides asc/desc. */
   readonly accessor: (o: MockOffer) => number;
   /** asc = smaller wins, desc = bigger wins. */
@@ -111,6 +115,46 @@ export const SORT_OPTIONS: readonly SortOption[] = [
     id: "kcal-per-zl",
     label: "kcal za złotówkę",
     short: "kcal/zł",
+  },
+  {
+    accessor: (o) => o.total_protein_g,
+    direction: "desc",
+    format: (o) => `${formatFixed(o.total_protein_g, 0)} g`,
+    group: "macro",
+    hint: "najwięcej białka na dzień",
+    id: "protein-desc",
+    label: "białko (najwięcej)",
+    short: "białko",
+  },
+  {
+    accessor: (o) => o.total_fiber_g,
+    direction: "desc",
+    format: (o) => `${formatFixed(o.total_fiber_g, 0)} g`,
+    group: "macro",
+    hint: "najwięcej błonnika na dzień",
+    id: "fiber-desc",
+    label: "błonnik (najwięcej)",
+    short: "błonnik",
+  },
+  {
+    accessor: (o) => o.total_fat_g,
+    direction: "asc",
+    format: (o) => `${formatFixed(o.total_fat_g, 0)} g`,
+    group: "macro",
+    hint: "najmniej tłuszczu na dzień",
+    id: "fat-asc",
+    label: "tłuszcz (najmniej)",
+    short: "tłuszcz",
+  },
+  {
+    accessor: (o) => o.total_carbs_g,
+    direction: "asc",
+    format: (o) => `${formatFixed(o.total_carbs_g, 0)} g`,
+    group: "macro",
+    hint: "najmniej węglowodanów na dzień",
+    id: "carbs-asc",
+    label: "węglowodany (najmniej)",
+    short: "węgle",
   },
 ];
 
