@@ -1,4 +1,3 @@
-import { pipeline } from "@xenova/transformers";
 import type { FeatureExtractionPipeline } from "@xenova/transformers";
 
 import { query } from "./db";
@@ -43,6 +42,14 @@ declare global {
 // Returns the cached in-flight or resolved pipeline promise. Caching the
 // Promise itself (not the resolved value) is intentional — concurrent first
 // callers must share one load, not race two.
+//
+// We deliberately import @xenova/transformers via dynamic import here rather
+// than at module top. Top-level value imports of transformers eagerly load
+// onnxruntime-node's native .so, which crashes Next's "collect page data"
+// step in Alpine builds (libonnxruntime.so is linked against glibc, not musl).
+// At runtime on this project's deployment we ship a node:22-alpine runner —
+// but the embedder is only ever called from the scraper, never from a route
+// handler, so transformers is never actually dlopened in the web container.
 // oxlint-disable-next-line typescript-eslint/promise-function-async -- caching the promise itself is the point; wrapping in async would defeat the singleton
 const loadPipeline = (): Promise<FeatureExtractionPipeline> => {
   // oxlint-disable-next-line no-underscore-dangle -- HMR-safe singleton key
@@ -60,7 +67,11 @@ const loadPipeline = (): Promise<FeatureExtractionPipeline> => {
   // ~569 MB, self-contained), which is the library's default. Smoke cosine
   // values from the verification suite still pass comfortably with quantized
   // weights. Revisit when the project upgrades to `@huggingface/transformers` v3.
-  const p = pipeline("feature-extraction", MODEL);
+  const loader = async (): Promise<FeatureExtractionPipeline> => {
+    const { pipeline } = await import("@xenova/transformers");
+    return pipeline("feature-extraction", MODEL);
+  };
+  const p = loader();
   // oxlint-disable-next-line no-underscore-dangle -- HMR-safe singleton key
   global.__dietlownikEmbedderPromise = p;
   return p;
