@@ -1196,7 +1196,14 @@ export const getRankedOffersForDay = async (
         po.picks_default_json::text                         AS picks_default_json,
         COUNT(*) OVER ()::int                               AS considered_count
       FROM per_offer po
-      JOIN diet_calories dc ON dc.diet_calories_id = po.diet_calories_id
+      -- diet_calories_id is NOT globally unique — caterings reuse small
+      -- per-company ids that collide across companies. Joining only on
+      -- diet_calories_id silently picks the wrong company's row, propagating
+      -- the wrong calories, diet name, and company through every downstream
+      -- join. Always pin by company_id.
+      JOIN diet_calories dc
+        ON dc.diet_calories_id = po.diet_calories_id
+       AND dc.company_id       = po.company_id
       JOIN diet_options "do"
         ON "do".company_id     = dc.company_id
        AND "do".diet_id        = dc.diet_id
