@@ -91,6 +91,39 @@ const projectCompanyRow = (
   };
 };
 
+/**
+ * Append a row to `company_ratings_history` only when the rating fields have
+ * actually changed since the last captured row. Keeps the table sparse — it
+ * grows with review velocity, not scrape frequency. NULLs are compared with
+ * IS DISTINCT FROM so a "no reviews yet" → "first review" transition is
+ * captured. Idempotent: a no-op INSERT when nothing moved.
+ */
+const captureCompanyRatingIfChanged = async (
+  companyId: string,
+  avgScore: number | null,
+  feedbackValue: number | null,
+  feedbackNumber: number | null
+): Promise<void> => {
+  await q(
+    `INSERT INTO company_ratings_history
+       (company_id, avg_score, feedback_value, feedback_number)
+     SELECT $1::text, $2::numeric, $3::numeric, $4::int
+     WHERE NOT EXISTS (
+       SELECT 1 FROM (
+         SELECT avg_score, feedback_value, feedback_number
+         FROM company_ratings_history
+         WHERE company_id = $1::text
+         ORDER BY captured_at DESC
+         LIMIT 1
+       ) latest
+       WHERE latest.avg_score       IS NOT DISTINCT FROM $2::numeric
+         AND latest.feedback_value  IS NOT DISTINCT FROM $3::numeric
+         AND latest.feedback_number IS NOT DISTINCT FROM $4::int
+     )`,
+    [companyId, avgScore, feedbackValue, feedbackNumber]
+  );
+};
+
 const upsertCompany = async (
   companyId: string,
   constant: DeepReadonly<ConstantResponse>,
@@ -147,6 +180,13 @@ const upsertCompany = async (
       r.recentlyAdded,
       r.inviteCodeDiscountPercent,
     ]
+  );
+
+  await captureCompanyRatingIfChanged(
+    companyId,
+    r.rateValue,
+    r.feedbackValue,
+    r.feedbackNumber
   );
 };
 
@@ -538,8 +578,7 @@ const upsertDietCalories = async (
        (diet_calories_id, company_id, diet_id, tier_id, diet_option_id, calories,
         first_seen_at, last_seen_at, is_active)
      VALUES ($1,$2,$3,$4,$5,$6,NOW(),NOW(),TRUE)
-     ON CONFLICT (diet_calories_id) DO UPDATE SET
-       company_id     = EXCLUDED.company_id,
+     ON CONFLICT (company_id, diet_calories_id) DO UPDATE SET
        diet_id        = EXCLUDED.diet_id,
        tier_id        = EXCLUDED.tier_id,
        diet_option_id = EXCLUDED.diet_option_id,

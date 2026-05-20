@@ -156,7 +156,7 @@ export const fetchAndInsert = async (
   await q(
     `INSERT INTO prices
        (diet_calories_id, company_id, city_id, order_days, promo_codes,
-        per_day_cost, per_day_cost_with_discounts,
+        per_day_cost,
         total_cost, total_cost_without_discounts,
         total_lowest_30days_cost_without_discounts,
         total_delivery_cost, total_delivery_discount,
@@ -166,15 +166,18 @@ export const fetchAndInsert = async (
         total_one_time_side_orders_cost,
         total_awarded_loyalty_program_points,
         total_awarded_global_loyalty_program_points)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
     [
       leaf.diet_calories_id,
       companyId,
       cityId,
       days,
       promoCodes,
+      // List per-day. Effective net per-day is derived at read time as
+      // total_cost / order_days — the API's perDayDietWithDiscountsCost
+      // doesn't include the promo discount (verified against live API
+      // 2026-05-20), so we don't store a misleading "with discounts" column.
       item?.perDayDietCost ?? null,
-      item?.perDayDietWithDiscountsCost ?? null,
       cart.totalCostToPay ?? null,
       cart.totalCostWithoutDiscounts ?? null,
       cart.totalLowest30DaysCostWithoutDiscounts ?? null,

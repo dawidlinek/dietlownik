@@ -89,7 +89,27 @@ CREATE TABLE diet_snapshots (
   feedback_value NUMERIC(4,2), feedback_number INT,
   FOREIGN KEY (company_id, diet_id) REFERENCES diets ON DELETE CASCADE
 );
+-- Per-diet rating timeline (e.g. KETO at Twoje Menu over time) is captured
+-- here as a side effect: the fingerprint includes avg_score / feedback_value
+-- / feedback_number, so any rating change triggers a new snapshot row.
+-- Query with WHERE diet_tag = 'KETO' AND company_id = 'twojemenu' to plot.
 CREATE INDEX ON diet_snapshots (company_id, diet_id, captured_at DESC);
+
+-- ── Company-level rating history ─────────────────────────────────────────
+-- The `companies` row holds the current aggregate; this table is the
+-- timeline. Only inserted when (avg_score, feedback_value, feedback_number)
+-- actually changed vs the most recent row — so the table grows roughly with
+-- review velocity, not scrape frequency. Per-diet ratings live in
+-- diet_snapshots above (see comment).
+CREATE TABLE company_ratings_history (
+  id BIGSERIAL PRIMARY KEY,
+  company_id VARCHAR(255) NOT NULL REFERENCES companies ON DELETE CASCADE,
+  captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  avg_score NUMERIC(5,2),
+  feedback_value NUMERIC(4,2),
+  feedback_number INT
+);
+CREATE INDEX ON company_ratings_history (company_id, captured_at DESC);
 
 CREATE TABLE tiers (
   company_id VARCHAR(255) NOT NULL,
@@ -144,8 +164,13 @@ CREATE TABLE diet_option_snapshots (
 );
 CREATE INDEX ON diet_option_snapshots (company_id, diet_id, tier_id, diet_option_id, captured_at DESC);
 
+-- `diet_calories_id` is dietly's per-catering id (scraped from their mobile
+-- API), so it's NOT globally unique — multiple caterings happily reuse 1, 2,
+-- 3, … as their own internal ids. The PK is therefore composite. Old layouts
+-- that used `diet_calories_id` as a global SERIAL silently dropped every
+-- collision via ON CONFLICT and lost ~70/150 catering catalogs.
 CREATE TABLE diet_calories (
-  diet_calories_id INT PRIMARY KEY,
+  diet_calories_id INT NOT NULL,
   company_id VARCHAR(255) NOT NULL,
   diet_id INT NOT NULL,
   tier_id INT NOT NULL,
@@ -154,6 +179,7 @@ CREATE TABLE diet_calories (
   first_seen_at TIMESTAMPTZ DEFAULT NOW(),
   last_seen_at  TIMESTAMPTZ DEFAULT NOW(),
   is_active     BOOLEAN DEFAULT TRUE,
+  PRIMARY KEY (company_id, diet_calories_id),
   FOREIGN KEY (company_id, diet_id, tier_id, diet_option_id)
     REFERENCES diet_options ON DELETE CASCADE
 );
@@ -184,19 +210,29 @@ CREATE TABLE diet_discount_snapshots (
 CREATE INDEX ON diet_discount_snapshots (company_id, diet_id, captured_at DESC);
 
 -- ── Prices — every component of every quote, every scrape ────────────────
+-- APPEND-ONLY by design. Each scrape run inserts a fresh row per
+-- (catering, diet variant, city, order length, promo set) tuple — there's no
+-- unique constraint that would dedupe across days. This is on purpose:
+-- price history matters for analysis (same diet on the same delivery date
+-- can have different captured prices when a promo code becomes active or
+-- expires between scrapes; we want to plot that timeline).
+--
+-- Effective net per-day at read time is total_cost / order_days — dietly's
+-- API returns promo discounts as a separate `totalPromoCodeDiscount` line,
+-- so storing a precomputed "with discounts" per-day was misleading and we
+-- don't.
 CREATE TABLE prices (
   id BIGSERIAL PRIMARY KEY,
   captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  diet_calories_id INT NOT NULL REFERENCES diet_calories ON DELETE CASCADE,
+  diet_calories_id INT NOT NULL,
   company_id VARCHAR(255) NOT NULL,
   city_id BIGINT NOT NULL REFERENCES cities,
   order_days INT NOT NULL,
   promo_codes TEXT[] DEFAULT '{}',
-  -- Per-day numbers (the comparable headline rate)
+  -- List per-day (no discounts).
   per_day_cost                NUMERIC(10,2),
-  per_day_cost_with_discounts NUMERIC(10,2),
   -- Totals
-  total_cost                  NUMERIC(10,2),  -- = totalCostToPay
+  total_cost                  NUMERIC(10,2),  -- = totalCostToPay, NET of all discounts
   total_cost_without_discounts NUMERIC(10,2),
   total_lowest_30days_cost_without_discounts NUMERIC(10,2), -- Omnibus reference
   -- Delivery
@@ -213,11 +249,18 @@ CREATE TABLE prices (
   total_one_time_side_orders_cost NUMERIC(10,2),
   -- Awarded points (denormalised metadata; cheap to keep)
   total_awarded_loyalty_program_points        INT,
-  total_awarded_global_loyalty_program_points INT
+  total_awarded_global_loyalty_program_points INT,
+  FOREIGN KEY (company_id, diet_calories_id)
+    REFERENCES diet_calories ON DELETE CASCADE
 );
 CREATE INDEX ON prices (diet_calories_id, order_days, captured_at DESC);
 CREATE INDEX ON prices (company_id, city_id, captured_at DESC);
 CREATE INDEX ON prices (captured_at DESC);
+-- Time-series scan: "show me every captured price for this catering's diet
+-- variant in chronological order". Covers the price-history chart query and
+-- ad-hoc analysis. The composite includes company_id because diet_calories_id
+-- is per-catering, not global (see comment on diet_calories above).
+CREATE INDEX ON prices (company_id, diet_calories_id, captured_at DESC);
 
 -- ── Campaigns (mutable; no history) ───────────────────────────────────────
 CREATE TABLE campaigns (
@@ -257,11 +300,20 @@ CREATE TABLE meals (
   first_seen_at TIMESTAMPTZ DEFAULT NOW(),
   last_seen_at  TIMESTAMPTZ DEFAULT NOW(),
   updated_at    TIMESTAMPTZ DEFAULT NOW(),
+  -- lowercase + Polish-diacritic-folded copy of `name`; matches the alphabet
+  -- emitted by lib/preference-router.ts's normalize(). Enables trigram fuzzy
+  -- match against meal names from the ingredient/preference channel.
+  name_normalized TEXT GENERATED ALWAYS AS (
+    LOWER(TRANSLATE(name,
+      'ąćęłńóśźżĄĆĘŁŃÓŚŹŻ',
+      'acelnoszzACELNOSZZ'))
+  ) STORED,
   UNIQUE (company_id, name)
 );
 CREATE INDEX ON meals (company_id, lower(name));
 CREATE INDEX ON meals USING gin (allergens);
 CREATE INDEX ON meals USING gin (ingredients_raw gin_trgm_ops);
+CREATE INDEX ON meals USING gin (name_normalized gin_trgm_ops);
 
 CREATE TABLE meals_history (
   id BIGSERIAL PRIMARY KEY,
