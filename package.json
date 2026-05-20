@@ -18,7 +18,6 @@
     "migrate:reset": "node db/migrate-fresh.js --reset",
     "embed": "tsx scraper/scripts/embed-meals.ts",
     "migrate:v8": "node db/migrate_v8_e5small.js",
-    "migrate:v9": "node db/migrate_v9_meal_name_normalized.js",
     "bench:migrate": "node db/migrate_v7_bench.js",
     "bench:init": "tsx scraper/scripts/bench-init.ts",
     "bench:sample": "tsx scraper/scripts/bench-sample.ts",
