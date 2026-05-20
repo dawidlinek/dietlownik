@@ -2,8 +2,18 @@
 
 # ────────────────────────────────────────────────────────────────────────────
 # Stage 1 — install deps with Bun (matches bun.lock)
+#
+# Debian-based (glibc), not Alpine. Reasons:
+#  * `onnxruntime-node` ships only glibc-linked prebuilts. Alpine + gcompat
+#    is enough to dlopen the .so, but the ONNX C++ runtime still aborts at
+#    init with `Ort::Exception: No error information` because gcompat
+#    doesn't emulate the full glibc surface ORT uses (TLS, thread affinity).
+#  * `sharp` resolves a different native package per libc
+#    (@img/sharp-libvips-linux-x64 vs ...-linuxmusl-x64), so the install
+#    and the runtime must agree. Installing on Debian and running on
+#    Debian keeps that contract.
 # ────────────────────────────────────────────────────────────────────────────
-FROM oven/bun:1.3-alpine AS deps
+FROM oven/bun:1.3 AS deps
 WORKDIR /app
 COPY package.json bun.lock ./
 RUN bun install
@@ -11,7 +21,7 @@ RUN bun install
 # ────────────────────────────────────────────────────────────────────────────
 # Stage 2 — build the Next.js app (standalone output)
 # ────────────────────────────────────────────────────────────────────────────
-FROM oven/bun:1.3-alpine AS builder
+FROM oven/bun:1.3 AS builder
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 # Placeholder for the build step only — Next "collect page data" loads route
@@ -37,7 +47,7 @@ RUN bun run build
 #
 # DATABASE_URL must be supplied at runtime (e.g. -e DATABASE_URL=...).
 # ────────────────────────────────────────────────────────────────────────────
-FROM node:22-alpine AS runner
+FROM node:22-bookworm-slim AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
@@ -48,8 +58,22 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/home/nextjs/.cache/ms-playwright
 ENV PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium
 ENV CF_USER_DATA_DIR=/home/nextjs/.cache/dietlownik-cf-profile
 
-RUN addgroup --system --gid 1001 nextjs \
- && adduser --system --uid 1001 --ingroup nextjs nextjs
+# Install Chromium and the runtime deps onnxruntime-node / patchright need.
+# Chromium on bookworm lives at /usr/bin/chromium (the env var above matches).
+# ca-certificates: TLS root store for outbound HTTPS (dietly.pl, HF hub).
+# fonts-liberation: keeps headless Chromium from rendering with missing
+# glyphs on pages that test font availability for fingerprinting.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      chromium \
+      ca-certificates \
+      fonts-liberation \
+ && rm -rf /var/lib/apt/lists/*
+
+# Create the unprivileged runtime user (Debian: groupadd / useradd, not the
+# Alpine adduser/addgroup BusyBox flags).
+RUN groupadd --system --gid 1001 nextjs \
+ && useradd  --system --uid 1001 --gid nextjs --create-home --home-dir /home/nextjs nextjs
 
 # Web (Next standalone bundle + traced node_modules).
 COPY --from=builder --chown=nextjs:nextjs /app/.next/standalone ./
@@ -65,19 +89,9 @@ COPY --from=builder --chown=nextjs:nextjs /app/tsconfig.json ./tsconfig.json
 # + dotenv + the rest of devDependencies so the scraper TypeScript runs as-is.
 COPY --from=builder --chown=nextjs:nextjs /app/node_modules ./node_modules
 
-# Install Chromium from Alpine packages (handles all deps correctly) as root,
-# then hand off to nextjs.
-#
-# gcompat + libstdc++ are required by onnxruntime-node: its prebuilt
-# linux/x64 binary (node_modules/onnxruntime-node/bin/napi-v3/linux/x64/
-# libonnxruntime.so.*) is linked against glibc and expects
-# /lib/ld-linux-x86-64.so.2. gcompat ships that shim on musl Alpine.
-# Without it, `npm run embed` (and any lazy load of @xenova/transformers
-# from a route handler) crashes with ERR_DLOPEN_FAILED.
-RUN apk add --no-cache chromium gcompat libstdc++ \
-  && mkdir -p /home/nextjs/.cache \
-  && rm -rf /home/nextjs/.cache/ms-playwright \
-  && chown -R nextjs:nextjs /home/nextjs
+RUN mkdir -p /home/nextjs/.cache \
+ && rm -rf /home/nextjs/.cache/ms-playwright \
+ && chown -R nextjs:nextjs /home/nextjs
 
 USER nextjs
 EXPOSE 3000
