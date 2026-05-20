@@ -14,7 +14,10 @@ export const dynamic = "force-dynamic";
 const DEFAULT_CITY_ID = 986_283;
 const DEFAULT_KCAL_MIN = 1500;
 const DEFAULT_KCAL_MAX = 2000;
-const DEFAULT_WINDOW_DAYS = 10;
+// Picker cap. Caterings publish ~1–2 weeks ahead in practice, so 90 is
+// effectively "everything available" — the SQL still bounds by what's in
+// current_daily_menu, so the picker reflects the real DB tail.
+const DEFAULT_WINDOW_DAYS = 90;
 /** Caterings need lead time — same-day and next-day orders aren't possible,
  *  so the earliest sensible default is two calendar days out. */
 const ORDER_LEAD_DAYS = 2;
