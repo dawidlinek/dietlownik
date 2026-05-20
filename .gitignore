@@ -71,6 +71,9 @@ yarn-error.log*
 # packet captures (may contain auth tokens)
 *.har
 
+# ad-hoc DB inspection / debug scripts (one-shot, not part of the build)
+scripts/
+
 # claude-code runtime state (skills/agents config is committed; runtime is not)
 .claude/scheduled_tasks.lock
 .claude/worktrees/
