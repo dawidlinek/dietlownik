@@ -1,96 +1,21 @@
 // Hardcoded mock data for the /match design exploration.
-// Shape mirrors the eventual `RankedDayOffer` from the backend plan so the
-// component contracts won't budge when we wire this up. No DB access.
+// Shape lives in `lib/match-types.ts`; this file only supplies fixtures.
 
-export interface MockHit {
-  readonly source: "allergen" | "category" | "macro" | "embedding";
-  readonly keyword: string;
-  readonly channel: "prefer" | "avoid";
-  /** Signed; positive for prefer hits, negative for avoid. */
-  readonly contribution: number;
-  readonly reason: string;
-}
+import { aggregateMacros } from "./match-types";
+import type {
+  Day,
+  Hit,
+  MealMacros,
+  MealOption,
+  Offer,
+  Pick,
+  Promo,
+} from "./match-types";
 
-/** Per-meal macros (one serving). */
-export interface MealMacros {
-  readonly kcal: number;
-  readonly protein_g: number;
-  readonly fat_g: number;
-  readonly carbs_g: number;
-  readonly fiber_g: number;
-  readonly sugar_g: number;
-}
-
-/** A single meal option in a slot (sans slot context). */
-export interface MockMealOption extends MealMacros {
-  readonly meal_name: string;
-  /** Signed; sum of this option's hits.contribution. */
-  readonly meal_score: number;
-  readonly is_default: boolean;
-  readonly hits: readonly MockHit[];
-  /** Comma-separated ingredient list, Polish, as the dietly API returns it. */
-  readonly ingredients_raw: string;
-  /** Normalized allergen names from `dietlyAllergenName`. */
-  readonly allergens: readonly string[];
-}
-
-export interface MockPick extends MockMealOption {
-  readonly slot_name: string;
-  /** Other meals available in this slot — only set on menu-config offers. */
-  readonly alternates?: readonly MockMealOption[];
-}
-
-/** Active promo code applied to an offer. */
-export interface MockPromo {
-  readonly code: string;
-  /** 0–100. Discount already baked into `price_per_day`. */
-  readonly discount_percent: number;
-  /** ISO date when the campaign expires (omit for indefinite). */
-  readonly ends_at?: string;
-}
-
-export interface MockOffer {
-  readonly offer_id: string;
-  readonly company_name: string;
-  /** Absolute URL to the catering's logo, or null when unknown. */
-  readonly logo_url: string | null;
-  readonly diet_name: string;
-  readonly tier_name: string | null;
-  /** Diet's target kcal tier (1500 in the mock). */
-  readonly calories: number;
-  readonly is_menu_configuration: boolean;
-  /** Per-day price after all active promos. */
-  readonly price_per_day: number;
-  /** Per-day price before promo codes (null = no promo applied). */
-  readonly price_per_day_before_promo: number | null;
-  readonly promos: readonly MockPromo[];
-  readonly score_default: number;
-  readonly score_best: number;
-  readonly picks: readonly MockPick[];
-  /** Aggregated daily macros across the picks. */
-  readonly total_kcal: number;
-  readonly total_protein_g: number;
-  readonly total_fat_g: number;
-  readonly total_carbs_g: number;
-  readonly total_fiber_g: number;
-  readonly total_sugar_g: number;
-}
-
-export interface MockDay {
-  /** ISO yyyy-mm-dd. */
-  readonly date: string;
-  readonly weekday_short_pl: string;
-  /** May be null when no menus were captured for this date. */
-  readonly cheapest: MockOffer | null;
-  /** May === cheapest (collapsed row) or null when no menus captured. */
-  readonly best_fit: MockOffer | null;
-  readonly total_considered: number;
-  /** All offers for that day — for the scatter view. Includes cheapest + best_fit. */
-  readonly all_offers: readonly MockOffer[];
-}
+export { aggregateMacros };
 
 /** Internal — a day before all_offers is computed. */
-type RawDay = Omit<MockDay, "all_offers">;
+type RawDay = Omit<Day, "all_offers">;
 
 export const MOCK_PREFER: readonly string[] = ["kurczak", "dużo białka"];
 export const MOCK_AVOID: readonly string[] = ["pomidor", "gluten", "ostre"];
@@ -99,18 +24,18 @@ export const MOCK_ACTIVE_DAYS = 10;
 // ── Hit helpers ──────────────────────────────────────────────────────────────
 
 const preferHit = (
-  source: MockHit["source"],
+  source: Hit["source"],
   keyword: string,
   contribution: number,
   reason: string
-): MockHit => ({ channel: "prefer", contribution, keyword, reason, source });
+): Hit => ({ channel: "prefer", contribution, keyword, reason, source });
 
 const avoidHit = (
-  source: MockHit["source"],
+  source: Hit["source"],
   keyword: string,
   contribution: number,
   reason: string
-): MockHit => ({ channel: "avoid", contribution, keyword, reason, source });
+): Hit => ({ channel: "avoid", contribution, keyword, reason, source });
 
 // ── Macro registry ──────────────────────────────────────────────────────────
 // Per-meal macros, keyed by meal_name. Values are illustrative for design,
@@ -262,35 +187,16 @@ const FALLBACK_DETAILS: MealDetails = {
 
 const pick = (
   bare: Omit<
-    MockPick,
+    Pick,
     keyof MealMacros | "alternates" | "ingredients_raw" | "allergens"
   >
-): MockPick => ({
+): Pick => ({
   ...bare,
   ...(MEAL_MACROS[bare.meal_name] ?? macro(300, 15, 10, 35, 4, 6)),
   ...(MEAL_DETAILS[bare.meal_name] ?? FALLBACK_DETAILS),
 });
 
-/** Sum a list of picks into total daily macros. */
-export const aggregateMacros = (
-  meals: readonly Readonly<MealMacros>[]
-): MealMacros => {
-  let kcal = 0;
-  let protein_g = 0;
-  let fat_g = 0;
-  let carbs_g = 0;
-  let fiber_g = 0;
-  let sugar_g = 0;
-  for (const m of meals) {
-    kcal += m.kcal;
-    protein_g += m.protein_g;
-    fat_g += m.fat_g;
-    carbs_g += m.carbs_g;
-    fiber_g += m.fiber_g;
-    sugar_g += m.sugar_g;
-  }
-  return { carbs_g, fat_g, fiber_g, kcal, protein_g, sugar_g };
-};
+// `aggregateMacros` is re-exported from "./match-types" above.
 
 // ── Pick library — small reusable bank of slot picks, hand-crafted. ──────────
 // Names are realistic-Polish; macros come from `MEAL_MACROS` above.
@@ -490,7 +396,7 @@ const piersKurczakaBataty = pick({
 // For menu-config offers, each picked meal gets siblings from the same slot
 // so the user can swap. Built once from the pick library above.
 
-const toOption = (p: MockPick): MockMealOption => ({
+const toOption = (p: Pick): MealOption => ({
   allergens: p.allergens,
   carbs_g: p.carbs_g,
   fat_g: p.fat_g,
@@ -505,7 +411,7 @@ const toOption = (p: MockPick): MockMealOption => ({
   sugar_g: p.sugar_g,
 });
 
-const SLOT_ALTERNATES: Readonly<Record<string, readonly MockMealOption[]>> = {
+const SLOT_ALTERNATES: Readonly<Record<string, readonly MealOption[]>> = {
   "ii śniadanie": [koktajlBialkowy, kanapkaSer].map(toOption),
   kolacja: [
     piersKurczakaBataty,
@@ -526,7 +432,7 @@ const SLOT_ALTERNATES: Readonly<Record<string, readonly MockMealOption[]>> = {
   śniadanie: [owsiankaMaliny, omletKurczak, grzankiPomidor].map(toOption),
 };
 
-const withAlternates = (p: MockPick): MockPick => {
+const withAlternates = (p: Pick): Pick => {
   const pool = SLOT_ALTERNATES[p.slot_name] ?? [];
   const others = pool.filter((o) => o.meal_name !== p.meal_name);
   return { ...p, alternates: others };
@@ -983,13 +889,13 @@ const offer = (
   tier: string | null,
   calories: number,
   price: number,
-  picks: readonly MockPick[],
+  picks: readonly Pick[],
   opts?: Readonly<{
     is_menu_configuration?: boolean;
     score_default_override?: number;
-    promos?: readonly MockPromo[];
+    promos?: readonly Promo[];
   }>
-): MockOffer => {
+): Offer => {
   const isMenuConfig = opts?.is_menu_configuration ?? false;
   const resolved = isMenuConfig ? picks.map(withAlternates) : picks;
   const scoreBest = resolved.reduce((acc, p) => acc + p.meal_score, 0);
@@ -1008,6 +914,11 @@ const offer = (
   const priceFinal = Number(finalPrice.toFixed(2));
   return {
     calories,
+    // First chunk of offer_id is `v1:{company_id}:{dc}[:{tdo}]` for live data;
+    // mocks pass a simpler `{slug}::std::1500`. In either case, take chunk 0.
+    company_id: id.startsWith("v1:")
+      ? (id.split(":")[1] ?? "")
+      : (id.split(":")[0] ?? ""),
     company_name: company,
     diet_name: diet,
     is_menu_configuration: isMenuConfig,
@@ -1032,17 +943,17 @@ const offer = (
 // ── Day library ──────────────────────────────────────────────────────────────
 
 // Mock promo codes — campaigns the user could imagine seeing on dietly.pl.
-const PROMO_BLACK15: MockPromo = {
+const PROMO_BLACK15: Promo = {
   code: "BLACK15",
   discount_percent: 15,
   ends_at: "2026-05-31",
 };
-const PROMO_WIOSNA10: MockPromo = {
+const PROMO_WIOSNA10: Promo = {
   code: "WIOSNA10",
   discount_percent: 10,
   ends_at: "2026-05-25",
 };
-const PROMO_WELCOME5: MockPromo = {
+const PROMO_WELCOME5: Promo = {
   code: "WELCOME5",
   discount_percent: 5,
 };
@@ -1357,7 +1268,7 @@ const EXTRA_POOL: readonly ExtraSpec[] = [
   }));
 
 // Six pick combos covering the score spectrum.
-const PICK_COMBOS: readonly (readonly MockPick[])[] = [
+const PICK_COMBOS: readonly (readonly Pick[])[] = [
   // 0: strongly positive — protein-heavy with kurczak picks
   [omletKurczak, koktajlBialkowy, kurczakRyz, skyrBorowki, salataKurczak],
   // 1: balanced — mostly neutral, one prefer hit
@@ -1402,7 +1313,7 @@ const priceForIndex = (i: number, dayIdx: number): number => {
   return Number((stepped + ((dayIdx % 3) - 1) * 0.4).toFixed(2));
 };
 
-const promoForIndex = (i: number): readonly MockPromo[] => {
+const promoForIndex = (i: number): readonly Promo[] => {
   if (i % 11 === 3) {
     return [PROMO_BLACK15];
   }
@@ -1415,10 +1326,7 @@ const promoForIndex = (i: number): readonly MockPromo[] => {
   return [];
 };
 
-const makeExtras = (
-  dayIdx: number,
-  minPriceFloor: number
-): readonly MockOffer[] =>
+const makeExtras = (dayIdx: number, minPriceFloor: number): readonly Offer[] =>
   EXTRA_POOL.map((spec, i) => {
     const combo = PICK_COMBOS[(i + dayIdx) % PICK_COMBOS.length];
     // Keep the day's curated cheapest as the actual minimum on the scatter
@@ -1447,7 +1355,7 @@ const makeExtras = (
 const buildAllOffers = (
   raw: Readonly<RawDay>,
   dayIdx: number
-): readonly MockOffer[] => {
+): readonly Offer[] => {
   if (raw.cheapest === null || raw.best_fit === null) {
     return [];
   }
@@ -1473,7 +1381,7 @@ const RAW_DAYS: readonly RawDay[] = [
   day_2026_05_27,
 ];
 
-export const MOCK_DAYS: readonly MockDay[] = RAW_DAYS.map((d, i) => ({
+export const MOCK_DAYS: readonly Day[] = RAW_DAYS.map((d, i) => ({
   ...d,
   all_offers: buildAllOffers(d, i),
 }));

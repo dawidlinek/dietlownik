@@ -1,5 +1,5 @@
 import { formatPriceNumber } from "@/lib/format";
-import type { MockOffer } from "@/lib/mock-match-data";
+import type { Offer } from "@/lib/match-types";
 
 export type MetricId =
   | "price"
@@ -16,7 +16,7 @@ export interface Metric {
   readonly id: MetricId;
   readonly label: string;
   readonly unit: string;
-  readonly accessor: (o: MockOffer) => number;
+  readonly accessor: (o: Offer) => number;
   readonly format: (v: number) => string;
   /** True for metrics where bigger is "better" (positive = green). */
   readonly higherIsBetter: boolean;

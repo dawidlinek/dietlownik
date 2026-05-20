@@ -1,5 +1,5 @@
 import { formatPriceNumber } from "@/lib/format";
-import type { MockOffer } from "@/lib/mock-match-data";
+import type { Offer } from "@/lib/match-types";
 
 export type SortId =
   | "price-asc"
@@ -22,11 +22,11 @@ export interface SortOption {
   /** Group bucket for the dropdown — basics, value-for-money ratios, or raw macros. */
   readonly group: "basic" | "ratio" | "macro";
   /** Raw value used for ranking — direction below decides asc/desc. */
-  readonly accessor: (o: MockOffer) => number;
+  readonly accessor: (o: Offer) => number;
   /** asc = smaller wins, desc = bigger wins. */
   readonly direction: "asc" | "desc";
   /** Formatted display of the ranking value (for the side column). */
-  readonly format: (o: MockOffer) => string;
+  readonly format: (o: Offer) => string;
   /** Optional explanation shown in the dropdown. */
   readonly hint?: string;
 }
@@ -166,7 +166,7 @@ export const getSortOption = (id: SortId): SortOption => {
   return found;
 };
 
-export const rankOffers = <T extends MockOffer>(
+export const rankOffers = <T extends Offer>(
   offers: readonly T[],
   sortId: SortId
 ): readonly T[] => {
@@ -176,3 +176,24 @@ export const rankOffers = <T extends MockOffer>(
     (a, b) => sign * (opt.accessor(a) - opt.accessor(b))
   );
 };
+
+type ScatterYMetric = "score" | "kcal" | "protein" | "fat" | "carbs" | "fiber";
+
+const SORT_TO_Y: Readonly<Record<SortId, ScatterYMetric>> = {
+  "carbs-asc": "carbs",
+  "fat-asc": "fat",
+  "fiber-desc": "fiber",
+  "fiber-per-zl": "fiber",
+  "kcal-per-zl": "kcal",
+  "price-asc": "score",
+  "protein-desc": "protein",
+  "protein-per-zl": "protein",
+  "score-desc": "score",
+  "score-per-zl": "score",
+};
+
+/**
+ * Maps a sort to a scatter Y-axis metric, so picking a sort chip drives the
+ * scatter axes (X is always price; Y is what you sorted by).
+ */
+export const sortToYMetricId = (id: SortId): ScatterYMetric => SORT_TO_Y[id];

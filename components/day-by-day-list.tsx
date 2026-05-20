@@ -5,14 +5,8 @@ import * as React from "react";
 import { DishDetailsPopover } from "@/components/meal-swap-popover";
 import { OfferScatter } from "@/components/offer-scatter";
 import { formatPriceNumber } from "@/lib/format";
-import { aggregateMacros } from "@/lib/mock-match-data";
-import type {
-  MockDay,
-  MockHit,
-  MockMealOption,
-  MockOffer,
-  MockPick,
-} from "@/lib/mock-match-data";
+import { aggregateMacros } from "@/lib/match-types";
+import type { Day, Hit, MealOption, Offer, Pick } from "@/lib/match-types";
 import { getMetric } from "@/lib/scatter-metrics";
 import type { MetricId } from "@/lib/scatter-metrics";
 import { usePersistedState } from "@/lib/use-persisted-state";
@@ -58,7 +52,7 @@ const formatDayMonth = (iso: string): string => {
 // ── State types ─────────────────────────────────────────────────────────────
 
 /** slot_name → swapped option */
-type SwapMap = Readonly<Record<string, MockMealOption>>;
+type SwapMap = Readonly<Record<string, MealOption>>;
 /** `${date}::${offer_id}` → SwapMap */
 type AllSwaps = Readonly<Record<string, SwapMap>>;
 /** date → override offer_id */
@@ -73,17 +67,17 @@ interface Expansion {
 
 // ── Effective offer (with mealswaps applied) ────────────────────────────────
 
-const applySwaps = (offer: MockOffer, swaps: SwapMap): MockOffer => {
+const applySwaps = (offer: Offer, swaps: SwapMap): Offer => {
   const keys = Object.keys(swaps);
   if (keys.length === 0) {
     return offer;
   }
-  const newPicks: MockPick[] = offer.picks.map((p) => {
+  const newPicks: Pick[] = offer.picks.map((p) => {
     const swap = swaps[p.slot_name];
     if (swap === undefined) {
       return p;
     }
-    // Carry the alternates field forward (it's stripped from MockMealOption).
+    // Carry the alternates field forward (it's stripped from MealOption).
     return { ...p, ...swap, alternates: p.alternates };
   });
   const scoreBest = Number(
@@ -105,7 +99,7 @@ const applySwaps = (offer: MockOffer, swaps: SwapMap): MockOffer => {
 
 // ── Small UI atoms ──────────────────────────────────────────────────────────
 
-const HitGlyph = ({ channel }: Readonly<{ channel: MockHit["channel"] }>) => (
+const HitGlyph = ({ channel }: Readonly<{ channel: Hit["channel"] }>) => (
   <span
     aria-hidden
     className={cn(
@@ -122,7 +116,7 @@ const HitGlyph = ({ channel }: Readonly<{ channel: MockHit["channel"] }>) => (
 const InlineHits = ({
   hits,
   limit = 2,
-}: Readonly<{ hits: readonly MockHit[]; limit?: number }>) => {
+}: Readonly<{ hits: readonly Hit[]; limit?: number }>) => {
   if (hits.length === 0) {
     return (
       <span className="text-[12px] text-[var(--color-ink-3)]/70 italic">
@@ -226,9 +220,9 @@ const slotRank = (name: string): number => {
 };
 
 interface PicksTableProps {
-  readonly picks: readonly MockPick[];
+  readonly picks: readonly Pick[];
   readonly isMenuConfig: boolean;
-  readonly onSwap: (slot: string, option: MockMealOption) => void;
+  readonly onSwap: (slot: string, option: MealOption) => void;
 }
 
 const PicksTable = ({
@@ -253,7 +247,7 @@ const PicksTable = ({
         <tbody>
           {sorted.map((p) => {
             const swapHandler = isMenuConfig
-              ? (opt: MockMealOption) => {
+              ? (opt: MealOption) => {
                   onSwap(p.slot_name, opt);
                 }
               : undefined;
@@ -362,7 +356,7 @@ const CellLabel = ({
 // ── Scatter panel (the expand contents) ─────────────────────────────────────
 
 interface ScatterPanelProps {
-  readonly day: MockDay;
+  readonly day: Day;
   readonly selectedId: string;
   readonly onPick: (offerId: string) => void;
 }
@@ -397,7 +391,7 @@ const ScatterPanel = ({
 // ── Offer cell ──────────────────────────────────────────────────────────────
 
 interface OfferCellProps {
-  readonly offer: MockOffer;
+  readonly offer: Offer;
   readonly label: string;
   readonly picksOpen: boolean;
   readonly onTogglePicks: () => void;
@@ -406,8 +400,8 @@ interface OfferCellProps {
   readonly onToggleScatter: () => void;
   readonly overrideActive: boolean;
   readonly onClearOverride: () => void;
-  readonly onSwapMeal: (slot: string, option: MockMealOption) => void;
-  readonly scatterDay: MockDay | null;
+  readonly onSwapMeal: (slot: string, option: MealOption) => void;
+  readonly scatterDay: Day | null;
   readonly onPickFromScatter: (offerId: string) => void;
   /** True when this offer is the day's committed selection. */
   readonly selected: boolean;
@@ -597,13 +591,13 @@ const makeOpenFlags = (
 };
 
 interface DayRowProps {
-  readonly day: MockDay;
+  readonly day: Day;
   readonly expansion: Expansion | null;
   readonly onToggle: (next: Expansion | null) => void;
   readonly overrideId: string | undefined;
   readonly onOverride: (offerId: string | null) => void;
   readonly swaps: AllSwaps;
-  readonly onSwap: (offerId: string, slot: string, opt: MockMealOption) => void;
+  readonly onSwap: (offerId: string, slot: string, opt: MealOption) => void;
   readonly selectedId: string | undefined;
   readonly onToggleSelect: (offerId: string) => void;
 }
@@ -781,7 +775,7 @@ const DayRow = (props: Readonly<DayRowProps>) => (
 // ── Top-level list ──────────────────────────────────────────────────────────
 
 export interface DayByDayListProps {
-  readonly days: readonly MockDay[];
+  readonly days: readonly Day[];
   readonly prefer: readonly string[];
   readonly avoid: readonly string[];
 }
@@ -795,7 +789,7 @@ interface ResolvedSelection {
   readonly price_per_day: number;
 }
 
-const findOffer = (day: MockDay, offerId: string): MockOffer | null => {
+const findOffer = (day: Day, offerId: string): Offer | null => {
   if (day.cheapest !== null && day.cheapest.offer_id === offerId) {
     return day.cheapest;
   }
@@ -806,7 +800,7 @@ const findOffer = (day: MockDay, offerId: string): MockOffer | null => {
 };
 
 const resolveSelections = (
-  days: readonly MockDay[],
+  days: readonly Day[],
   selections: Selections
 ): readonly ResolvedSelection[] => {
   const resolved: ResolvedSelection[] = [];
@@ -940,7 +934,7 @@ export const DayByDayList = ({
   );
 
   const handleSwap = React.useCallback(
-    (date: string, offerId: string, slot: string, opt: MockMealOption) => {
+    (date: string, offerId: string, slot: string, opt: MealOption) => {
       const key = `${date}::${offerId}`;
       setSwaps((prev) => {
         const existing = prev[key] ?? {};

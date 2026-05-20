@@ -18,7 +18,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import type { MockOffer } from "@/lib/mock-match-data";
+import type { Offer } from "@/lib/match-types";
 import type { Metric, MetricId } from "@/lib/scatter-metrics";
 import { cn } from "@/lib/utils";
 
@@ -41,7 +41,7 @@ interface ScatterPoint {
   readonly score: number;
 }
 
-const toPoint = (o: MockOffer, xM: Metric, yM: Metric): ScatterPoint => ({
+const toPoint = (o: Offer, xM: Metric, yM: Metric): ScatterPoint => ({
   calories: o.calories,
   company_name: o.company_name,
   diet_name: o.diet_name,
@@ -272,7 +272,7 @@ const tooltipCursor = {
 };
 
 export interface OfferScatterProps {
-  readonly offers: readonly MockOffer[];
+  readonly offers: readonly Offer[];
   readonly cheapestId: string;
   readonly selectedId: string;
   readonly onPick: (offerId: string) => void;
@@ -288,10 +288,10 @@ export interface OfferScatterProps {
 const TOP_N = 5;
 
 const topByMetric = (
-  offers: readonly MockOffer[],
+  offers: readonly Offer[],
   metric: Metric,
   n: number
-): readonly MockOffer[] => {
+): readonly Offer[] => {
   const sorted = [...offers].toSorted((a, b) => {
     const av = metric.accessor(a);
     const bv = metric.accessor(b);
@@ -335,8 +335,8 @@ export const OfferScatter = ({
   // offers — not from the user's filter — so it represents the natural picks.
   const topOffers = React.useMemo(() => {
     const keep = new Set<string>();
-    const out: MockOffer[] = [];
-    const push = (o: MockOffer) => {
+    const out: Offer[] = [];
+    const push = (o: Offer) => {
       if (!keep.has(o.offer_id)) {
         keep.add(o.offer_id);
         out.push(o);
@@ -604,6 +604,20 @@ export const OfferScatter = ({
                       odznacz
                     </button>
                   )}
+                  {q === "" &&
+                    (addedCompanies.size > 0 || excludedCompanies.size > 0) && (
+                      <button
+                        className="text-[10px] text-[var(--color-amber-deep)] underline-offset-2 hover:underline normal-case"
+                        onClick={() => {
+                          setAddedCompanies(new Set());
+                          setExcludedCompanies(new Set());
+                        }}
+                        title={`Zawęź do top: top ${TOP_N} po X + top ${TOP_N} po Y + najtańsza + wybrana`}
+                        type="button"
+                      >
+                        top {topOffers.length}
+                      </button>
+                    )}
                 </div>
               </div>
 

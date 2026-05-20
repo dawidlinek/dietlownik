@@ -7,7 +7,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import type { MockMealOption, MockPick } from "@/lib/mock-match-data";
+import type { MealOption, Pick } from "@/lib/match-types";
 import { cn } from "@/lib/utils";
 
 const formatScore = (v: number): string => {
@@ -61,7 +61,7 @@ const MacroCell = ({
   </div>
 );
 
-const DishMeta = ({ option }: Readonly<{ option: MockMealOption }>) => (
+const DishMeta = ({ option }: Readonly<{ option: MealOption }>) => (
   <div className="flex flex-col gap-3 px-2.5 py-2">
     {/* Ingredients */}
     {option.ingredients_raw !== "" && option.ingredients_raw !== "—" && (
@@ -103,7 +103,7 @@ const DishMeta = ({ option }: Readonly<{ option: MockMealOption }>) => (
 // ── Alternates (only when onSwap is provided) ───────────────────────────────
 
 interface AlternateRowProps {
-  readonly option: MockMealOption;
+  readonly option: MealOption;
   readonly previewed: boolean;
   readonly onPick: () => void;
   readonly onPreview: () => void;
@@ -144,9 +144,9 @@ const AlternateRow = ({
 // ── Top-level ───────────────────────────────────────────────────────────────
 
 export interface DishDetailsPopoverProps {
-  readonly pick: MockPick;
+  readonly pick: Pick;
   /** When provided, the popover offers a swap section for menu-config slots. */
-  readonly onSwap?: (option: MockMealOption) => void;
+  readonly onSwap?: (option: MealOption) => void;
 }
 
 export const DishDetailsPopover = ({
@@ -156,7 +156,7 @@ export const DishDetailsPopover = ({
   const [open, setOpen] = React.useState(false);
   const [previewName, setPreviewName] = React.useState<string | null>(null);
   const alternates = pick.alternates ?? [];
-  const currentAsOption: MockMealOption = {
+  const currentAsOption: MealOption = {
     allergens: pick.allergens,
     carbs_g: pick.carbs_g,
     fat_g: pick.fat_g,

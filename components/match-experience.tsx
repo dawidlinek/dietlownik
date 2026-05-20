@@ -7,11 +7,11 @@ import { DateRangePicker } from "@/components/date-range-picker";
 import { DayByDayList } from "@/components/day-by-day-list";
 import { KcalRangeFilter } from "@/components/kcal-range-filter";
 import { PreferenceFilter } from "@/components/preference-filter";
-import type { MockDay } from "@/lib/mock-match-data";
+import type { Day } from "@/lib/match-types";
 import { usePersistedState } from "@/lib/use-persisted-state";
 
 export interface MatchExperienceProps {
-  readonly days: readonly MockDay[];
+  readonly days: readonly Day[];
   readonly initialPrefer: readonly string[];
   readonly initialAvoid: readonly string[];
 }
