@@ -25,35 +25,6 @@ const weekdayShort = (iso: string): string => {
   return ["pon", "wt", "śr", "czw", "pt", "sob", "nd"][idx];
 };
 
-/** Group consecutive dates into weekly rows (Mon → Sun). */
-const groupByWeek = (
-  dates: readonly string[]
-): readonly (readonly string[])[] => {
-  const rows: string[][] = [];
-  let current: string[] = [];
-  let lastWeek = -1;
-  for (const iso of dates) {
-    const d = new Date(`${iso}T00:00:00`);
-    // Week index from start-of-Monday
-    const mondayOffset = (d.getDay() + 6) % 7;
-    const monday = new Date(d);
-    monday.setDate(d.getDate() - mondayOffset);
-    const weekKey = Math.floor(monday.getTime() / (7 * 24 * 60 * 60 * 1000));
-    if (weekKey !== lastWeek) {
-      if (current.length > 0) {
-        rows.push(current);
-      }
-      current = [];
-      lastWeek = weekKey;
-    }
-    current.push(iso);
-  }
-  if (current.length > 0) {
-    rows.push(current);
-  }
-  return rows;
-};
-
 const isWeekend = (iso: string): boolean => {
   const d = new Date(`${iso}T00:00:00`);
   const dow = d.getDay();
@@ -113,7 +84,6 @@ export const DateRangePicker = ({
   selectedDates,
 }: Readonly<DateRangePickerProps>) => {
   const selectedSet = new Set(selectedDates);
-  const weeks = groupByWeek(availableDates);
 
   const toggle = (iso: string) => {
     const next = new Set(selectedSet);
@@ -196,42 +166,17 @@ export const DateRangePicker = ({
           </div>
         </div>
 
-        <div className="flex flex-col gap-1.5">
-          {weeks.map((week) => {
-            // Pad week to 7 columns so weeks align visually (Mon → Sun).
-            const padded: (string | null)[] = Array.from(
-              { length: 7 },
-              () => null
-            );
-            for (const iso of week) {
-              const d = new Date(`${iso}T00:00:00`);
-              const col = (d.getDay() + 6) % 7;
-              padded[col] = iso;
-            }
-            return (
-              <div className="grid grid-cols-7 gap-1" key={week[0]}>
-                {padded.map((iso, i) =>
-                  iso === null ? (
-                    <div
-                      aria-hidden
-                      className="min-w-[40px]"
-                      // oxlint-disable-next-line react/no-array-index-key -- padding cells aren't keyable; index is fine inside a stable week row
-                      key={`pad-${i}`}
-                    />
-                  ) : (
-                    <DayCell
-                      iso={iso}
-                      key={iso}
-                      onToggle={() => {
-                        toggle(iso);
-                      }}
-                      selected={selectedSet.has(iso)}
-                    />
-                  )
-                )}
-              </div>
-            );
-          })}
+        <div className="flex flex-wrap gap-1">
+          {availableDates.map((iso) => (
+            <DayCell
+              iso={iso}
+              key={iso}
+              onToggle={() => {
+                toggle(iso);
+              }}
+              selected={selectedSet.has(iso)}
+            />
+          ))}
         </div>
       </PopoverContent>
     </Popover>

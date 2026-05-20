@@ -17,7 +17,12 @@ const makePool = (): Pool => {
     connectionString: url,
     connectionTimeoutMillis: 10_000,
     idleTimeoutMillis: 30_000,
-    max: 5,
+    // 20: each home-page render fans out N parallel getRankedOffersForDay
+    // calls (one per date in the week view) and each spawns several sub-queries
+    // (preference router taxonomy lookup, keyword embeddings, main ranking),
+    // so a 10-date window plus a concurrent /api/match-week fetch easily
+    // outruns a 5-conn pool.
+    max: 20,
   });
 };
 

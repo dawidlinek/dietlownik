@@ -20,59 +20,6 @@ export interface CompanyRow {
   readonly name: string | null;
 }
 
-/** One leaf row — a single (company, diet, tier, option, kcal) price observation. */
-export interface LeafRow {
-  readonly company_id: string;
-  readonly diet_id: number;
-  readonly diet_name: string | null;
-  readonly diet_tag: string | null;
-  readonly diet_description: string | null;
-  readonly tier_id: number | null;
-  readonly tier_name: string | null;
-  readonly diet_option_id: number | null;
-  readonly diet_option_name: string | null;
-  readonly diet_calories_id: number;
-  readonly calories: number | null;
-  readonly per_day_cost: string | null;
-  readonly per_day_cost_with_discounts: string | null;
-  readonly total_cost: string | null;
-  readonly total_cost_without_discounts: string | null;
-  readonly total_delivery_cost: string | null;
-  readonly total_promo_code_discount: string | null;
-  readonly total_order_length_discount: string | null;
-  readonly promo_codes: readonly string[] | null;
-  readonly applied_promo_codes: readonly string[] | null;
-  readonly effective_per_day: string | null;
-  readonly captured_at: string;
-  readonly prev_per_day: string | null;
-}
-
-/** A catering "tile" — one company, with its cheapest leaf surfaced. */
-export interface CateringTile {
-  readonly company_id: string;
-  readonly company_name: string | null;
-  readonly awarded: boolean | null;
-  readonly feedback_value: string | null;
-  readonly feedback_number: number | null;
-  /** The single cheapest leaf for this company in the kcal range. */
-  readonly cheapest: LeafRow;
-  /** All leaves for this company in the kcal range, sorted asc by price. */
-  readonly leaves: readonly LeafRow[];
-}
-
-export interface CateringPage {
-  readonly tiles: readonly CateringTile[];
-  /** total number of companies that have at least one leaf in range */
-  readonly total: number;
-  /** 1-indexed */
-  readonly page: number;
-  readonly pageSize: number;
-  /** cheapest per-day price across ALL pages, for the header summary */
-  readonly rangeMin: number | null;
-  /** costliest per-day price across ALL pages */
-  readonly rangeMax: number | null;
-}
-
 export interface CampaignRow {
   readonly id: number;
   readonly code: string | null;
@@ -179,255 +126,6 @@ export const getDayOptions = async (cityId: number): Promise<number[]> => {
     [cityId]
   );
   return rows.map((r) => r.order_days);
-};
-
-// ── 4. The catering page (flat tiles, paginated) ────────────────────────────
-//
-// One row per company in the city. Each row carries:
-//   - the cheapest leaf (for ranking + the collapsed display)
-//   - every leaf in range (for the drill-down table; sorted asc)
-//   - rating / awarded info from the companies table
-// `total` is the total number of companies in range (for pagination).
-
-const PAGE_SIZE = 25;
-const MAX_PAGE_SIZE = 200;
-
-export const getCateringPage = async (
-  args: Readonly<{
-    cityId: number;
-    kcalMin: number;
-    kcalMax: number;
-    days: number;
-    /** 1-indexed */
-    page: number;
-    pageSize?: number;
-  }>
-): Promise<CateringPage> => {
-  const { cityId, kcalMin, kcalMax, days } = args;
-  const page = Math.max(1, args.page);
-  const pageSize = Math.min(
-    MAX_PAGE_SIZE,
-    Math.max(1, args.pageSize ?? PAGE_SIZE)
-  );
-  const offset = (page - 1) * pageSize;
-
-  // We DISTINCT ON (company, dc_id, tier|null, option|null, days) to capture
-  // the latest capture per real combo (the same dc_id can appear under
-  // multiple tiers — verified live: different prices). Then we filter by
-  // calories range, group per company, sort ascending by cheapest.
-  interface PageRow {
-    readonly company_id: string;
-    readonly company_name: string | null;
-    readonly awarded: boolean | null;
-    readonly feedback_value: string | null;
-    readonly feedback_number: number | null;
-    /** numeric cast — comparable for ordering */
-    readonly cheapest: string;
-    /** jsonb agg */
-    readonly leaves: string;
-    readonly total_companies: number;
-    readonly overall_min: string | null;
-    readonly overall_max: string | null;
-  }
-
-  const rows = await query<PageRow>(
-    `
-    -- 1. Bucket each price row by its capture day, and within each
-    --    (combo, day) pick the row with MIN(total_cost). Order-length and
-    --    promo-code discounts DO NOT stack — the API picks whichever is
-    --    better — so the cheapest variant on a given day IS the offer.
-    WITH cheapest_per_day AS (
-      SELECT DISTINCT ON (
-        p.company_id, p.diet_calories_id,
-        COALESCE(p.tier_diet_option_id, ''), p.order_days,
-        date_trunc('day', p.captured_at)
-      )
-        p.*,
-        date_trunc('day', p.captured_at) AS capture_day
-      FROM prices p
-      WHERE p.city_id    = $1
-        AND p.order_days = $2
-      ORDER BY
-        p.company_id, p.diet_calories_id,
-        COALESCE(p.tier_diet_option_id, ''), p.order_days,
-        date_trunc('day', p.captured_at),
-        p.total_cost ASC NULLS LAST,
-        p.captured_at DESC, p.id DESC
-    ),
-    -- 2. Among day-buckets per combo, rn=1 is current, rn=2 is prev.
-    ranked AS (
-      SELECT
-        c.*,
-        ROW_NUMBER() OVER (
-          PARTITION BY c.company_id, c.diet_calories_id,
-                       COALESCE(c.tier_diet_option_id, ''), c.order_days
-          ORDER BY c.capture_day DESC
-        ) AS rn
-      FROM cheapest_per_day c
-    ),
-    leaves_in_range AS (
-      SELECT
-        r.company_id,
-        dc.diet_id,
-        d.name                                  AS diet_name,
-        d.diet_tag,
-        d.description                           AS diet_description,
-        dc.tier_id,
-        t.name                                  AS tier_name,
-        dc.diet_option_id,
-        do2.name                                AS diet_option_name,
-        dc.diet_calories_id,
-        dc.calories,
-        r.per_day_cost::text                    AS per_day_cost,
-        r.per_day_cost_with_discounts::text     AS per_day_cost_with_discounts,
-        r.total_cost::text                      AS total_cost,
-        r.total_cost_without_discounts::text    AS total_cost_without_discounts,
-        r.total_delivery_cost::text             AS total_delivery_cost,
-        r.total_promo_code_discount::text       AS total_promo_code_discount,
-        r.total_order_length_discount::text     AS total_order_length_discount,
-        r.promo_codes,
-        r.promo_codes                           AS applied_promo_codes,
-        r.captured_at::text                     AS captured_at,
-        -- Effective per-day = (food + delivery) / days, the truthful number.
-        ((r.total_cost / NULLIF(r.order_days, 0))::numeric(10,2))::text AS effective_per_day,
-        ((r.total_cost / NULLIF(r.order_days, 0))::numeric(10,2))       AS effective_per_day_num,
-        r.tier_diet_option_id
-      FROM ranked r
-      -- Use the composite tier_diet_option_id to disambiguate when the same
-      -- dietCaloriesId lives under multiple tiers. For ready diets both sides
-      -- are NULL — match via COALESCE.
-      JOIN diet_calories dc
-        ON dc.diet_calories_id = r.diet_calories_id
-       AND dc.company_id        = r.company_id
-       AND (
-         (dc.tier_id IS NULL AND dc.diet_option_id IS NULL AND r.tier_diet_option_id IS NULL)
-         OR (
-           dc.tier_id IS NOT NULL AND dc.diet_option_id IS NOT NULL
-           AND r.tier_diet_option_id = dc.tier_id || '-' || dc.diet_option_id
-         )
-       )
-      JOIN diets d
-        ON d.diet_id = dc.diet_id AND d.company_id = dc.company_id
-      LEFT JOIN tiers t
-        ON t.tier_id = dc.tier_id AND t.diet_id = dc.diet_id AND t.company_id = dc.company_id
-      LEFT JOIN diet_options do2
-        ON do2.diet_option_id = dc.diet_option_id
-       AND do2.tier_id = dc.tier_id
-       AND do2.diet_id = dc.diet_id
-       AND do2.company_id = dc.company_id
-      WHERE r.rn = 1
-        AND dc.calories BETWEEN $3 AND $4
-        AND dc.is_active = TRUE
-        AND d.is_active  = TRUE
-    ),
-    -- Previous (rn = 2) day-bucket capture, for the price delta arrow.
-    -- We compare effective per-day (total/days) so the delta reflects the
-    -- truthful price the user pays today vs. previously.
-    prev AS (
-      SELECT
-        company_id, diet_calories_id,
-        COALESCE(tier_diet_option_id, '') AS tdo_key,
-        order_days,
-        ((total_cost / NULLIF(order_days, 0))::numeric(10,2))::text AS prev_per_day
-      FROM ranked
-      WHERE rn = 2
-    ),
-    enriched AS (
-      SELECT
-        l.*,
-        prev.prev_per_day
-      FROM leaves_in_range l
-      LEFT JOIN prev
-        ON prev.company_id       = l.company_id
-       AND prev.diet_calories_id = l.diet_calories_id
-       AND prev.tdo_key          = COALESCE(l.tier_diet_option_id, '')
-    ),
-    grouped AS (
-      SELECT
-        e.company_id,
-        MIN(e.effective_per_day_num) AS cheapest_num,
-        json_agg(
-          json_build_object(
-            'company_id',                    e.company_id,
-            'diet_id',                       e.diet_id,
-            'diet_name',                     e.diet_name,
-            'diet_tag',                      e.diet_tag,
-            'diet_description',              e.diet_description,
-            'tier_id',                       e.tier_id,
-            'tier_name',                     e.tier_name,
-            'diet_option_id',                e.diet_option_id,
-            'diet_option_name',              e.diet_option_name,
-            'diet_calories_id',              e.diet_calories_id,
-            'calories',                      e.calories,
-            'per_day_cost',                  e.per_day_cost,
-            'per_day_cost_with_discounts',   e.per_day_cost_with_discounts,
-            'total_cost',                    e.total_cost,
-            'total_cost_without_discounts',  e.total_cost_without_discounts,
-            'total_delivery_cost',           e.total_delivery_cost,
-            'total_promo_code_discount',     e.total_promo_code_discount,
-            'total_order_length_discount',   e.total_order_length_discount,
-            'promo_codes',                   e.promo_codes,
-            'applied_promo_codes',           e.applied_promo_codes,
-            'effective_per_day',             e.effective_per_day,
-            'captured_at',                   e.captured_at,
-            'prev_per_day',                  e.prev_per_day
-          )
-          ORDER BY e.effective_per_day_num ASC, e.calories ASC
-        ) AS leaves
-      FROM enriched e
-      GROUP BY e.company_id
-    )
-    SELECT
-      g.company_id,
-      co.name                          AS company_name,
-      co.awarded                       AS awarded,
-      co.feedback_value::text          AS feedback_value,
-      co.feedback_number,
-      g.cheapest_num::text             AS cheapest,
-      g.leaves::text                   AS leaves,
-      COUNT(*) OVER ()::int            AS total_companies,
-      MIN(g.cheapest_num) OVER ()::text AS overall_min,
-      MAX(g.cheapest_num) OVER ()::text AS overall_max
-    FROM grouped g
-    JOIN companies co ON co.company_id = g.company_id
-    ORDER BY g.cheapest_num ASC, g.company_id ASC
-    LIMIT $5 OFFSET $6
-    `,
-    [cityId, days, kcalMin, kcalMax, pageSize, offset]
-  );
-
-  const tiles: CateringTile[] = rows.map((r) => {
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- JSON.parse returns any; row schema enforced by SQL projection
-    const leaves = JSON.parse(r.leaves) as LeafRow[];
-    return {
-      awarded: r.awarded,
-      cheapest: leaves[0],
-      company_id: r.company_id,
-      company_name: r.company_name,
-      feedback_number: r.feedback_number,
-      feedback_value: r.feedback_value,
-      leaves,
-    };
-  });
-
-  const total = rows[0]?.total_companies ?? 0;
-  const overallMin = rows[0]?.overall_min ?? null;
-  const overallMax = rows[0]?.overall_max ?? null;
-
-  return {
-    page,
-    pageSize,
-    rangeMax:
-      overallMax === null || overallMax === ""
-        ? null
-        : Number.parseFloat(overallMax),
-    rangeMin:
-      overallMin === null || overallMin === ""
-        ? null
-        : Number.parseFloat(overallMin),
-    tiles,
-    total,
-  };
 };
 
 // ── 5. Active campaigns ─────────────────────────────────────────────────────
@@ -562,7 +260,12 @@ export const getVariantMeals = async (
 //     100 kcal), per the plan spec at lines 66–67.
 
 export interface PreferenceHit {
-  readonly source: "allergen" | "category" | "macro" | "embedding";
+  readonly source:
+    | "allergen"
+    | "category"
+    | "macro"
+    | "ingredient"
+    | "embedding";
   readonly keyword: string;
   readonly channel: "prefer" | "avoid";
   /** 0..1 */
@@ -576,14 +279,25 @@ export interface PreferenceHit {
 export interface MealScore {
   readonly meal_id: number;
   readonly meal_name: string;
+  readonly is_default: boolean;
   readonly score: number;
   readonly hits: readonly PreferenceHit[];
+  readonly kcal: number | null;
+  readonly protein_g: number | null;
+  readonly fat_g: number | null;
+  readonly carbs_g: number | null;
+  readonly fiber_g: number | null;
+  readonly sugar_g: number | null;
+  readonly ingredients_raw: string | null;
+  readonly allergens: readonly string[];
 }
 
 export interface DayPick {
   readonly slot_name: string;
   readonly is_default: boolean;
   readonly meal: MealScore;
+  /** Other meals available in this slot — only populated for menu-config offers. */
+  readonly alternates: readonly MealScore[] | null;
 }
 
 export interface DayVerdict {
@@ -592,14 +306,26 @@ export interface DayVerdict {
   readonly n_slots: number;
 }
 
+export interface OfferPromo {
+  readonly code: string;
+  readonly discount_percent: number;
+  readonly ends_at?: string;
+}
+
 export interface RankedDayOffer {
   readonly offer_id: string;
-  readonly company: { readonly id: string; readonly name: string | null };
+  readonly company: {
+    readonly id: string;
+    readonly name: string | null;
+    readonly logo_url: string | null;
+  };
   readonly diet: { readonly name: string | null; readonly tag: string | null };
   readonly tier: { readonly name: string | null } | null;
   readonly is_menu_configuration: boolean;
   readonly calories: number | null;
   readonly price_per_day: number | null;
+  readonly price_per_day_before_promo: number | null;
+  readonly promos: readonly OfferPromo[];
   readonly picks: readonly DayPick[];
   readonly picks_default: readonly DayPick[] | null;
   readonly verdict: DayVerdict;
@@ -626,12 +352,15 @@ interface RankedRow {
   readonly offer_id_tdo: string | null;
   readonly company_id: string;
   readonly company_name: string | null;
+  readonly company_logo_url: string | null;
   readonly diet_name: string | null;
   readonly diet_tag: string | null;
   readonly tier_name: string | null;
   readonly is_menu_configuration: boolean;
   readonly calories: number | null;
   readonly price_per_day: string | null;
+  readonly price_per_day_before_promo: string | null;
+  readonly promos_json: string;
   readonly score_best: string;
   readonly score_default: string;
   readonly n_slots: number;
@@ -640,15 +369,32 @@ interface RankedRow {
   readonly considered_count: number;
 }
 
+interface MealJsonShape {
+  readonly meal_id: number;
+  readonly meal_name: string;
+  readonly is_default: boolean;
+  readonly score: number | string;
+  readonly hits: readonly PreferenceHit[];
+  readonly kcal: number | string | null;
+  readonly protein_g: number | string | null;
+  readonly fat_g: number | string | null;
+  readonly carbs_g: number | string | null;
+  readonly fiber_g: number | string | null;
+  readonly sugar_g: number | string | null;
+  readonly ingredients_raw: string | null;
+  readonly allergens: readonly string[] | null;
+}
+
 interface PickJsonShape {
   readonly slot_name: string;
-  readonly meal: {
-    readonly meal_id: number;
-    readonly meal_name: string;
-    readonly is_default: boolean;
-    readonly score: number | string;
-    readonly hits: readonly PreferenceHit[];
-  };
+  readonly meal: MealJsonShape;
+  readonly options: readonly MealJsonShape[] | null;
+}
+
+interface PromoJsonShape {
+  readonly code: string;
+  readonly discount_percent: number | string;
+  readonly ends_at: string | null;
 }
 
 const intentParamsFromRouter = (
@@ -668,6 +414,9 @@ const intentParamsFromRouter = (
   readonly macroOps: string[];
   readonly macroValues: (number | null)[];
   readonly macroChannels: string[];
+  readonly ingredientKeywords: string[];
+  readonly ingredientStems: string[];
+  readonly ingredientChannels: string[];
   readonly embKeywords: string[];
   readonly embChannels: string[];
   readonly embVectors: string[];
@@ -725,6 +474,15 @@ const intentParamsFromRouter = (
   const macroValues = macros.map((m) => m.value);
   const macroChannels = macros.map((m) => m.channel);
 
+  const ingredientKeywords: string[] = [];
+  const ingredientStems: string[] = [];
+  const ingredientChannels: string[] = [];
+  for (const ing of intents.ingredient) {
+    ingredientKeywords.push(ing.keyword);
+    ingredientStems.push(ing.stem);
+    ingredientChannels.push(ing.channel);
+  }
+
   const embKeywords: string[] = [];
   const embChannels: string[] = [];
   const embVectors: string[] = [];
@@ -745,6 +503,9 @@ const intentParamsFromRouter = (
     embChannels,
     embKeywords,
     embVectors,
+    ingredientChannels,
+    ingredientKeywords,
+    ingredientStems,
     macroChannels,
     macroFields,
     macroKeywords,
@@ -754,23 +515,81 @@ const intentParamsFromRouter = (
   };
 };
 
-const decodePicks = (picksJson: string, hitsScale: number): DayPick[] => {
+const nullableNumber = (v: number | string | null): number | null => {
+  if (v === null || v === undefined) {
+    return null;
+  }
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n : null;
+};
+
+const decodeMeal = (m: MealJsonShape, hitsScale: number): MealScore => ({
+  allergens: m.allergens ?? [],
+  carbs_g: nullableNumber(m.carbs_g),
+  fat_g: nullableNumber(m.fat_g),
+  fiber_g: nullableNumber(m.fiber_g),
+  hits: m.hits ?? [],
+  ingredients_raw: m.ingredients_raw,
+  is_default: m.is_default,
+  kcal: nullableNumber(m.kcal),
+  meal_id: m.meal_id,
+  meal_name: m.meal_name,
+  protein_g: nullableNumber(m.protein_g),
+  score: Number(m.score) * hitsScale,
+  sugar_g: nullableNumber(m.sugar_g),
+});
+
+const decodePicks = (
+  picksJson: string,
+  hitsScale: number,
+  includeAlternates: boolean
+): DayPick[] => {
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- jsonb_agg projection
   const arr = JSON.parse(picksJson) as readonly PickJsonShape[];
-  // SQL emits hits with already-signed `contribution`. We keep them as-is.
-  // `hitsScale` is reserved for future re-weighting; today it's 1.
   return arr
     .filter((row) => row.meal !== null && row.meal !== undefined)
-    .map((row) => ({
-      is_default: row.meal.is_default,
-      meal: {
-        hits: row.meal.hits ?? [],
-        meal_id: row.meal.meal_id,
-        meal_name: row.meal.meal_name,
-        score: Number(row.meal.score) * hitsScale,
-      },
-      slot_name: row.slot_name,
-    }));
+    .map((row) => {
+      const meal = decodeMeal(row.meal, hitsScale);
+      let alternates: readonly MealScore[] | null = null;
+      if (includeAlternates && row.options) {
+        alternates = row.options
+          .filter((opt) => opt.meal_id !== meal.meal_id)
+          .map((opt) => decodeMeal(opt, hitsScale));
+      }
+      return {
+        alternates,
+        is_default: row.meal.is_default,
+        meal,
+        slot_name: row.slot_name,
+      };
+    });
+};
+
+const decodePromos = (promosJson: string | null): OfferPromo[] => {
+  if (promosJson === null || promosJson === "") {
+    return [];
+  }
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- jsonb_agg projection
+  const arr = JSON.parse(promosJson) as readonly PromoJsonShape[];
+  return arr.map((p) => {
+    const out: OfferPromo = {
+      code: p.code,
+      discount_percent: Number(p.discount_percent),
+    };
+    return p.ends_at === null || p.ends_at === undefined
+      ? out
+      : { ...out, ends_at: p.ends_at };
+  });
+};
+
+// `LIMIT NULL` in Postgres is equivalent to no LIMIT clause; callers pass
+// `0` to opt into "every ranked offer for this day" (the scatter on the home
+// page needs it for honest top-5-by-any-axis).
+const resolveRankedLimit = (raw: number | null | undefined): number | null => {
+  if (raw === undefined) {
+    return 10;
+  }
+  return raw === 0 ? null : raw;
 };
 
 export const getRankedOffersForDay = async (
@@ -782,7 +601,11 @@ export const getRankedOffersForDay = async (
     kcalMin?: number;
     kcalMax?: number;
     orderDays?: number;
-    limit?: number;
+    /** Pass `null` (or undefined to default to 10) for the standard top-N
+     * behavior. Pass `0` for no limit — returns every ranked offer for the day,
+     * needed by the home page's scatter (true top-5-by-any-axis requires the
+     * full pool, not a top-N-by-score slice). */
+    limit?: number | null;
     weights?: { readonly prefer?: number; readonly avoid?: number };
   }>
 ): Promise<{
@@ -790,7 +613,7 @@ export const getRankedOffersForDay = async (
   readonly considered_count: number;
 }> => {
   const orderDays = args.orderDays ?? 5;
-  const limit = args.limit ?? 10;
+  const limit: number | null = resolveRankedLimit(args.limit);
   const wPrefer = args.weights?.prefer ?? 1;
   const wAvoid = args.weights?.avoid ?? 1;
 
@@ -811,6 +634,7 @@ export const getRankedOffersForDay = async (
   //   $6  limit             $14 categoryChannels   $21 embKeywords
   //   $7  wPrefer           $15 categoryPatterns   $22 embChannels
   //   $8  wAvoid                                   $23 embVectors
+  //   $24 ingredientKeywords  $25 ingredientStems  $26 ingredientChannels
   const params: readonly unknown[] = [
     args.cityId,
     args.date,
@@ -835,6 +659,9 @@ export const getRankedOffersForDay = async (
     p.embKeywords,
     p.embChannels,
     p.embVectors,
+    p.ingredientKeywords,
+    p.ingredientStems,
+    p.ingredientChannels,
   ];
 
   const sql = `
@@ -853,13 +680,37 @@ export const getRankedOffersForDay = async (
         AND cdm.menu_date  = $2::date
         AND cdm.meal_id IS NOT NULL
     ),
-    -- ── Step B: kcal filter via diet_calories metadata
+    -- Step B: kcal filter + canonical-menu fan-out via diet_calories metadata.
+    --
+    -- Two compounding data-model facts:
+    --   1) diet_calories_id is NOT globally unique despite the BIGSERIAL PK
+    --      current_daily_menu reuses small per-catering ids that collide across
+    --      caterings, so we MUST constrain the join by company_id.
+    --   2) The menus scraper only captures ONE menu per (tier, option, diet)
+    --      family the lowest-kcal canonical sibling. Higher kcal tiers
+    --      (2500, 3000) share the same dish lineup (only portion sizes
+    --      differ), so we fan the canonical menu out to every active sibling
+    --      and let prices join supply the per-tier per-day cost.
     offer_slots_kcal AS (
-      SELECT os.*
+      SELECT
+        os.company_id,
+        sibling.diet_calories_id          AS diet_calories_id,
+        sibling.tier_id,
+        os.slot_name,
+        os.meal_id,
+        os.is_default
       FROM offer_slots os
-      JOIN diet_calories dc ON dc.diet_calories_id = os.diet_calories_id
-      WHERE ($3::int IS NULL OR dc.calories >= $3)
-        AND ($4::int IS NULL OR dc.calories <= $4)
+      JOIN diet_calories canonical
+        ON canonical.diet_calories_id = os.diet_calories_id
+       AND canonical.company_id       = os.company_id
+      JOIN diet_calories sibling
+        ON sibling.company_id     = canonical.company_id
+       AND sibling.diet_id        = canonical.diet_id
+       AND sibling.tier_id        IS NOT DISTINCT FROM canonical.tier_id
+       AND sibling.diet_option_id IS NOT DISTINCT FROM canonical.diet_option_id
+       AND sibling.is_active      = TRUE
+      WHERE ($3::int IS NULL OR sibling.calories >= $3)
+        AND ($4::int IS NULL OR sibling.calories <= $4)
     ),
     -- Distinct meal_ids actually referenced — narrows downstream JOINs to a
     -- handful of meals instead of the full table.
@@ -1002,9 +853,13 @@ export const getRankedOffersForDay = async (
      OR (mi.field = 'salt_g' AND mi.op = 'low'  AND m.salt_g IS NOT NULL AND m.kcal IS NOT NULL AND m.kcal > 0
          AND (m.salt_g / (m.kcal / 100.0)) <= p.salt_p25)
     ),
-    -- ── Step C4: embedding hits — cosine similarity above 0.80, rescaled to 0..1
-    -- tau=0.80 and divisor 0.20 are calibrated for e5-small (dim 384).
-    -- See EMBEDDINGS.md and bench:threshold for the sweep that picked them.
+    -- ── Step C4: embedding hits — sim ≥ 0.80 mapped linearly to [0.5, 2.0].
+    -- The 0.80 cutoff is the e5-small calibrated F1-optimal point
+    -- (bench:threshold). Mapping output to [0.5, 2.0] rather than [0, 1]
+    -- makes embedding hits land heavier than allergen/category/ingredient
+    -- hits (which max at 1.0): a confident semantic match counts double.
+    -- Rescale: penalty = 0.5 + ((sim - 0.80) / 0.20) * 1.5
+    --   sim=0.80 → 0.5, sim=0.90 → 1.25, sim=1.00 → 2.0
     -- If the production model changes, both numbers AND vector(384) must be updated.
     embedding_intents AS (
       SELECT keyword, channel, vec::vector(384) AS vec
@@ -1017,11 +872,8 @@ export const getRankedOffersForDay = async (
         'embedding'::text  AS source,
         ei.keyword         AS keyword,
         ei.channel         AS channel,
-        -- Cosine sim = 1 - (a <=> b). Clip at 0.80 (e5-small's natural cutoff),
-        -- rescale [0.80, 1.00] to [0, 1] via /0.20.
-        GREATEST(0.0,
-          (((1 - (cme.embedding <=> ei.vec))::numeric - 0.80) / 0.20)
-        )                  AS penalty,
+        (0.5 + (((1 - (cme.embedding <=> ei.vec))::numeric - 0.80) / 0.20) * 1.5)
+                           AS penalty,
         ('embedding: ' || ei.keyword || ' (sim='
           || ROUND((1 - (cme.embedding <=> ei.vec))::numeric, 2)::text || ')')
                             AS reason
@@ -1029,6 +881,80 @@ export const getRankedOffersForDay = async (
       JOIN current_meal_embeddings cme ON cme.meal_id = osk.meal_id
       JOIN embedding_intents ei ON TRUE
       WHERE (1 - (cme.embedding <=> ei.vec))::numeric >= 0.80
+    ),
+    -- ── Step C5: ingredient hits — pg_trgm fuzzy match against the per-meal
+    -- ingredient list AND the meal's display name. Uses gin_trgm_ops indexes
+    -- on meal_ingredients.name_normalized and meals.name_normalized (the
+    -- latter added in migrate_v9). The stem (diacritic-folded + lightly
+    -- suffix-stripped via lib/polish-stem.ts) is what we feed to similarity()
+    -- — trigram is lenient about morphological tails but benefits from the
+    -- suffix folding for declined forms.
+    --
+    -- Two scopes feed one channel: ingredient-row matches catch substances
+    -- ('pomidor', 'ser', 'kurczak'), and meal-name matches catch dish-level
+    -- terms ('zupa', 'shake', 'pierogi'). We UNION them and aggregate to one
+    -- hit per (offer, slot, meal, keyword) — the best-matching source wins,
+    -- so multi-ingredient meals don't get double-counted.
+    ingredient_intents AS (
+      SELECT keyword, stem, channel
+      FROM UNNEST($24::text[], $25::text[], $26::text[])
+           AS t(keyword, stem, channel)
+    ),
+    ingredient_hits_raw AS (
+      -- ingredient-row matches
+      SELECT
+        osk.company_id, osk.diet_calories_id, osk.slot_name, osk.meal_id,
+        ii.keyword, ii.channel, ii.stem,
+        mi.name_normalized AS matched_text,
+        similarity(mi.name_normalized, ii.stem)::numeric AS sim
+      FROM offer_slots_kcal osk
+      JOIN meal_ingredients mi ON mi.meal_id = osk.meal_id
+      JOIN ingredient_intents ii ON mi.name_normalized % ii.stem
+      WHERE similarity(mi.name_normalized, ii.stem) >= 0.45
+      UNION ALL
+      -- meal-name matches
+      SELECT
+        osk.company_id, osk.diet_calories_id, osk.slot_name, osk.meal_id,
+        ii.keyword, ii.channel, ii.stem,
+        m.name_normalized AS matched_text,
+        similarity(m.name_normalized, ii.stem)::numeric AS sim
+      FROM offer_slots_kcal osk
+      JOIN meals m ON m.id = osk.meal_id
+      JOIN ingredient_intents ii ON m.name_normalized % ii.stem
+      WHERE similarity(m.name_normalized, ii.stem) >= 0.45
+    ),
+    ingredient_hits AS (
+      SELECT
+        company_id, diet_calories_id, slot_name, meal_id,
+        'ingredient'::text AS source,
+        keyword, channel,
+        MAX(sim)::numeric  AS penalty,
+        ('ingredient: ' || keyword || ' ('
+          || (array_agg(matched_text ORDER BY sim DESC))[1]
+          || ' sim='
+          || ROUND(MAX(sim)::numeric, 2)::text || ')') AS reason
+      FROM ingredient_hits_raw
+      GROUP BY company_id, diet_calories_id, slot_name, meal_id,
+               keyword, channel
+    ),
+    -- ── Step C6: suppress embedding hits when the ingredient channel already
+    -- fired for the same (meal, keyword). Both channels matching the same
+    -- term — e.g. 'ciecierzyca' showing up as both an ingredient row and a
+    -- semantic embedding match — produced confusing double-counted rows.
+    -- Ingredient is the more specific signal (literal-word lexical match),
+    -- so it wins; embedding becomes redundant for that pair.
+    embedding_hits_filtered AS (
+      SELECT eh.*
+      FROM embedding_hits eh
+      WHERE NOT EXISTS (
+        SELECT 1
+        FROM ingredient_hits ih
+        WHERE ih.company_id       = eh.company_id
+          AND ih.diet_calories_id = eh.diet_calories_id
+          AND ih.slot_name        = eh.slot_name
+          AND ih.meal_id          = eh.meal_id
+          AND ih.keyword          = eh.keyword
+      )
     ),
     -- ── Step D: union all hit sources, then per-option signed score
     all_hits AS (
@@ -1038,7 +964,9 @@ export const getRankedOffersForDay = async (
       UNION ALL
       SELECT * FROM macro_hits
       UNION ALL
-      SELECT * FROM embedding_hits
+      SELECT * FROM ingredient_hits
+      UNION ALL
+      SELECT * FROM embedding_hits_filtered
     ),
     per_option_score AS (
       SELECT
@@ -1079,16 +1007,26 @@ export const getRankedOffersForDay = async (
     ),
     -- ── Step E: per-slot — best option AND default option
     -- We pre-build the per-option jsonb once to avoid duplicating projection.
+    -- The payload now carries the meal's macros + ingredients + allergens
+    -- (so the UI can render macros and the swap popover without a second round-trip).
     option_payload AS (
       SELECT
         pos.company_id, pos.diet_calories_id, pos.tier_id,
         pos.slot_name, pos.meal_id, pos.is_default, pos.score,
         jsonb_build_object(
-          'meal_id',    pos.meal_id,
-          'meal_name',  m.name,
-          'is_default', pos.is_default,
-          'score',      pos.score,
-          'hits',       pos.hits_json
+          'meal_id',         pos.meal_id,
+          'meal_name',       m.name,
+          'is_default',      pos.is_default,
+          'score',           pos.score,
+          'hits',            pos.hits_json,
+          'kcal',            m.kcal,
+          'protein_g',       m.protein_g,
+          'fat_g',           m.fat_g,
+          'carbs_g',         m.carbs_g,
+          'fiber_g',         m.fiber_g,
+          'sugar_g',         m.sugar_g,
+          'ingredients_raw', m.ingredients_raw,
+          'allergens',       COALESCE(m.allergens, ARRAY[]::TEXT[])
         ) AS payload
       FROM per_option_score pos
       JOIN meals m ON m.id = pos.meal_id
@@ -1103,7 +1041,11 @@ export const getRankedOffersForDay = async (
         (array_agg(op.payload
           ORDER BY op.is_default DESC, op.meal_id ASC))[1]      AS default_pick,
         (array_agg(op.score
-          ORDER BY op.is_default DESC, op.meal_id ASC))[1]      AS default_score
+          ORDER BY op.is_default DESC, op.meal_id ASC))[1]      AS default_score,
+        -- ALL options for this slot, score-descending. Used as alternates in
+        -- the swap popover for menu-config offers.
+        jsonb_agg(op.payload
+          ORDER BY op.score DESC NULLS LAST, op.meal_id ASC)     AS options_json
       FROM option_payload op
       GROUP BY op.company_id, op.diet_calories_id, op.tier_id, op.slot_name
     ),
@@ -1115,25 +1057,117 @@ export const getRankedOffersForDay = async (
         SUM(ps.default_score) AS score_default,
         COUNT(*)::int         AS n_slots,
         jsonb_agg(
-          jsonb_build_object('slot_name', ps.slot_name, 'meal', ps.best_pick)
+          jsonb_build_object(
+            'slot_name', ps.slot_name,
+            'meal',      ps.best_pick,
+            'options',   ps.options_json
+          )
           ORDER BY ps.slot_name
         ) AS picks_json,
         jsonb_agg(
-          jsonb_build_object('slot_name', ps.slot_name, 'meal', ps.default_pick)
+          jsonb_build_object(
+            'slot_name', ps.slot_name,
+            'meal',      ps.default_pick,
+            'options',   ps.options_json
+          )
           ORDER BY ps.slot_name
         ) AS picks_default_json
       FROM per_slot ps
       GROUP BY ps.company_id, ps.diet_calories_id, ps.tier_id
     ),
-    -- ── Step G: latest price for (city, dc, order_days)
+    -- ── Step G: latest price for (city, dc), with promo metadata.
+    -- Prefer the requested order_days, but fall back to ANY captured duration
+    -- so caterings that only sell e.g. 10-day plans still surface (otherwise
+    -- ~80% of Wrocław caterings would vanish on the default 5-day request).
+    -- Pick the genuinely cheapest captured price per (catering, dc_id).
+    --
+    -- Important data-model facts that shape this CTE:
+    --   1) diet_calories_id is NOT globally unique — dedup must include
+    --      company_id, otherwise catering A's price shadows catering B's.
+    --   2) Dietly's API returns the promo discount as a separate
+    --      total_promo_code_discount line and leaves per_day_cost_with_discounts
+    --      at the pre-promo value. The truthful effective per-day is
+    --      total_cost / order_days (totalCostToPay is already net of every
+    --      discount the API applied).
+    --   3) Promo and order-length discounts don't stack at checkout — dietly
+    --      picks whichever is bigger. So we just need the row with the
+    --      smallest effective per-day, regardless of which mechanism produced it.
+    --   4) Only count rows whose applied codes are still ACTIVE today — an
+    --      expired-promo capture is misleading once the code stops working.
     priced AS (
-      SELECT DISTINCT ON (p.diet_calories_id)
+      SELECT DISTINCT ON (p.company_id, p.diet_calories_id)
         p.diet_calories_id,
-        p.per_day_cost_with_discounts AS price_per_day
+        p.company_id,
+        p.order_days,
+        (p.total_cost::numeric / NULLIF(p.order_days, 0))   AS price_per_day,
+        p.per_day_cost                                       AS price_per_day_list,
+        COALESCE(p.promo_codes, ARRAY[]::text[])             AS applied_promo_codes,
+        COALESCE(p.total_promo_code_discount, 0)             AS promo_discount_total
       FROM prices p
-      WHERE p.city_id    = $1
-        AND p.order_days = $5::int
-      ORDER BY p.diet_calories_id, p.captured_at DESC
+      WHERE p.city_id  = $1
+        AND p.total_cost IS NOT NULL
+        AND p.order_days > 0
+        AND (
+          COALESCE(array_length(p.promo_codes, 1), 0) = 0
+          OR EXISTS (
+            SELECT 1
+            FROM campaigns c
+            WHERE c.company_id = p.company_id
+              AND c.code = ANY (p.promo_codes)
+              AND c.is_active
+              AND (c.starts_at IS NULL OR c.starts_at <= CURRENT_DATE)
+              AND (c.ends_at   IS NULL OR c.ends_at   >= CURRENT_DATE)
+          )
+        )
+      ORDER BY p.company_id, p.diet_calories_id,
+               (p.total_cost::numeric / NULLIF(p.order_days, 0)) ASC,
+               -- Tiebreak on equal effective per-day: prefer the requested
+               -- order-days duration so the displayed plan matches the user's
+               -- intent when two plan lengths net out to the same per-day price.
+               (p.order_days = $5::int) DESC,
+               p.captured_at DESC
+    ),
+    priced_promos AS (
+      SELECT
+        pr.diet_calories_id,
+        pr.company_id,
+        pr.price_per_day,
+        CASE
+          WHEN pr.price_per_day_list IS NOT NULL
+           AND pr.price_per_day IS NOT NULL
+           AND pr.price_per_day_list <> pr.price_per_day
+          THEN pr.price_per_day_list
+          ELSE NULL
+        END AS price_per_day_before_promo,
+        COALESCE(
+          (
+            -- One row per applied code, picking the biggest discount among
+            -- date-current, active campaigns for this catering. Per-company
+            -- rows win over global (company_id IS NULL) ones via the ORDER BY.
+            SELECT jsonb_agg(promo ORDER BY code)
+            FROM (
+              SELECT DISTINCT ON (c.code)
+                c.code,
+                jsonb_build_object(
+                  'code',             c.code,
+                  'discount_percent', c.discount_percent,
+                  'ends_at',          to_char(c.ends_at, 'YYYY-MM-DD')
+                ) AS promo
+              FROM campaigns c
+              WHERE c.code = ANY (pr.applied_promo_codes)
+                AND c.is_active
+                AND (c.company_id IS NULL OR c.company_id = pr.company_id)
+                AND (c.starts_at IS NULL OR c.starts_at <= CURRENT_DATE)
+                AND (c.ends_at   IS NULL OR c.ends_at   >= CURRENT_DATE)
+              ORDER BY c.code,
+                       (c.company_id = pr.company_id) DESC NULLS LAST,
+                       c.discount_percent DESC NULLS LAST,
+                       c.last_seen_at DESC NULLS LAST
+            ) deduped
+          ),
+          '[]'::jsonb
+        ) AS promos_json
+      FROM priced pr
     ),
     -- ── Step H: join metadata, sort, limit
     final AS (
@@ -1146,12 +1180,15 @@ export const getRankedOffersForDay = async (
         END                                                 AS offer_id_tdo,
         po.company_id,
         co.name                                             AS company_name,
+        co.logo_url                                         AS company_logo_url,
         d.name                                              AS diet_name,
         d.diet_tag                                          AS diet_tag,
         t.name                                              AS tier_name,
         d.is_menu_configuration                             AS is_menu_configuration,
         dc.calories                                         AS calories,
-        pr.price_per_day::text                              AS price_per_day,
+        prp.price_per_day::text                             AS price_per_day,
+        prp.price_per_day_before_promo::text                AS price_per_day_before_promo,
+        prp.promos_json::text                               AS promos_json,
         po.score_best::text                                 AS score_best,
         po.score_default::text                              AS score_default,
         po.n_slots                                          AS n_slots,
@@ -1173,7 +1210,15 @@ export const getRankedOffersForDay = async (
         ON d.company_id = t.company_id
        AND d.diet_id    = t.diet_id
       JOIN companies co ON co.company_id = d.company_id
-      LEFT JOIN priced pr ON pr.diet_calories_id = po.diet_calories_id
+      -- INNER JOIN: drop offers without a recent price for the requested
+      -- order_days. Otherwise the UI lists caterings at "0 zł" — caterings
+      -- that only sell 10/20-day packages would all show up at the bottom.
+      -- The company_id match is critical: diet_calories_id is not globally
+      -- unique, so without it we'd pair an offer with another catering's price.
+      JOIN priced_promos prp
+        ON prp.diet_calories_id = po.diet_calories_id
+       AND prp.company_id       = po.company_id
+       AND prp.price_per_day IS NOT NULL
     )
     SELECT *
     FROM final
@@ -1196,8 +1241,11 @@ export const getRankedOffersForDay = async (
       tier_diet_option_id: r.offer_id_tdo ?? undefined,
     });
 
-    const picks = decodePicks(r.picks_json, 1);
-    const picksDefault = decodePicks(r.picks_default_json, 1);
+    // Alternates only matter for menu-config offers — for fixed offers each
+    // slot has a single option so the swap popover is meaningless.
+    const picks = decodePicks(r.picks_json, 1, isMC);
+    const picksDefault = decodePicks(r.picks_default_json, 1, isMC);
+    const promos = decodePromos(r.promos_json);
     const scoreBest = Number(r.score_best);
     const scoreDefault = Number(r.score_default);
 
@@ -1216,7 +1264,11 @@ export const getRankedOffersForDay = async (
 
     const out: RankedDayOffer = {
       calories: r.calories,
-      company: { id: r.company_id, name: r.company_name },
+      company: {
+        id: r.company_id,
+        logo_url: r.company_logo_url,
+        name: r.company_name,
+      },
       diet: { name: r.diet_name, tag: r.diet_tag },
       is_menu_configuration: isMC,
       offer_id,
@@ -1224,6 +1276,11 @@ export const getRankedOffersForDay = async (
       picks_default: picksDefaultOut,
       price_per_day:
         r.price_per_day === null ? null : Number.parseFloat(r.price_per_day),
+      price_per_day_before_promo:
+        r.price_per_day_before_promo === null
+          ? null
+          : Number.parseFloat(r.price_per_day_before_promo),
+      promos,
       tier: r.tier_name === null ? null : { name: r.tier_name },
       verdict,
     };
@@ -1233,7 +1290,101 @@ export const getRankedOffersForDay = async (
   return { considered_count: consideredCount, offers };
 };
 
-// ── 9. Weekly plan ─────────────────────────────────────────────────────────
+// ── 9. Week view ───────────────────────────────────────────────────────────
+// Per-date list of every ranked offer (no top-N slice — the home page's
+// scatter wants the genuine full pool so "top 5 by price" stays honest).
+
+interface DateRow {
+  readonly menu_date: Date;
+}
+
+// `pg` parses DATE columns into JS Date using the process's LOCAL timezone
+// (the value `2026-05-22` becomes `2026-05-22T00:00 local time`), so we must
+// extract Y-M-D with the local getters — `getUTC*` would shift the date back
+// by a day whenever the process runs in any timezone east of UTC.
+const formatIsoDate = (d: Readonly<Date>): string => {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+};
+
+export interface WeekViewDay {
+  /** ISO yyyy-mm-dd. */
+  readonly date: string;
+  readonly all_offers: readonly RankedDayOffer[];
+  readonly total_considered: number;
+}
+
+/**
+ * Resolve the next N consecutive dates that actually have menu data for this
+ * city. Result is sorted ascending; never returns more than `maxDays`.
+ */
+export const getAvailableDates = async (
+  cityId: number,
+  fromDate: string,
+  maxDays: number
+): Promise<string[]> => {
+  const rows = await query<DateRow>(
+    `SELECT DISTINCT menu_date
+     FROM current_daily_menu
+     WHERE city_id = $1
+       AND menu_date >= $2::date
+     ORDER BY menu_date ASC
+     LIMIT $3`,
+    [cityId, fromDate, maxDays]
+  );
+  return rows.map(({ menu_date }: { readonly menu_date: Readonly<Date> }) =>
+    formatIsoDate(menu_date)
+  );
+};
+
+export const getWeekView = async (
+  args: Readonly<{
+    cityId: number;
+    dates: readonly string[];
+    prefer: readonly string[];
+    avoid: readonly string[];
+    kcalMin?: number;
+    kcalMax?: number;
+    orderDays?: number;
+    weights?: { readonly prefer?: number; readonly avoid?: number };
+  }>
+): Promise<WeekViewDay[]> => {
+  interface DayResult {
+    readonly offers: readonly RankedDayOffer[];
+    readonly considered_count: number;
+  }
+  const empty: DayResult = { considered_count: 0, offers: [] };
+  const dayResults: DayResult[] = Array.from(
+    { length: args.dates.length },
+    () => empty
+  );
+  // 0 = no limit. Required for honest top-5-by-any-axis scatter.
+  await Promise.all(
+    args.dates.map(async (d, idx) => {
+      const r = await getRankedOffersForDay({
+        avoid: args.avoid,
+        cityId: args.cityId,
+        date: d,
+        kcalMax: args.kcalMax,
+        kcalMin: args.kcalMin,
+        limit: 0,
+        orderDays: args.orderDays,
+        prefer: args.prefer,
+        weights: args.weights,
+      });
+      dayResults[idx] = r;
+    })
+  );
+  return args.dates.map((date, i) => ({
+    all_offers: dayResults[i]?.offers ?? [],
+    date,
+    total_considered: dayResults[i]?.considered_count ?? 0,
+  }));
+};
+
+// ── 10. Weekly plan ─────────────────────────────────────────────────────────
 // Per-day argmax over `getRankedOffersForDay`. Bundle hint: if the same
 // company tops or alternates ≥80% of days, surface its order-length-discounted
 // price at `orderDays = dates.length`.
@@ -1338,16 +1489,21 @@ const computeBundleHint = async (
   if (!Number.isInteger(dc)) {
     return null;
   }
+  // Effective per-day = total_cost / order_days (net of every discount the
+  // API applied; see commentary on the `priced` CTE in getRankedOffersForDay).
+  // diet_calories_id is not globally unique — must filter by company_id too.
   const priceRows = await query<BundlePriceRow>(
-    `SELECT DISTINCT ON (diet_calories_id)
-        per_day_cost_with_discounts::text     AS per_day,
-        per_day_cost::text                    AS without_discounts
+    `SELECT DISTINCT ON (company_id, diet_calories_id)
+        (total_cost::numeric / NULLIF(order_days, 0))::text AS per_day,
+        per_day_cost::text                                   AS without_discounts
      FROM prices
      WHERE city_id          = $1
        AND diet_calories_id = $2
+       AND company_id       = $4
        AND order_days       = $3
-     ORDER BY diet_calories_id, captured_at DESC`,
-    [cityId, dc, days.length]
+       AND total_cost       IS NOT NULL
+     ORDER BY company_id, diet_calories_id, captured_at DESC`,
+    [cityId, dc, days.length, top.id]
   );
   const [row] = priceRows;
   if (row === undefined || row.per_day === null) {
@@ -1465,14 +1621,17 @@ export const getPriceHistory = async (
     FROM (
       SELECT DISTINCT ON (date_trunc('day', captured_at))
         date_trunc('day', captured_at) AS day,
-        per_day_cost_with_discounts    AS price,
+        (total_cost::numeric / NULLIF(order_days, 0)) AS price,
         promo_codes
       FROM prices
       WHERE company_id = $1
         AND diet_calories_id = $2
         AND city_id = $3
         AND order_days = $4
-      ORDER BY date_trunc('day', captured_at), captured_at DESC, id DESC
+        AND total_cost IS NOT NULL
+      ORDER BY date_trunc('day', captured_at),
+               (total_cost::numeric / NULLIF(order_days, 0)) ASC,
+               captured_at DESC, id DESC
     ) t
     ORDER BY day ASC
     `,

@@ -191,14 +191,14 @@ export const PreferenceFilter = ({
   <div className="flex flex-col gap-2.5">
     <ChannelRow
       channel="prefer"
-      label="prefer"
+      label="lubię"
       onAdd={addValue(prefer, onPreferChange)}
       onRemove={removeValue(prefer, onPreferChange)}
       values={prefer}
     />
     <ChannelRow
       channel="avoid"
-      label="avoid"
+      label="unikam"
       onAdd={addValue(avoid, onAvoidChange)}
       onRemove={removeValue(avoid, onAvoidChange)}
       values={avoid}

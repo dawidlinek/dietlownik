@@ -4,19 +4,19 @@ import * as React from "react";
 
 import { DishDetailsPopover } from "@/components/meal-swap-popover";
 import { OfferScatter } from "@/components/offer-scatter";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { formatPriceNumber } from "@/lib/format";
-import { aggregateMacros } from "@/lib/mock-match-data";
-import type {
-  MockDay,
-  MockMealOption,
-  MockOffer,
-  MockPick,
-} from "@/lib/mock-match-data";
+import { aggregateMacros } from "@/lib/match-types";
+import type { Day, Hit, MealOption, Offer, Pick } from "@/lib/match-types";
 import { getMetric } from "@/lib/scatter-metrics";
 import type { MetricId } from "@/lib/scatter-metrics";
 import { getSortOption, rankOffers } from "@/lib/sort-metrics";
 import type { SortId } from "@/lib/sort-metrics";
-import { usePersistedState } from "@/lib/use-persisted-state";
 import { cn } from "@/lib/utils";
 
 // ── Formatting helpers (mirrors day-by-day-list.tsx) ────────────────────────
@@ -63,16 +63,16 @@ const slotRank = (name: string): number => {
 // ── Per-offer state ─────────────────────────────────────────────────────────
 
 /** slot_name → swapped option */
-type SwapMap = Readonly<Record<string, MockMealOption>>;
+type SwapMap = Readonly<Record<string, MealOption>>;
 /** `${date}::${offer_id}` → SwapMap */
 type AllSwaps = Readonly<Record<string, SwapMap>>;
 
-const applySwaps = (offer: MockOffer, swaps: SwapMap): MockOffer => {
+const applySwaps = (offer: Offer, swaps: SwapMap): Offer => {
   const keys = Object.keys(swaps);
   if (keys.length === 0) {
     return offer;
   }
-  const newPicks: MockPick[] = offer.picks.map((p) => {
+  const newPicks: Pick[] = offer.picks.map((p) => {
     const swap = swaps[p.slot_name];
     if (swap === undefined) {
       return p;
@@ -96,12 +96,64 @@ const applySwaps = (offer: MockOffer, swaps: SwapMap): MockOffer => {
   };
 };
 
+const scoreToneClass = (v: number): string => {
+  if (v > 0.05) {
+    return "text-[var(--color-olive)]";
+  }
+  if (v < -0.05) {
+    return "text-[var(--color-clay)]";
+  }
+  return "text-[var(--color-ink-3)]";
+};
+
+// ── Score breakdown tooltip bodies ──────────────────────────────────────────
+
+const MealHitRow = ({ hit }: Readonly<{ hit: Hit }>) => (
+  <div className="flex items-baseline justify-between gap-3 py-0.5">
+    <span className="text-[11px] text-[var(--color-ink-2)] leading-snug">
+      {hit.reason}
+    </span>
+    <span
+      className={cn(
+        "tnum text-[11px] shrink-0",
+        scoreToneClass(hit.contribution)
+      )}
+    >
+      {formatScore(hit.contribution)}
+    </span>
+  </div>
+);
+
+const MealScoreBreakdown = ({ pick }: Readonly<{ pick: Pick }>) => {
+  // Drop zero-contribution hits — typically embedding matches that landed
+  // exactly at the cutoff (sim = 0.80, rescaled to 0). They take up space
+  // without telling the user anything new.
+  const meaningful = pick.hits.filter((h) => Math.abs(h.contribution) >= 0.05);
+  if (meaningful.length === 0) {
+    return (
+      <div className="text-[11px] text-[var(--color-ink-3)] italic">
+        brak dopasowań — żadna z preferencji nie trafiła w ten posiłek.
+      </div>
+    );
+  }
+  return (
+    <div className="min-w-[220px] flex flex-col gap-0.5">
+      {meaningful.map((h) => (
+        <MealHitRow
+          hit={h}
+          key={`${h.source}:${h.keyword}:${h.channel}:${h.reason}`}
+        />
+      ))}
+    </div>
+  );
+};
+
 // ── Picks breakdown (mirrors day-by-day-list.tsx) ───────────────────────────
 
 interface PicksTableProps {
-  readonly picks: readonly MockPick[];
+  readonly picks: readonly Pick[];
   readonly isMenuConfig: boolean;
-  readonly onSwap: (slot: string, option: MockMealOption) => void;
+  readonly onSwap: (slot: string, option: MealOption) => void;
 }
 
 const PicksTable = ({
@@ -129,7 +181,7 @@ const PicksTable = ({
         <tbody>
           {sorted.map((p) => {
             const swapHandler = isMenuConfig
-              ? (opt: MockMealOption) => {
+              ? (opt: MealOption) => {
                   onSwap(p.slot_name, opt);
                 }
               : undefined;
@@ -153,7 +205,23 @@ const PicksTable = ({
                       "text-[var(--color-ink-3)]"
                   )}
                 >
-                  {formatScore(p.meal_score)}
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span
+                        className={cn(
+                          "cursor-help border-b border-dotted",
+                          p.hits.some((h) => Math.abs(h.contribution) >= 0.05)
+                            ? "border-[var(--color-bone)]"
+                            : "border-transparent"
+                        )}
+                      >
+                        {formatScore(p.meal_score)}
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent align="end" side="left">
+                      <MealScoreBreakdown pick={p} />
+                    </TooltipContent>
+                  </Tooltip>
                 </td>
                 <td className="py-1.5 pr-3 text-right tnum text-[var(--color-ink-2)]">
                   {Math.round(p.protein_g)} g
@@ -173,26 +241,26 @@ const PicksTable = ({
 // ── Single offer row ────────────────────────────────────────────────────────
 
 interface SingleRowProps {
-  readonly day: MockDay;
-  readonly offer: MockOffer;
+  readonly day: Day;
+  readonly offer: Offer;
   /** Rank of this offer within day.all_offers under the active sort (1-based). */
   readonly rank: number;
   readonly totalForDay: number;
   /** Tight metric label (e.g. "białko/zł"). */
   readonly metricLabel: string;
   /** Formats the active sort metric for the chosen offer (right-rail badge). */
-  readonly formatMetric: (o: MockOffer) => string;
+  readonly formatMetric: (o: Offer) => string;
   readonly open: boolean;
   readonly onToggle: () => void;
   /** All offers for the day (after swaps), passed to the scatter. */
-  readonly allOffers: readonly MockOffer[];
+  readonly allOffers: readonly Offer[];
   /** Offer id of the cheapest-by-price for visual anchoring in the scatter. */
   readonly cheapestId: string;
   readonly xId: MetricId;
   readonly yId: MetricId;
   readonly onChangeX: (id: MetricId) => void;
   readonly onChangeY: (id: MetricId) => void;
-  readonly onSwapMeal: (slot: string, option: MockMealOption) => void;
+  readonly onSwapMeal: (slot: string, option: MealOption) => void;
   readonly onPickFromScatter: (offerId: string) => void;
 }
 
@@ -222,7 +290,7 @@ const ScoreChip = ({ score }: Readonly<{ score: number }>) => {
 };
 
 interface ScatterPanelProps {
-  readonly offers: readonly MockOffer[];
+  readonly offers: readonly Offer[];
   readonly cheapestId: string;
   readonly selectedId: string;
   readonly onPick: (offerId: string) => void;
@@ -371,7 +439,7 @@ const SingleRow = ({
                 "hover:decoration-[var(--color-amber)] hover:text-[var(--color-amber-deep)]",
                 "transition-colors"
               )}
-              href={`https://dietly.pl/catering-dietetyczny-firma/${encodeURIComponent(offer.company_name)}`}
+              href={`https://dietly.pl/catering-dietetyczny-firma/${offer.company_id}`}
               onClick={stopRowClick}
               onKeyDown={stopRowClick}
               rel="noopener noreferrer"
@@ -573,10 +641,12 @@ const OrderSummary = ({
 // ── Top-level list ──────────────────────────────────────────────────────────
 
 export interface DayByDaySingleProps {
-  readonly days: readonly MockDay[];
+  readonly days: readonly Day[];
   readonly sortId: SortId;
-  readonly prefer: readonly string[];
-  readonly avoid: readonly string[];
+  readonly xId: MetricId;
+  readonly yId: MetricId;
+  readonly onChangeX: (id: MetricId) => void;
+  readonly onChangeY: (id: MetricId) => void;
 }
 
 type Overrides = Readonly<Record<string, string>>;
@@ -584,18 +654,17 @@ type Overrides = Readonly<Record<string, string>>;
 type Expansion = string | null;
 
 export const DayByDayListSingle = ({
-  avoid,
   days,
-  prefer,
+  onChangeX,
+  onChangeY,
   sortId,
+  xId,
+  yId,
 }: Readonly<DayByDaySingleProps>) => {
   const [expansion, setExpansion] = React.useState<Expansion>(null);
   const [swaps, setSwaps] = React.useState<AllSwaps>({});
   /** Per-day manual override of which offer is "the pick" for that day. */
   const [overrides, setOverrides] = React.useState<Overrides>({});
-  // Scatter axes — share storage keys with /match so axis choice carries over.
-  const [xId, setXId] = usePersistedState<MetricId>("match.scatter.x", "price");
-  const [yId, setYId] = usePersistedState<MetricId>("match.scatter.y", "score");
 
   const sortOpt = getSortOption(sortId);
 
@@ -606,7 +675,7 @@ export const DayByDayListSingle = ({
   }, [sortId]);
 
   const handleSwap = React.useCallback(
-    (date: string, offerId: string, slot: string, opt: MockMealOption) => {
+    (date: string, offerId: string, slot: string, opt: MealOption) => {
       const key = `${date}::${offerId}`;
       setSwaps((prev) => {
         const existing = prev[key] ?? {};
@@ -652,93 +721,89 @@ export const DayByDayListSingle = ({
   }, [days, overrides, sortId, swaps]);
 
   return (
-    <div className="px-5 sm:px-8 lg:px-14 pt-3 pb-6">
-      {/* Mock banner */}
-      <div className="py-3 text-[12px] italic text-[var(--color-ink-3)]">
-        mock · jedna oferta na dzień · sort: {sortOpt.label} · prefer:{" "}
-        {prefer.join(", ") || "—"} · avoid: {avoid.join(", ") || "—"}
-      </div>
+    <TooltipProvider delayDuration={120} skipDelayDuration={200}>
+      <div className="px-5 sm:px-8 lg:px-14 pt-3 pb-6">
+        <div>
+          {days.map((day) => {
+            if (day.all_offers.length === 0) {
+              return (
+                <div
+                  className="grid grid-cols-1 md:grid-cols-[110px_1fr] gap-x-8 gap-y-4 py-7 border-t border-[var(--color-bone)] first:border-t-0"
+                  key={day.date}
+                >
+                  <div className="md:pt-1">
+                    <div className="text-[12px] uppercase tracking-[0.1em] text-[var(--color-ink-3)]">
+                      {day.weekday_short_pl}
+                    </div>
+                    <div className="font-display text-[22px] leading-tight text-[var(--color-ink)] tnum">
+                      {formatDayMonth(day.date)}
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <div className="text-[10px] uppercase tracking-[0.1em] text-[var(--color-ink-3)]">
+                      brak danych
+                    </div>
+                    <div className="text-[13px] text-[var(--color-ink-3)] italic">
+                      menu na ten dzień nie zostało jeszcze opublikowane przez
+                      cateringi
+                    </div>
+                  </div>
+                </div>
+              );
+            }
 
-      <div>
-        {days.map((day) => {
-          if (day.all_offers.length === 0) {
-            return (
-              <div
-                className="grid grid-cols-1 md:grid-cols-[110px_1fr] gap-x-8 gap-y-4 py-7 border-t border-[var(--color-bone)] first:border-t-0"
-                key={day.date}
-              >
-                <div className="md:pt-1">
-                  <div className="text-[12px] uppercase tracking-[0.1em] text-[var(--color-ink-3)]">
-                    {day.weekday_short_pl}
-                  </div>
-                  <div className="font-display text-[22px] leading-tight text-[var(--color-ink)] tnum">
-                    {formatDayMonth(day.date)}
-                  </div>
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <div className="text-[10px] uppercase tracking-[0.1em] text-[var(--color-ink-3)]">
-                    brak danych
-                  </div>
-                  <div className="text-[13px] text-[var(--color-ink-3)] italic">
-                    menu na ten dzień nie zostało jeszcze opublikowane przez
-                    cateringi
-                  </div>
-                </div>
-              </div>
+            // Apply swaps to each offer, then rank.
+            const swapped: readonly Offer[] = day.all_offers.map((o) =>
+              applySwaps(o, swaps[`${day.date}::${o.offer_id}`] ?? {})
             );
-          }
+            const ranked = rankOffers(swapped, sortId);
+            const overrideId = overrides[day.date];
+            const chosen =
+              overrideId === undefined
+                ? ranked[0]
+                : (ranked.find((o) => o.offer_id === overrideId) ?? ranked[0]);
+            const chosenRank = ranked.findIndex(
+              (o) => o.offer_id === chosen.offer_id
+            );
+            // Cheapest by price — anchors the scatter even if it's not the pick.
+            const [cheapest] = [...swapped].toSorted(
+              (a, b) => a.price_per_day - b.price_per_day
+            );
 
-          // Apply swaps to each offer, then rank.
-          const swapped: readonly MockOffer[] = day.all_offers.map((o) =>
-            applySwaps(o, swaps[`${day.date}::${o.offer_id}`] ?? {})
-          );
-          const ranked = rankOffers(swapped, sortId);
-          const overrideId = overrides[day.date];
-          const chosen =
-            overrideId === undefined
-              ? ranked[0]
-              : (ranked.find((o) => o.offer_id === overrideId) ?? ranked[0]);
-          const chosenRank = ranked.findIndex(
-            (o) => o.offer_id === chosen.offer_id
-          );
-          // Cheapest by price — anchors the scatter even if it's not the pick.
-          const [cheapest] = [...swapped].toSorted(
-            (a, b) => a.price_per_day - b.price_per_day
-          );
+            const open = expansion === day.date;
 
-          const open = expansion === day.date;
+            return (
+              <SingleRow
+                allOffers={swapped}
+                cheapestId={cheapest.offer_id}
+                day={day}
+                formatMetric={sortOpt.format}
+                key={day.date}
+                metricLabel={sortOpt.short}
+                offer={chosen}
+                onChangeX={onChangeX}
+                onChangeY={onChangeY}
+                onPickFromScatter={(offerId) => {
+                  handlePickFromScatter(day.date, offerId);
+                }}
+                onSwapMeal={(slot, opt) => {
+                  handleSwap(day.date, chosen.offer_id, slot, opt);
+                }}
+                onToggle={() => {
+                  setExpansion(open ? null : day.date);
+                }}
+                open={open}
+                rank={chosenRank + 1}
+                totalForDay={day.total_considered}
+                xId={xId}
+                yId={yId}
+              />
+            );
+          })}
+        </div>
 
-          return (
-            <SingleRow
-              allOffers={swapped}
-              cheapestId={cheapest.offer_id}
-              day={day}
-              formatMetric={sortOpt.format}
-              key={day.date}
-              metricLabel={sortOpt.short}
-              offer={chosen}
-              onChangeX={setXId}
-              onChangeY={setYId}
-              onPickFromScatter={(offerId) => {
-                handlePickFromScatter(day.date, offerId);
-              }}
-              onSwapMeal={(slot, opt) => {
-                handleSwap(day.date, chosen.offer_id, slot, opt);
-              }}
-              onToggle={() => {
-                setExpansion(open ? null : day.date);
-              }}
-              open={open}
-              rank={chosenRank + 1}
-              totalForDay={day.total_considered}
-              xId={xId}
-              yId={yId}
-            />
-          );
-        })}
+        <OrderSummary resolved={resolved} />
       </div>
-
-      <OrderSummary resolved={resolved} />
-    </div>
+    </TooltipProvider>
   );
 };
