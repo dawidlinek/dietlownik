@@ -227,6 +227,22 @@ const embedAllForModel = async (
 const errorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
 
+const pickBusiestDay = async (cityId: number): Promise<string> => {
+  const rows = await query<{ menu_date: string }>(
+    `SELECT menu_date::text
+       FROM daily_menu
+      WHERE city_id = $1 AND meal_id IS NOT NULL
+      GROUP BY menu_date
+      ORDER BY COUNT(DISTINCT meal_id) DESC, menu_date DESC
+      LIMIT 1`,
+    [cityId]
+  );
+  if (rows.length === 0) {
+    throw new Error(`no daily_menu rows for city_id=${cityId}`);
+  }
+  return rows[0].menu_date;
+};
+
 const main = async (): Promise<void> => {
   const filter = process.env.BENCH_MODELS;
   const selected =
@@ -244,14 +260,42 @@ const main = async (): Promise<void> => {
     process.exit(1);
   }
 
-  console.log(`embedding all meals for ${selected.length} model(s)`);
+  // ── Slice scope (matches bench-sample / bench-rank) ──────────────────────
+  // If BENCH_CITY + BENCH_DAY (or auto-picked busiest) are set with
+  // BENCH_SLICE_ONLY=1, restrict the embed corpus to meals on offer in that
+  // (city, day). This is the bench's actual scoring domain — embedding more
+  // is wasted work.
+  const sliceOnly = process.env.BENCH_SLICE_ONLY === "1";
+  let meals: readonly MealRow[];
 
-  const meals = await query<MealRow>(
-    `SELECT id::text, name, label, ingredients_raw, allergens
-       FROM meals
-      ORDER BY id`
+  if (sliceOnly) {
+    const cityId = Number.parseInt(process.env.BENCH_CITY ?? "986283", 10);
+    const day = process.env.BENCH_DAY ?? (await pickBusiestDay(cityId));
+    console.log(
+      `slice mode: city_id=${cityId} day=${day} — only meals on offer in this (city,day)`
+    );
+    meals = await query<MealRow>(
+      `SELECT m.id::text, m.name, m.label, m.ingredients_raw, m.allergens
+         FROM meals m
+        WHERE m.id IN (
+                SELECT DISTINCT meal_id
+                  FROM daily_menu
+                 WHERE city_id = $1 AND menu_date = $2 AND meal_id IS NOT NULL
+              )
+        ORDER BY m.id`,
+      [cityId, day]
+    );
+  } else {
+    meals = await query<MealRow>(
+      `SELECT id::text, name, label, ingredients_raw, allergens
+         FROM meals
+        ORDER BY id`
+    );
+  }
+  const scopeNote = sliceOnly ? " (slice-only)" : " (full corpus)";
+  console.log(
+    `embedding ${meals.length} meals for ${selected.length} model(s)${scopeNote}`
   );
-  console.log(`corpus: ${meals.length} meals`);
 
   for (const c of selected) {
     console.log(`\n▶ ${c.id} (${c.model})`);

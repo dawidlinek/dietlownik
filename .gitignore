@@ -23,8 +23,34 @@ coverage/
 # embedding-benchmark caches and outputs
 bench/vectors/
 bench/report*.md
+bench/logs/
 eval-*.log
 scrape-*.log
+
+# Per-batch labeling scratch files emitted by external labeler agents into
+# the repo root (because /tmp doesn't always resolve sanely on Windows).
+# Anything matching these patterns is intermediate; the real artifacts live
+# in the Postgres bench_labels table.
+bench-*-fetch.json
+bench-*-result.json
+tmp-bench-*.json
+tmp-fetch-*.json
+tmp-*.json
+fetch_all.js
+fetch_all_jobs.ts
+fetch-jobs.js
+aggregate-fetch.js
+analyze_jobs.js
+label_runner.js
+get_jobs_info.ts
+inspect_meals.ts
+check_*.ts
+reset_jobs.ts
+bench/reset_jobs.ts
+pending*.txt
+next*.txt
+test-pending.txt
+.tmp-*
 
 # typescript / next
 *.tsbuildinfo

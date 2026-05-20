@@ -345,11 +345,14 @@ ORDER BY
   menu_date, slot_name, COALESCE(meal_id, -1),
   captured_at DESC;
 
--- ── Vector table (bge-m3; multi-version per meal) ────────────────────────
+-- ── Vector table (e5-small; multi-version per meal) ──────────────────────
+-- 384 dims matches Xenova/multilingual-e5-small. If the production model
+-- changes, update this AND the τ/divisor constants in lib/queries.ts. See
+-- EMBEDDINGS.md for the calibration story.
 CREATE TABLE meal_embeddings (
   meal_id BIGINT NOT NULL REFERENCES meals ON DELETE CASCADE,
   embedded_fp TEXT NOT NULL,
-  embedding vector(1024) NOT NULL,
+  embedding vector(384) NOT NULL,
   embedded_at TIMESTAMPTZ DEFAULT NOW(),
   PRIMARY KEY (meal_id, embedded_fp)
 );
@@ -364,7 +367,7 @@ ORDER BY meal_id, embedded_at DESC;
 -- ── Keyword embedding cache (ephemeral) ───────────────────────────────────
 CREATE TABLE keyword_embeddings (
   keyword TEXT PRIMARY KEY,
-  embedding vector(1024) NOT NULL,
+  embedding vector(384) NOT NULL,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   last_used_at TIMESTAMPTZ DEFAULT NOW()
 );

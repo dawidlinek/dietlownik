@@ -10,10 +10,15 @@ vi.mock("server-only", () => ({}));
 
 const HEAVY_SKIP = process.env.SKIP_HEAVY_TESTS === "1";
 
-describe.skipIf(HEAVY_SKIP)("bge-m3 cosine smoke", () => {
-  // bge-m3 cold-load + first inference can take ~10 s the first time after a
-  // fresh checkout (longer — minutes — on the very first run when ONNX
-  // weights download from HuggingFace).
+// These are property-based smoke tests: relative orderings only, so they
+// survive a model swap without re-tuning. The previous bge-m3-era thresholds
+// (e.g. `<0.6` for unrelated pairs) don't survive the move to e5-small, which
+// compresses cosine similarity into a tight 0.7–0.95 band by design — see
+// EMBEDDINGS.md for the calibration rationale.
+describe.skipIf(HEAVY_SKIP)("embedder cosine smoke (model-agnostic)", () => {
+  // Cold-load + first inference can take ~10 s the first time after a fresh
+  // checkout (longer — minutes — on the very first run when ONNX weights
+  // download from HuggingFace).
   vi.setConfig({ testTimeout: 300_000 });
 
   it("matches semantically related Polish food terms (shake ↔ koktajl)", async () => {
@@ -38,18 +43,19 @@ describe.skipIf(HEAVY_SKIP)("bge-m3 cosine smoke", () => {
     expect(sim).toBeGreaterThan(0.5);
   });
 
-  it("separates unrelated dishes (pomidor ↮ owsianka z malinami)", async () => {
+  it("ranks related pair above unrelated pair (relative ordering)", async () => {
     const { getEmbedder, cosine } = await import("../embeddings.js");
     const embedder = await getEmbedder();
-    const [a, b] = await embedder.embedBatch([
+    const [tomato, tomatoSauce, oatmeal] = await embedder.embedBatch([
       "pomidor",
+      "sos pomidorowy z bazylią",
       "owsianka z malinami",
     ]);
-    const sim = cosine(a, b);
-    // bge-m3 puts food terms in a moderately tight cluster; empirically
-    // unrelated dish pairs land ~0.50–0.55. Pick a ceiling that catches a
-    // genuine regression (e.g. identical vectors at 1.0) without false-failing
-    // on normal in-cluster variation.
-    expect(sim).toBeLessThan(0.6);
+    // Relative comparison: tomato should be closer to tomato-sauce than to
+    // a raspberry-oatmeal dish. Absolute thresholds vary by model; only the
+    // ordering is invariant.
+    const related = cosine(tomato, tomatoSauce);
+    const unrelated = cosine(tomato, oatmeal);
+    expect(related).toBeGreaterThan(unrelated);
   });
 });

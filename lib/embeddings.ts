@@ -21,8 +21,20 @@ if (typeof window !== "undefined" || typeof document !== "undefined") {
   );
 }
 
-const MODEL = "Xenova/bge-m3";
-const DIM = 1024 as const;
+// Switched bge-m3 → e5-small after the v2 bench (EMBEDDINGS.md). e5-small
+// wins MAP/NDCG/AUROC on all 4 LLM oracles, is 6× faster per embed, and 2.7×
+// smaller per vector. Picked threshold τ=0.80 with rescale divisor 0.20 — see
+// lib/queries.ts and `npm run bench:threshold` for the calibration.
+const MODEL = "Xenova/multilingual-e5-small";
+const DIM = 384 as const;
+
+// e5 family was trained with an asymmetric prefix convention:
+//   - documents (indexed): "passage: " + text  (used in embed() / embedBatch())
+//   - queries  (search):    "query: " + text   (used in embedKeyword())
+// Forgetting the prefix drifts vectors out of distribution and breaks the
+// threshold calibration. Don't remove either.
+const PASSAGE_PREFIX = "passage: ";
+const QUERY_PREFIX = "query: ";
 
 export interface Embedder {
   embed(text: string): Promise<Float32Array>;
@@ -103,8 +115,9 @@ export const getEmbedder = async (): Promise<Embedder> => {
   const extractor = await loadPipeline();
   return {
     dim: DIM,
+    // Document/passage embed path — prepends "passage: " before tokenisation.
     async embed(text: string): Promise<Float32Array> {
-      const tensor = await extractor(text, {
+      const tensor = await extractor(`${PASSAGE_PREFIX}${text}`, {
         normalize: true,
         pooling: "mean",
       });
@@ -119,7 +132,8 @@ export const getEmbedder = async (): Promise<Embedder> => {
       if (texts.length === 0) {
         return [];
       }
-      const tensor = await extractor([...texts], {
+      const prefixed = texts.map((t) => `${PASSAGE_PREFIX}${t}`);
+      const tensor = await extractor(prefixed, {
         normalize: true,
         pooling: "mean",
       });
@@ -191,8 +205,15 @@ export const embedKeyword = async (keyword: string): Promise<Float32Array> => {
   if (hit.length > 0) {
     return parsePgVector(hit[0].embedding);
   }
-  const embedder = await getEmbedder();
-  const vec = await embedder.embed(normalised);
+  // Use the "query: " prefix here, not the passage prefix that getEmbedder()
+  // applies. Call the pipeline directly to bypass embed()'s passage-prefix path.
+  const extractor = await loadPipeline();
+  const tensor = await extractor(`${QUERY_PREFIX}${normalised}`, {
+    normalize: true,
+    pooling: "mean",
+  });
+  const data = toFloat32Array(tensor.data);
+  const vec = sliceTensorRow(data, 0, DIM);
   await query(
     `INSERT INTO keyword_embeddings (keyword, embedding, last_used_at)
      VALUES ($1, $2::vector, NOW())

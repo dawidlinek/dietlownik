@@ -1002,9 +1002,12 @@ export const getRankedOffersForDay = async (
      OR (mi.field = 'salt_g' AND mi.op = 'low'  AND m.salt_g IS NOT NULL AND m.kcal IS NOT NULL AND m.kcal > 0
          AND (m.salt_g / (m.kcal / 100.0)) <= p.salt_p25)
     ),
-    -- ── Step C4: embedding hits — cosine similarity above 0.30, rescaled to 0..1
+    -- ── Step C4: embedding hits — cosine similarity above 0.80, rescaled to 0..1
+    -- tau=0.80 and divisor 0.20 are calibrated for e5-small (dim 384).
+    -- See EMBEDDINGS.md and bench:threshold for the sweep that picked them.
+    -- If the production model changes, both numbers AND vector(384) must be updated.
     embedding_intents AS (
-      SELECT keyword, channel, vec::vector(1024) AS vec
+      SELECT keyword, channel, vec::vector(384) AS vec
       FROM UNNEST($21::text[], $22::text[], $23::text[])
            AS t(keyword, channel, vec)
     ),
@@ -1014,9 +1017,10 @@ export const getRankedOffersForDay = async (
         'embedding'::text  AS source,
         ei.keyword         AS keyword,
         ei.channel         AS channel,
-        -- Cosine sim = 1 - (a <=> b). Clip at 0.30, rescale to 0..1 via /0.70.
+        -- Cosine sim = 1 - (a <=> b). Clip at 0.80 (e5-small's natural cutoff),
+        -- rescale [0.80, 1.00] to [0, 1] via /0.20.
         GREATEST(0.0,
-          (((1 - (cme.embedding <=> ei.vec))::numeric - 0.30) / 0.70)
+          (((1 - (cme.embedding <=> ei.vec))::numeric - 0.80) / 0.20)
         )                  AS penalty,
         ('embedding: ' || ei.keyword || ' (sim='
           || ROUND((1 - (cme.embedding <=> ei.vec))::numeric, 2)::text || ')')
@@ -1024,7 +1028,7 @@ export const getRankedOffersForDay = async (
       FROM offer_slots_kcal osk
       JOIN current_meal_embeddings cme ON cme.meal_id = osk.meal_id
       JOIN embedding_intents ei ON TRUE
-      WHERE (1 - (cme.embedding <=> ei.vec))::numeric >= 0.30
+      WHERE (1 - (cme.embedding <=> ei.vec))::numeric >= 0.80
     ),
     -- ── Step D: union all hit sources, then per-option signed score
     all_hits AS (
