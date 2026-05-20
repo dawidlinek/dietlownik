@@ -14,6 +14,7 @@
 
 import { query } from "./db";
 import { embedKeyword } from "./embeddings";
+import { stemPolish } from "./polish-stem";
 
 export type Channel = "prefer" | "avoid";
 
@@ -55,6 +56,16 @@ export interface MacroIntent {
   readonly op: MacroOp;
 }
 
+export interface IngredientIntent {
+  readonly source: "ingredient";
+  readonly channel: Channel;
+  /** Verbatim user input — used for display in hit reasons. */
+  readonly keyword: string;
+  /** Diacritic-folded + suffix-stemmed; this is the form fed to the
+   * trigram similarity comparison against meal_ingredients.name_normalized. */
+  readonly stem: string;
+}
+
 export interface EmbeddingIntent {
   readonly source: "embedding";
   readonly channel: Channel;
@@ -66,6 +77,7 @@ export interface RoutedIntents {
   readonly allergen: readonly AllergenIntent[];
   readonly category: readonly CategoryIntent[];
   readonly macro: readonly MacroIntent[];
+  readonly ingredient: readonly IngredientIntent[];
   readonly embedding: readonly EmbeddingIntent[];
 }
 
@@ -394,8 +406,17 @@ interface Routed {
   readonly allergen: AllergenIntent | null;
   readonly category: CategoryIntent | null;
   readonly macro: MacroIntent | null;
+  readonly ingredient: IngredientIntent | null;
   readonly embedding: EmbeddingIntent | null;
 }
+
+const empty = (): Routed => ({
+  allergen: null,
+  category: null,
+  embedding: null,
+  ingredient: null,
+  macro: null,
+});
 
 const routeOne = async (
   raw: string,
@@ -412,30 +433,31 @@ const routeOne = async (
   // 1. Allergen wins (including the documented 'ryby' / 'orzechy' collisions).
   const allergen = tryMatchAllergen(norm, keyword, channel);
   if (allergen !== null) {
-    return { allergen, category: null, embedding: null, macro: null };
+    return { ...empty(), allergen };
   }
 
   // 2. Macro grammar.
   const macro = tryMatchMacro(norm, keyword, channel);
   if (macro !== null) {
-    return { allergen: null, category: null, embedding: null, macro };
+    return { ...empty(), macro };
   }
 
   // 3. Taxonomy category PK lookup.
   const category = await tryMatchCategory(norm, keyword, channel);
   if (category !== null) {
-    return { allergen: null, category, embedding: null, macro: null };
+    return { ...empty(), category };
   }
 
-  // 4. Embedding fallback. Pass the raw input (diacritics intact) to
-  //    embedKeyword — bge-m3 is multilingual, and the cache key is lowercased
-  //    inside embedKeyword.
+  // 4. Fall-through: emit BOTH an ingredient (lexical) AND embedding (semantic)
+  //    intent. They cover different cases — 'pomidor' wants the ingredient
+  //    trigram match, 'ostre' / 'shake' want the embedding semantic match —
+  //    but it's cheap to ask both and let the SQL produce whichever fires.
+  const stem = stemPolish(norm);
   const vector = await embedKeyword(raw);
   return {
-    allergen: null,
-    category: null,
+    ...empty(),
     embedding: { channel, keyword, source: "embedding", vector },
-    macro: null,
+    ingredient: { channel, keyword, source: "ingredient", stem },
   };
 };
 
@@ -448,6 +470,7 @@ export const routePreferences = async (
   const allergen: AllergenIntent[] = [];
   const category: CategoryIntent[] = [];
   const macro: MacroIntent[] = [];
+  const ingredient: IngredientIntent[] = [];
   const embedding: EmbeddingIntent[] = [];
 
   const inputs: readonly (readonly [string, Channel])[] = [
@@ -471,10 +494,13 @@ export const routePreferences = async (
     if (routed.macro !== null) {
       macro.push(routed.macro);
     }
+    if (routed.ingredient !== null) {
+      ingredient.push(routed.ingredient);
+    }
     if (routed.embedding !== null) {
       embedding.push(routed.embedding);
     }
   }
 
-  return { allergen, category, embedding, macro };
+  return { allergen, category, embedding, ingredient, macro };
 };
