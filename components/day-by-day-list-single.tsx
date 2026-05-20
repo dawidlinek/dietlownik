@@ -364,7 +364,11 @@ const SingleRow = ({
   yId,
 }: Readonly<SingleRowProps>) => {
   const metricValue = formatMetric(offer);
-  const altsCount = Math.max(allOffers.length - 1, 0);
+  // "Alternatives" count = distinct caterings competing for this day,
+  // minus the one currently chosen. The raw variant count is shown next to
+  // the day label ("N wariantów") so we don't duplicate it here.
+  const distinctCompanies = new Set(allOffers.map((o) => o.company_id)).size;
+  const altsCount = Math.max(distinctCompanies - 1, 0);
 
   // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- React synthetic events carry DOM refs; cannot be deeply readonly
   const handleHeaderKey = (e: React.KeyboardEvent<HTMLDivElement>): void => {

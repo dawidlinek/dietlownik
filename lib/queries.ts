@@ -550,11 +550,15 @@ const decodePicks = (
     .filter((row) => row.meal !== null && row.meal !== undefined)
     .map((row) => {
       const meal = decodeMeal(row.meal, hitsScale);
+      // `alternates` carries the FULL slot option pool — including the
+      // currently-best meal. The UI swap popover filters out whichever meal
+      // is currently selected at render time (initial best or post-swap), so
+      // we must keep the full set here. Filtering out the best meal at this
+      // level used to break the single-alternative case: clicking the only
+      // alternate left the user with no way to revert to the default.
       let alternates: readonly MealScore[] | null = null;
       if (includeAlternates && row.options) {
-        alternates = row.options
-          .filter((opt) => opt.meal_id !== meal.meal_id)
-          .map((opt) => decodeMeal(opt, hitsScale));
+        alternates = row.options.map((opt) => decodeMeal(opt, hitsScale));
       }
       return {
         alternates,
