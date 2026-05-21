@@ -136,7 +136,9 @@ const ChannelRow = ({
   onRemove,
   values,
 }: Readonly<ChannelRowProps>) => (
-  <div className="flex flex-wrap items-center gap-2">
+  // min-h matches the chip height so chip-bearing rows don't visually shift
+  // the spacing rhythm of the chipless rows.
+  <div className="flex min-h-[26px] flex-wrap items-center gap-2">
     <span className="text-[11px] uppercase tracking-[0.08em] text-[var(--color-ink-3)] w-[58px] shrink-0">
       {label}
     </span>

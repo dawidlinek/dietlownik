@@ -38,6 +38,7 @@ export const GET = async (request: Request) => {
 
   const prefer = parseList(searchParams.get("prefer"));
   const avoid = parseList(searchParams.get("avoid"));
+  const excludeCompanyIds = parseList(searchParams.get("exclude"));
   const kcalMinRaw = searchParams.get("kcal_min");
   const kcalMaxRaw = searchParams.get("kcal_max");
   const kcalMin =
@@ -53,6 +54,7 @@ export const GET = async (request: Request) => {
       avoid,
       cityId,
       dates,
+      excludeCompanyIds,
       kcalMax: Number.isFinite(kcalMax) ? kcalMax : undefined,
       kcalMin: Number.isFinite(kcalMin) ? kcalMin : undefined,
       orderDays,

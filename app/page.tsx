@@ -3,6 +3,7 @@ import { MatchExperience2 } from "@/components/match-experience-2";
 import { toViewDay } from "@/lib/match-types";
 import {
   getAvailableDates,
+  getCaterings,
   getCities,
   getKcalBounds,
   getWeekView,
@@ -31,6 +32,7 @@ interface PageProps {
       prefer?: string;
       avoid?: string;
       dates?: string;
+      exclude?: string;
     }>
   >;
 }
@@ -77,8 +79,9 @@ const Page = async ({ searchParams }: Readonly<PageProps>) => {
   const prefer = parseList(params.prefer);
   const avoid = parseList(params.avoid);
   const urlDates = parseList(params.dates);
+  const exclude = parseList(params.exclude);
 
-  const [cities, bounds, availableDatesAll] = await Promise.all([
+  const [cities, bounds, availableDatesAll, caterings] = await Promise.all([
     getCities().catch(() => [] as Awaited<ReturnType<typeof getCities>>),
     getKcalBounds(cityId).catch(() => ({
       max: 3000,
@@ -90,6 +93,9 @@ const Page = async ({ searchParams }: Readonly<PageProps>) => {
       warsawDatePlus(ORDER_LEAD_DAYS),
       DEFAULT_WINDOW_DAYS
     ).catch(() => [] as string[]),
+    getCaterings(cityId).catch(
+      () => [] as Awaited<ReturnType<typeof getCaterings>>
+    ),
   ]);
 
   const activeCity = cities.find((c) => c.city_id === cityId) ?? {
@@ -109,6 +115,7 @@ const Page = async ({ searchParams }: Readonly<PageProps>) => {
     avoid,
     cityId,
     dates: effectiveDates,
+    excludeCompanyIds: exclude,
     kcalMax,
     kcalMin,
     prefer,
@@ -125,12 +132,14 @@ const Page = async ({ searchParams }: Readonly<PageProps>) => {
       />
 
       <MatchExperience2
+        availableCaterings={caterings}
         availableDates={availableDatesAll}
         cityId={cityId}
         dataMax={bounds.max}
         dataMin={bounds.min}
         initialAvoid={avoid}
         initialDays={initialDays}
+        initialExclude={exclude}
         initialKcalMax={kcalMax}
         initialKcalMin={kcalMin}
         initialPrefer={prefer}

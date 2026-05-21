@@ -5,6 +5,8 @@ import * as React from "react";
 
 import { DateRangePicker } from "@/components/date-range-picker";
 import { DayByDayListSingle } from "@/components/day-by-day-list-single";
+import { ExcludeFilter } from "@/components/exclude-filter";
+import type { CateringChoice } from "@/components/exclude-filter";
 import { KcalRangeFilter } from "@/components/kcal-range-filter";
 import { PreferenceFilter } from "@/components/preference-filter";
 import { SortBar } from "@/components/sort-bar";
@@ -18,8 +20,10 @@ export interface MatchExperience2Props {
   readonly cityId: number;
   readonly initialDays: readonly Day[];
   readonly availableDates: readonly string[];
+  readonly availableCaterings: readonly CateringChoice[];
   readonly initialPrefer: readonly string[];
   readonly initialAvoid: readonly string[];
+  readonly initialExclude: readonly string[];
   readonly initialSelectedDates: readonly string[];
   readonly initialKcalMin: number;
   readonly initialKcalMax: number;
@@ -128,12 +132,14 @@ const useKcalLocalStoragePersistence = (): void => {
 };
 
 export const MatchExperience2 = ({
+  availableCaterings,
   availableDates,
   cityId,
   dataMax,
   dataMin,
   initialAvoid,
   initialDays,
+  initialExclude,
   initialKcalMax,
   initialKcalMin,
   initialPrefer,
@@ -143,14 +149,18 @@ export const MatchExperience2 = ({
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  // URL params are the source of truth for prefer/avoid/dates. Initial values
-  // come from the server (which parsed the same params).
+  // URL params are the source of truth for prefer/avoid/dates/exclude. Initial
+  // values come from the server (which parsed the same params).
   const urlPrefer = React.useMemo(
     () => parseList(searchParams.get("prefer")),
     [searchParams]
   );
   const urlAvoid = React.useMemo(
     () => parseList(searchParams.get("avoid")),
+    [searchParams]
+  );
+  const urlExclude = React.useMemo(
+    () => parseList(searchParams.get("exclude")),
     [searchParams]
   );
   const urlDates = React.useMemo(() => {
@@ -161,6 +171,7 @@ export const MatchExperience2 = ({
   // Effective filter state: read from URL when present, otherwise from initial.
   const prefer = searchParams.has("prefer") ? urlPrefer : initialPrefer;
   const avoid = searchParams.has("avoid") ? urlAvoid : initialAvoid;
+  const exclude = searchParams.has("exclude") ? urlExclude : initialExclude;
   const selectedDates = urlDates;
   const activeMin = parseIntOr(searchParams.get("kcal_min"), initialKcalMin);
   const activeMax = parseIntOr(searchParams.get("kcal_max"), initialKcalMax);
@@ -190,6 +201,12 @@ export const MatchExperience2 = ({
   const setAvoid = React.useCallback(
     (next: readonly string[]) => {
       writeUrl({ avoid: next.length === 0 ? null : next.join(",") });
+    },
+    [writeUrl]
+  );
+  const setExclude = React.useCallback(
+    (next: readonly string[]) => {
+      writeUrl({ exclude: next.length === 0 ? null : next.join(",") });
     },
     [writeUrl]
   );
@@ -235,6 +252,7 @@ export const MatchExperience2 = ({
   const loadedFiltersRef = React.useRef({
     avoid: initialAvoid,
     dates: initialSelectedDates,
+    exclude: initialExclude,
     kcalMax: initialKcalMax,
     kcalMin: initialKcalMin,
     prefer: initialPrefer,
@@ -245,10 +263,11 @@ export const MatchExperience2 = ({
     const lf = loadedFiltersRef.current;
     const samePrefer = arraysEqual(prefer, lf.prefer);
     const sameAvoid = arraysEqual(avoid, lf.avoid);
+    const sameExclude = arraysEqual(exclude, lf.exclude);
     const sameDates = arraysEqual(selectedDates, lf.dates);
     const sameKcal = activeMin === lf.kcalMin && activeMax === lf.kcalMax;
     if (
-      (samePrefer && sameAvoid && sameDates && sameKcal) ||
+      (samePrefer && sameAvoid && sameExclude && sameDates && sameKcal) ||
       selectedDates.length === 0
     ) {
       return () => {
@@ -268,6 +287,9 @@ export const MatchExperience2 = ({
       if (avoid.length > 0) {
         sp.set("avoid", avoid.join(","));
       }
+      if (exclude.length > 0) {
+        sp.set("exclude", exclude.join(","));
+      }
       sp.set("kcal_min", String(activeMin));
       sp.set("kcal_max", String(activeMax));
       try {
@@ -282,6 +304,7 @@ export const MatchExperience2 = ({
         loadedFiltersRef.current = {
           avoid,
           dates: selectedDates,
+          exclude,
           kcalMax: activeMax,
           kcalMin: activeMin,
           prefer,
@@ -304,7 +327,7 @@ export const MatchExperience2 = ({
       ctrl.abort();
       window.clearTimeout(t);
     };
-  }, [activeMax, activeMin, avoid, cityId, prefer, selectedDates]);
+  }, [activeMax, activeMin, avoid, cityId, exclude, prefer, selectedDates]);
 
   return (
     <>
@@ -332,6 +355,13 @@ export const MatchExperience2 = ({
             onPreferChange={setPrefer}
             prefer={prefer}
           />
+          <div className="mt-2.5">
+            <ExcludeFilter
+              availableCaterings={availableCaterings}
+              excludedIds={exclude}
+              onChange={setExclude}
+            />
+          </div>
         </div>
         <SortBar activeId={sortId} onChange={handleSortChange} />
         {fetchError !== null && (

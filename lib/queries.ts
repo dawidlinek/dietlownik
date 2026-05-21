@@ -68,6 +68,35 @@ export const getCities = async (): Promise<CityRow[]> => {
   return rows;
 };
 
+// ── 1b. Caterings in a city — drives the "wyklucz" multi-select ────────────
+
+export interface CateringRow {
+  readonly company_id: string;
+  readonly name: string;
+  readonly logo_url: string | null;
+}
+
+/**
+ * All caterings linked to a city that have at least one active diet. Ordered
+ * alphabetically by display name for the picker UI. Use the slug
+ * (`company_id`) as the URL-safe identifier for exclusion lists.
+ */
+export const getCaterings = async (cityId: number): Promise<CateringRow[]> => {
+  const rows = await query<CateringRow>(
+    `SELECT co.company_id, co.name, co.logo_url
+     FROM company_cities cc
+     JOIN companies co USING (company_id)
+     WHERE cc.city_id = $1
+       AND EXISTS (
+         SELECT 1 FROM diets d
+         WHERE d.company_id = co.company_id AND d.is_active = TRUE
+       )
+     ORDER BY co.name COLLATE "pl-PL-x-icu" ASC, co.company_id ASC`,
+    [cityId]
+  );
+  return rows;
+};
+
 // ── 2. Kcal range bounds for a city ─────────────────────────────────────────
 
 export interface KcalBounds {
@@ -611,6 +640,9 @@ export const getRankedOffersForDay = async (
      * full pool, not a top-N-by-score slice). */
     limit?: number | null;
     weights?: { readonly prefer?: number; readonly avoid?: number };
+    /** Catering slugs (company_ids) to exclude from results. Filtered at the
+     *  earliest CTE so they don't waste downstream work. */
+    excludeCompanyIds?: readonly string[];
   }>
 ): Promise<{
   readonly offers: readonly RankedDayOffer[];
@@ -620,6 +652,7 @@ export const getRankedOffersForDay = async (
   const limit: number | null = resolveRankedLimit(args.limit);
   const wPrefer = args.weights?.prefer ?? 1;
   const wAvoid = args.weights?.avoid ?? 1;
+  const excludeCompanyIds = args.excludeCompanyIds ?? [];
 
   const intents = await routePreferences({
     avoid: args.avoid,
@@ -639,6 +672,7 @@ export const getRankedOffersForDay = async (
   //   $7  wPrefer           $15 categoryPatterns   $22 embChannels
   //   $8  wAvoid                                   $23 embVectors
   //   $24 ingredientKeywords  $25 ingredientStems  $26 ingredientChannels
+  //   $27 excludeCompanyIds (catering slugs to skip)
   const params: readonly unknown[] = [
     args.cityId,
     args.date,
@@ -666,11 +700,14 @@ export const getRankedOffersForDay = async (
     p.ingredientKeywords,
     p.ingredientStems,
     p.ingredientChannels,
+    excludeCompanyIds,
   ];
 
   const sql = `
     WITH
-    -- ── Step A: per-(offer, slot, meal-option) candidate rows for the day
+    -- ── Step A: per-(offer, slot, meal-option) candidate rows for the day.
+    -- The exclude filter at the bottom drops caterings the user opted out of
+    -- (the "wyklucz" UI multi-select). Empty list = no filter.
     offer_slots AS (
       SELECT
         cdm.company_id,
@@ -683,6 +720,8 @@ export const getRankedOffersForDay = async (
       WHERE cdm.city_id    = $1
         AND cdm.menu_date  = $2::date
         AND cdm.meal_id IS NOT NULL
+        AND (COALESCE(array_length($27::text[], 1), 0) = 0
+             OR cdm.company_id <> ALL ($27::text[]))
     ),
     -- Step B: kcal filter + canonical-menu fan-out via diet_calories metadata.
     --
@@ -1360,6 +1399,7 @@ export const getWeekView = async (
     kcalMax?: number;
     orderDays?: number;
     weights?: { readonly prefer?: number; readonly avoid?: number };
+    excludeCompanyIds?: readonly string[];
   }>
 ): Promise<WeekViewDay[]> => {
   interface DayResult {
@@ -1378,6 +1418,7 @@ export const getWeekView = async (
         avoid: args.avoid,
         cityId: args.cityId,
         date: d,
+        excludeCompanyIds: args.excludeCompanyIds,
         kcalMax: args.kcalMax,
         kcalMin: args.kcalMin,
         limit: 0,
