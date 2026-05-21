@@ -184,6 +184,19 @@ export interface MenuSettings {
   menuDaysAhead: number;
 }
 
+/**
+ * Per-catering switches dietly's own clients honor. When `visibleNutritionInDietly`
+ * or `visibleIngredientsInDietly` is false, dietly's UI hides those panels even
+ * though the menu API still returns a body for the dish. Some caterings even
+ * return a uniform placeholder body across every option in that case (the
+ * "leczo bug"), which is exactly what these flags are protecting users from.
+ */
+export interface FormSettings {
+  visibleInDietly?: boolean;
+  visibleNutritionInDietly?: boolean;
+  visibleIngredientsInDietly?: boolean;
+}
+
 export interface ConstantResponse {
   companyDiets: Diet[];
   companyHeader: CompanyHeader;
@@ -191,7 +204,7 @@ export interface ConstantResponse {
   companySideOrders?: unknown[];
   contactDetails?: unknown;
   deliveryCities?: unknown[];
-  formSettings?: unknown;
+  formSettings?: FormSettings;
   images?: unknown[];
   menuSettings: MenuSettings;
   programs?: unknown[];
@@ -239,7 +252,7 @@ export interface CityResponse {
   companySettings: CompanySettings;
   awarded?: boolean;
   citySearchResult: CitySearchResult;
-  lowestPrice: LowestPrice;
+  lowestPrice: LowestPrice | null;
 }
 
 // ── calculate-price ───────────────────────────────────────────────────────────

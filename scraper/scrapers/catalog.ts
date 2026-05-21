@@ -56,6 +56,12 @@ interface CompanyRow {
   dietlyDelivery: boolean | null;
   recentlyAdded: boolean | null;
   inviteCodeDiscountPercent: number | null;
+  // Dietly's own per-catering switches for showing nutrition / ingredients
+  // panels in their UI. When false, dietly's clients hide those panels even
+  // though the menu API returns a body. We honor the same flags during the
+  // menus scrape and write nulls instead.
+  nutritionVisible: boolean;
+  ingredientsVisible: boolean;
 }
 
 // oxlint-disable-next-line eslint/complexity -- linear field mapping; one branch per column is the goal
@@ -68,6 +74,7 @@ const projectCompanyRow = (
   const h = constant.companyHeader;
   const p = constant.companyParams;
   const m = constant.menuSettings;
+  const fs = constant.formSettings;
   const di = h.deliveryInfo ?? null;
   return {
     awarded: h.awarded ?? false,
@@ -79,11 +86,16 @@ const projectCompanyRow = (
     dietlyDelivery: h.dietlyDelivery ?? null,
     feedbackNumber: h.feedbackNumber ?? null,
     feedbackValue: h.feedbackValue ?? null,
+    // The two flags default TRUE when missing — historically that was the
+    // assumption and we don't want a transient response shape change to flip
+    // every catering off at once.
+    ingredientsVisible: fs?.visibleIngredientsInDietly ?? true,
     inviteCodeDiscountPercent: awardedExtras?.inviteCodeDiscountPercent ?? null,
     logoUrl: h.logoUrl ?? null,
     menuDaysAhead: m.menuDaysAhead ?? null,
     menuEnabled: m.menuEnabled ?? null,
     name: h.name ?? companyId,
+    nutritionVisible: fs?.visibleNutritionInDietly ?? true,
     ordersEnabled: cityData.companySettings.ordersEnabled ?? null,
     priceCategory: cityData.companyPriceCategory ?? null,
     rateValue: h.rateValue ?? null,
@@ -137,8 +149,9 @@ const upsertCompany = async (
         awarded, price_category, delivery_on_saturday, delivery_on_sunday,
         menu_enabled, menu_days_ahead, orders_enabled, delivery_enabled,
         delivery_info_text, delivery_info_date, dietly_delivery, recently_added,
-        invite_code_discount_percent)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+        invite_code_discount_percent,
+        nutrition_visible, ingredients_visible)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
      ON CONFLICT (company_id) DO UPDATE SET
        name               = EXCLUDED.name,
        logo_url           = EXCLUDED.logo_url,
@@ -158,6 +171,8 @@ const upsertCompany = async (
        dietly_delivery    = EXCLUDED.dietly_delivery,
        recently_added     = EXCLUDED.recently_added,
        invite_code_discount_percent = EXCLUDED.invite_code_discount_percent,
+       nutrition_visible    = EXCLUDED.nutrition_visible,
+       ingredients_visible  = EXCLUDED.ingredients_visible,
        updated_at         = NOW()`,
     [
       companyId,
@@ -179,6 +194,8 @@ const upsertCompany = async (
       r.dietlyDelivery,
       r.recentlyAdded,
       r.inviteCodeDiscountPercent,
+      r.nutritionVisible,
+      r.ingredientsVisible,
     ]
   );
 
@@ -197,8 +214,8 @@ const upsertCompanyCity = async (
   awardedExtras: DeepReadonly<CompanySearchItem> | null
 ): Promise<void> => {
   const lp = cityData.lowestPrice;
-  const standard = parsePrice(lp.standard);
-  const menuConfig = parsePrice(lp.menuConfiguration);
+  const standard = parsePrice(lp?.standard);
+  const menuConfig = parsePrice(lp?.menuConfiguration);
   const deliveryFee = cityData.citySearchResult.deliveryFee ?? null;
   const ordersEnabled = cityData.companySettings.ordersEnabled ?? null;
   const deliveryEnabled = cityData.companySettings.deliveryEnabled ?? null;

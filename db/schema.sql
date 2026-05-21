@@ -32,6 +32,15 @@ CREATE TABLE companies (
   dietly_delivery BOOLEAN,
   recently_added BOOLEAN,
   invite_code_discount_percent NUMERIC(5,2),
+  -- Dietly's per-catering "is the nutrition / ingredient panel displayable"
+  -- switches (constant.formSettings.visibleNutritionInDietly and
+  -- visibleIngredientsInDietly). When false, the menu API still returns a
+  -- body but dietly's own UI hides it — and the body is often a uniform
+  -- placeholder repeated across every option (the "leczo bug" on urbanfits,
+  -- the kakao bug on przelomwodzywianiu, etc.). The menus scraper honors
+  -- these flags and writes null body fields when either is off.
+  nutrition_visible BOOLEAN NOT NULL DEFAULT TRUE,
+  ingredients_visible BOOLEAN NOT NULL DEFAULT TRUE,
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 

@@ -51,6 +51,16 @@ interface MenuTarget {
 interface CompanyMenuConfig {
   menu_enabled: boolean;
   menu_days_ahead: number;
+  /**
+   * Dietly's per-catering switches. When false, dietly's own clients hide
+   * nutrition / ingredients panels even though the API returns a body. We
+   * mirror that behavior: write null kcal+macros / null ingredients_raw.
+   * Some caterings with these set to false also return a poisoned placeholder
+   * body (kcal=1063 leczo for urbanfits, kcal=44 kakao for przelomwodzywianiu,
+   * etc.) — honoring the flag is the cleanest way to avoid storing the lie.
+   */
+  nutrition_visible: boolean;
+  ingredients_visible: boolean;
 }
 
 const errMessage = (error: unknown): string =>
@@ -62,8 +72,11 @@ const loadCompanyConfig = async (
   const res = await q<{
     menu_enabled: boolean | null;
     menu_days_ahead: number | null;
+    nutrition_visible: boolean | null;
+    ingredients_visible: boolean | null;
   }>(
-    `SELECT menu_enabled, menu_days_ahead FROM companies WHERE company_id = $1`,
+    `SELECT menu_enabled, menu_days_ahead, nutrition_visible, ingredients_visible
+       FROM companies WHERE company_id = $1`,
     [companyId]
   );
   if (res.rowCount === 0) {
@@ -71,8 +84,10 @@ const loadCompanyConfig = async (
   }
   const [row] = res.rows;
   return {
+    ingredients_visible: row.ingredients_visible !== false,
     menu_days_ahead: row.menu_days_ahead ?? DEFAULT_MENU_DAYS,
     menu_enabled: row.menu_enabled !== false,
+    nutrition_visible: row.nutrition_visible !== false,
   };
 };
 
@@ -299,20 +314,47 @@ const parseMacros = (
   };
 };
 
-const mealFieldsFromOption = (option: DeepReadonly<MealOption>): MealFields => {
+interface BodyVisibility {
+  nutrition_visible: boolean;
+  ingredients_visible: boolean;
+}
+
+// oxlint-disable-next-line eslint/complexity -- linear ternary fan-out; each branch is a single field gate on the visibility flag, splitting only hides the symmetry
+const mealFieldsFromOption = (
+  option: DeepReadonly<MealOption>,
+  vis: Readonly<BodyVisibility>
+): MealFields => {
   const { details } = option;
-  const macros = parseMacros(details, option.info);
   const name = option.name ?? details?.name ?? null;
   const reviews_number = option.reviewsNumber ?? null;
   const reviews_score = option.reviewsScore ?? null;
   const label = option.label ?? null;
   const thermo = option.thermo ?? details?.thermo ?? null;
-  const ingredients_raw = extractIngredientsRaw(details);
-  const allergens = extractAllergens(details);
-  const fiber_g = parseGrams(details?.dietaryFiber);
-  const sugar_g = parseGrams(details?.sugar);
-  const saturated_fat_g = parseGrams(details?.saturatedFattyAcids);
-  const salt_g = parseGrams(details?.salt);
+
+  // Honor dietly's per-catering visibility flags: if dietly's own UI doesn't
+  // show nutrition / ingredients for this catering, neither do we. Some
+  // caterings with these flags off also return a uniform placeholder body
+  // (the "leczo bug"); skipping the body write is the cleanest defense.
+  const parsedMacros = parseMacros(details, option.info);
+  const macros = vis.nutrition_visible
+    ? parsedMacros
+    : { carbs_g: null, fat_g: null, kcal: null, protein_g: null };
+  const fiber_g = vis.nutrition_visible
+    ? parseGrams(details?.dietaryFiber)
+    : null;
+  const sugar_g = vis.nutrition_visible ? parseGrams(details?.sugar) : null;
+  const saturated_fat_g = vis.nutrition_visible
+    ? parseGrams(details?.saturatedFattyAcids)
+    : null;
+  const salt_g = vis.nutrition_visible ? parseGrams(details?.salt) : null;
+
+  const ingredients_raw = vis.ingredients_visible
+    ? extractIngredientsRaw(details)
+    : null;
+  const allergens = vis.ingredients_visible ? extractAllergens(details) : [];
+  const ingredients = vis.ingredients_visible
+    ? parseStructuredIngredients(details)
+    : [];
 
   const fingerprint = fingerprintOfMeal({
     allergens,
@@ -338,7 +380,7 @@ const mealFieldsFromOption = (option: DeepReadonly<MealOption>): MealFields => {
     fiber_g,
     fingerprint,
     image_url: details?.imageUrl ?? null,
-    ingredients: parseStructuredIngredients(details),
+    ingredients,
     ingredients_raw,
     kcal: macros.kcal,
     label,
@@ -588,7 +630,8 @@ const processOneMenu = async (
   companyId: string,
   cityId: number,
   target: Readonly<MenuTarget>,
-  date: string
+  date: string,
+  vis: Readonly<BodyVisibility>
 ): Promise<FetchResult> => {
   const tierQs =
     target.is_menu_configuration && target.tier_id !== null
@@ -629,7 +672,7 @@ const processOneMenu = async (
       if (option.dietCaloriesMealId == null) {
         continue;
       }
-      const fields = mealFieldsFromOption(option);
+      const fields = mealFieldsFromOption(option, vis);
       const { meal_id, touched } = await upsertMeal(companyId, fields);
       if (touched && meal_id !== null) {
         mealsTouched += 1;
@@ -722,9 +765,18 @@ export const scrapeMenus = async (
   }
 
   const totalCalls = targets.length * dates.length;
+  const visTag =
+    cfg.nutrition_visible && cfg.ingredients_visible
+      ? ""
+      : ` [body-hidden: nutrition=${cfg.nutrition_visible} ingredients=${cfg.ingredients_visible}]`;
   console.log(
-    `[menus] ${companyId} / city=${cityId} → ${targets.length} targets × ${dates.length} days = ${totalCalls} calls`
+    `[menus] ${companyId} / city=${cityId} → ${targets.length} targets × ${dates.length} days = ${totalCalls} calls${visTag}`
   );
+
+  const vis: BodyVisibility = {
+    ingredients_visible: cfg.ingredients_visible,
+    nutrition_visible: cfg.nutrition_visible,
+  };
 
   const work: { target: MenuTarget; date: string }[] = [];
   for (const target of targets) {
@@ -746,7 +798,7 @@ export const scrapeMenus = async (
       date,
     }: DeepReadonly<{ target: MenuTarget; date: string }>) => {
       try {
-        return await processOneMenu(companyId, cityId, target, date);
+        return await processOneMenu(companyId, cityId, target, date, vis);
       } catch (error) {
         console.warn(
           `[menus] ${companyId} dc=${target.diet_calories_id} tier=${target.tier_id ?? "-"} @ ${date}: ${errMessage(error)}`
