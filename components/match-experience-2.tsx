@@ -337,7 +337,8 @@ export const MatchExperience2 = ({
     (
       datesArg: readonly string[],
       limit: number | null,
-      includeCompanyIds?: readonly string[]
+      includeCompanyIds?: readonly string[],
+      sortOverride?: SortId
     ): string => {
       const sp = new URLSearchParams();
       sp.set("city_id", String(cityId));
@@ -356,7 +357,7 @@ export const MatchExperience2 = ({
       }
       sp.set("kcal_min", String(activeMin));
       sp.set("kcal_max", String(activeMax));
-      sp.set("sort", sortId);
+      sp.set("sort", sortOverride ?? sortId);
       if (limit !== null) {
         sp.set("limit", String(limit));
       }
@@ -463,9 +464,11 @@ export const MatchExperience2 = ({
   ]);
 
   // Fired by the list when the user expands a day. Idempotent: cached or
-  // in-flight dates are no-ops. limit=15 is the scatter's sweet spot — small
-  // enough to keep the SQL's per-offer LATERAL cheap, big enough that the
-  // scatter has meaningful comparison points around the chosen offer.
+  // in-flight dates are no-ops. To keep the scatter honest across whatever
+  // axis the user has picked we issue two parallel limit=8 fetches — one
+  // ordered by the current sort, one ordered by price — and merge the
+  // results. The price branch is skipped when the current sort is already
+  // price-asc (it would just duplicate work).
   const requestPool = React.useCallback(
     (date: string) => {
       if (date in poolByDate || loadingPoolDates.has(date)) {
@@ -475,23 +478,45 @@ export const MatchExperience2 = ({
       poolControllersRef.current.set(date, ctrl);
       // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- React setter receives the previous Set value
       setLoadingPoolDates((prev) => new Set([...prev, date]));
+      const fetchPoolWith = async (
+        sortOverride?: SortId
+      ): Promise<readonly Offer[]> => {
+        const res = await fetch(
+          buildMatchUrl([date], 8, undefined, sortOverride),
+          { signal: ctrl.signal }
+        );
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- shape narrowed at use sites
+        const json = (await res.json()) as MatchWeekResponse;
+        if (!res.ok) {
+          throw new Error(json.error ?? `HTTP ${res.status}`);
+        }
+        const dayResult = (json.days ?? []).find((d) => d.date === date);
+        return dayResult?.all_offers ?? [];
+      };
       void (async () => {
         try {
-          const res = await fetch(buildMatchUrl([date], 15), {
-            signal: ctrl.signal,
-          });
-          // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- shape narrowed at use sites
-          const json = (await res.json()) as MatchWeekResponse;
-          if (!res.ok) {
-            throw new Error(json.error ?? `HTTP ${res.status}`);
+          const needsPriceBranch = sortId !== "price-asc";
+          const [bySort, byPrice] = await Promise.all([
+            fetchPoolWith(),
+            needsPriceBranch
+              ? fetchPoolWith("price-asc")
+              : Promise.resolve([] as readonly Offer[]),
+          ]);
+          // Dedupe by offer_id; sort-branch wins for shared offers so the
+          // order reflects the user's chosen ranking.
+          const byId = new Map<string, Offer>();
+          for (const o of bySort) {
+            byId.set(o.offer_id, o);
           }
-          const dayResult = (json.days ?? []).find((d) => d.date === date);
-          if (dayResult) {
-            setPoolByDate((prev) => ({
-              ...prev,
-              [date]: dayResult.all_offers,
-            }));
+          for (const o of byPrice) {
+            if (!byId.has(o.offer_id)) {
+              byId.set(o.offer_id, o);
+            }
           }
+          setPoolByDate((prev) => ({
+            ...prev,
+            [date]: [...byId.values()],
+          }));
         } catch (error: unknown) {
           if (error instanceof Error && error.name === "AbortError") {
             return;
@@ -510,7 +535,7 @@ export const MatchExperience2 = ({
         }
       })();
     },
-    [buildMatchUrl, loadingPoolDates, poolByDate]
+    [buildMatchUrl, loadingPoolDates, poolByDate, sortId]
   );
 
   // Fired when the user clicks a catering chip in the expanded-row picker.
