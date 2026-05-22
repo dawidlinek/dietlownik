@@ -291,6 +291,9 @@ interface SingleRowProps {
   readonly onChangeY: (id: MetricId) => void;
   readonly onSwapMeal: (slot: string, option: MealOption) => void;
   readonly onPickFromScatter: (offerId: string) => void;
+  /** True while the per-day full-pool fetch is in flight. Passed through to
+   *  ScatterPanel which swaps to a pulsing placeholder. */
+  readonly poolLoading: boolean;
   /** Caterings the user can add to the scatter on demand — already-loaded
    *  ones are filtered out by the parent. */
   readonly unloadedCaterings: readonly CateringChoice[];
@@ -334,6 +337,10 @@ interface ScatterPanelProps {
   readonly yId: MetricId;
   readonly onChangeX: (id: MetricId) => void;
   readonly onChangeY: (id: MetricId) => void;
+  /** True while the per-day full-pool fetch is in flight. Renders a pulsing
+   *  placeholder block instead of the chart so the axis scales don't jump
+   *  when the Phase-A single point gets replaced by the Phase-B pool. */
+  readonly poolLoading: boolean;
   /** Caterings the user can load on demand via the Alternatywy popover. */
   readonly unloadedCaterings: readonly CateringChoice[];
   /** Set of company_ids currently loading for this day. */
@@ -351,15 +358,24 @@ const ScatterPanel = ({
   onChangeY,
   onLoadCatering,
   onPick,
+  poolLoading,
   selectedId,
   unloadedCaterings,
   xId,
   yId,
 }: Readonly<ScatterPanelProps>) => {
-  // No placeholder while Phase B is in flight — the scatter renders with
-  // whatever offers are already in memory (the row's chosen offer from
-  // Phase A) and Phase B's additional points fade in when they arrive.
-  // The loading indicator lives on the "alternatywy" trigger's pulsing dot.
+  if (poolLoading) {
+    return (
+      <div className="flex flex-col gap-2">
+        <span className="text-[10px] uppercase tracking-[0.08em] text-[var(--color-ink-3)]">
+          alternatywy
+        </span>
+        <div className="h-[260px] rounded-sm border border-dashed border-[var(--color-bone)] flex items-center justify-center text-[12px] text-[var(--color-ink-3)] italic animate-pulse">
+          ładowanie alternatyw…
+        </div>
+      </div>
+    );
+  }
   if (offers.length === 0) {
     return (
       <div className="mt-3 border-t border-[var(--color-bone)] pt-3 text-[12px] text-[var(--color-ink-3)] italic">
@@ -407,6 +423,7 @@ const SingleRow = ({
   onSwapMeal,
   onToggle,
   open,
+  poolLoading,
   rank,
   totalForDay,
   unloadedCaterings,
@@ -608,6 +625,7 @@ const SingleRow = ({
                 onChangeY={onChangeY}
                 onLoadCatering={onLoadCatering}
                 onPick={onPickFromScatter}
+                poolLoading={poolLoading}
                 selectedId={offer.offer_id}
                 unloadedCaterings={unloadedCaterings}
                 xId={xId}
@@ -712,6 +730,10 @@ export interface DayByDaySingleProps {
    *  When a date is missing here, the row falls back to `day.all_offers`
    *  (which after Phase A is just the top-1 winner). */
   readonly poolByDate?: Readonly<Record<string, readonly Offer[]>>;
+  /** Dates whose per-day pool fetch is currently in flight. While a date
+   *  is in this set the row's scatter renders the placeholder so axis
+   *  scales don't jump when the pool replaces the Phase-A single point. */
+  readonly loadingPoolDates?: ReadonlySet<string>;
   /** Fired when the user opens a row. Parent triggers the per-day pool
    *  fetch. Not called on collapse. */
   readonly onExpandDate?: (date: string) => void;
@@ -739,6 +761,7 @@ export const DayByDayListSingle = ({
   availableCaterings,
   days,
   loadingCaterings,
+  loadingPoolDates,
   onChangeX,
   onChangeY,
   onExpandDate,
@@ -892,6 +915,10 @@ export const DayByDayListSingle = ({
             );
 
             const open = expansion === day.date;
+            const poolLoading =
+              open &&
+              pool === undefined &&
+              (loadingPoolDates?.has(day.date) ?? false);
 
             // Caterings that aren't yet represented as dots on the scatter.
             // The picker chip list lets the user click any of these to load
@@ -928,6 +955,7 @@ export const DayByDayListSingle = ({
                   toggleExpansion(day.date, open);
                 }}
                 open={open}
+                poolLoading={poolLoading}
                 rank={chosenRank + 1}
                 totalForDay={day.total_considered}
                 unloadedCaterings={unloadedCaterings}

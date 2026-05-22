@@ -625,6 +625,7 @@ export const MatchExperience2 = ({
           availableCaterings={availableCaterings}
           days={days}
           loadingCaterings={loadingCaterings}
+          loadingPoolDates={loadingPoolDates}
           onChangeX={setXId}
           onChangeY={setYId}
           onExpandDate={requestPool}
