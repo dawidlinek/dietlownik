@@ -816,14 +816,19 @@ export const DayByDayListSingle = ({
 
   // Auto-resolve: every day with at least one offer contributes its current
   // chosen offer (rank-1 by sort, or override) to the order. There is no
-  // explicit "wybierz" — selection is implicit.
+  // explicit "wybierz" — selection is implicit. Uses the lazily-loaded pool
+  // when present so a scatter-dot click (which can target any catering in
+  // `poolByDate[date]`) actually finds its offer; without this fallback the
+  // override id would be invisible to `ranked.find()` and the summary would
+  // silently snap back to the row's default winner.
   const resolved = React.useMemo<readonly ResolvedSelection[]>(() => {
     const out: ResolvedSelection[] = [];
     for (const day of days) {
-      if (day.all_offers.length === 0) {
+      const base = poolByDate?.[day.date] ?? day.all_offers;
+      if (base.length === 0) {
         continue;
       }
-      const swapped = day.all_offers.map((o) =>
+      const swapped = base.map((o) =>
         applySwaps(o, swaps[`${day.date}::${o.offer_id}`] ?? {})
       );
       const ranked = rankOffers(swapped, sortId);
@@ -840,7 +845,7 @@ export const DayByDayListSingle = ({
       });
     }
     return out;
-  }, [days, overrides, sortId, swaps]);
+  }, [days, overrides, poolByDate, sortId, swaps]);
 
   // Phase A is in flight after a config change — show shimmer placeholders
   // for every selected date. Inputs above stay live; debounce + abort in
