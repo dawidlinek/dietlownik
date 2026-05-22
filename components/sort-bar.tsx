@@ -9,7 +9,16 @@ import { cn } from "@/lib/utils";
 interface Props {
   readonly activeId: SortId;
   readonly onChange: (id: SortId) => void;
+  /** False when no prefer/avoid filters are set — score-derived chips become
+   *  pure noise (every score is 0) so we hide them. */
+  readonly hasPreferences: boolean;
 }
+
+/** Sort chips that derive their ranking from the prefer/avoid score signal. */
+const SCORE_DEPENDENT_SORTS: ReadonlySet<SortId> = new Set([
+  "score-desc",
+  "score-per-zl",
+]);
 
 // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- React.ReactNode union recursively includes mutable Iterable<ReactNode>; cannot be made deeply readonly
 const Chip = ({
@@ -48,10 +57,17 @@ const ArrowGlyph = ({ direction }: Readonly<{ direction: "asc" | "desc" }>) => (
   </span>
 );
 
-export const SortBar = ({ activeId, onChange }: Readonly<Props>) => {
-  const basics = SORT_OPTIONS.filter((s) => s.group === "basic");
-  const ratios = SORT_OPTIONS.filter((s) => s.group === "ratio");
-  const macros = SORT_OPTIONS.filter((s) => s.group === "macro");
+export const SortBar = ({
+  activeId,
+  hasPreferences,
+  onChange,
+}: Readonly<Props>) => {
+  const visible = SORT_OPTIONS.filter(
+    (s) => hasPreferences || !SCORE_DEPENDENT_SORTS.has(s.id)
+  );
+  const basics = visible.filter((s) => s.group === "basic");
+  const ratios = visible.filter((s) => s.group === "ratio");
+  const macros = visible.filter((s) => s.group === "macro");
 
   // Auto-expand when an active macro sort comes in from persisted state so the
   // user can see what's selected without hunting for it.

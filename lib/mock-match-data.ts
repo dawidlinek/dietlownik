@@ -188,12 +188,17 @@ const FALLBACK_DETAILS: MealDetails = {
 const pick = (
   bare: Omit<
     Pick,
-    keyof MealMacros | "alternates" | "ingredients_raw" | "allergens"
+    | keyof MealMacros
+    | "alternates"
+    | "ingredients_raw"
+    | "allergens"
+    | "review_score"
   >
 ): Pick => ({
   ...bare,
   ...(MEAL_MACROS[bare.meal_name] ?? macro(300, 15, 10, 35, 4, 6)),
   ...(MEAL_DETAILS[bare.meal_name] ?? FALLBACK_DETAILS),
+  review_score: null,
 });
 
 // `aggregateMacros` is re-exported from "./match-types" above.
@@ -408,6 +413,7 @@ const toOption = (p: Pick): MealOption => ({
   meal_name: p.meal_name,
   meal_score: p.meal_score,
   protein_g: p.protein_g,
+  review_score: p.review_score,
   sugar_g: p.sugar_g,
 });
 
@@ -928,6 +934,7 @@ const offer = (
     price_per_day: priceFinal,
     price_per_day_before_promo: promos.length === 0 ? null : price,
     promos,
+    review_score: null,
     score_best: Number(scoreBest.toFixed(2)),
     score_default: Number(scoreDefault.toFixed(2)),
     tier_name: tier,

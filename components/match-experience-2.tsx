@@ -10,7 +10,7 @@ import type { CateringChoice } from "@/components/exclude-filter";
 import { KcalRangeFilter } from "@/components/kcal-range-filter";
 import { PreferenceFilter } from "@/components/preference-filter";
 import { SortBar } from "@/components/sort-bar";
-import type { Day } from "@/lib/match-types";
+import type { Day, Offer } from "@/lib/match-types";
 import type { MetricId } from "@/lib/scatter-metrics";
 import { sortToYMetricId } from "@/lib/sort-metrics";
 import type { SortId } from "@/lib/sort-metrics";
@@ -230,6 +230,20 @@ export const MatchExperience2 = ({
   const [xId, setXId] = usePersistedState<MetricId>("match.scatter.x", "price");
   const [yId, setYId] = usePersistedState<MetricId>("match.scatter.y", "score");
 
+  // Score chips (score, score/zł) only mean something when prefer/avoid is set.
+  // When neither is, the chip would rank by uniformly-zero scores — surface
+  // gets hidden in the SortBar and we redirect the active sort to "price-asc".
+  const hasPreferences = prefer.length > 0 || avoid.length > 0;
+  React.useEffect(() => {
+    if (
+      !hasPreferences &&
+      (sortId === "score-desc" || sortId === "score-per-zl")
+    ) {
+      setSortId("price-asc");
+      setYId("score");
+    }
+  }, [hasPreferences, setSortId, setYId, sortId]);
+
   const handleSortChange = React.useCallback(
     (id: SortId) => {
       setSortId(id);
@@ -241,46 +255,93 @@ export const MatchExperience2 = ({
 
   useKcalLocalStoragePersistence();
 
-  // ── Live data: refetch when filters change ───────────────────────────────
+  // ── Live data: two-phase lazy loader ─────────────────────────────────────
+  //
+  // Phase A — `limit=1` per day, the winner only. Fires on initial mount
+  //   (when SSR ships no days) and on every filter change. Hydrates the
+  //   table with skeleton placeholders → top-1 rows.
+  // Phase B — `limit=0` (full pool) for a single date. Fires only when the
+  //   user expands that day's row. Cached in `poolByDate` so a subsequent
+  //   collapse + re-expand is instant. Cleared and aborted on the next
+  //   filter change.
+  //
+  // SSR ships `initialDays === []` so the page navigates instantly; we
+  // render skeleton rows immediately and let the first effect fire Phase A.
+  const hasInitialData = initialDays.length > 0;
   const [days, setDays] = React.useState<readonly Day[]>(initialDays);
-  const [pending, setPending] = React.useState(false);
+  const [skeletonDates, setSkeletonDates] = React.useState<
+    readonly string[] | null
+  >(() => (hasInitialData ? null : initialSelectedDates));
+  const [poolByDate, setPoolByDate] = React.useState<
+    Readonly<Record<string, readonly Offer[]>>
+  >(() => {
+    // Only seed when SSR shipped the full pool. With the slow query skipped
+    // on SSR (the default), this is empty and the first expand fetches.
+    if (!hasInitialData) {
+      return {};
+    }
+    const out: Record<string, readonly Offer[]> = {};
+    for (const d of initialDays) {
+      out[d.date] = d.all_offers;
+    }
+    return out;
+  });
+  const [loadingPoolDates, setLoadingPoolDates] = React.useState<
+    ReadonlySet<string>
+  >(() => new Set());
   const [fetchError, setFetchError] = React.useState<string | null>(null);
 
-  // Track the filters that match the currently-loaded `days`. On the very
-  // first render this is the initial server-rendered snapshot; we skip the
-  // immediate refetch when filters match.
-  const loadedFiltersRef = React.useRef({
-    avoid: initialAvoid,
-    dates: initialSelectedDates,
-    exclude: initialExclude,
-    kcalMax: initialKcalMax,
-    kcalMin: initialKcalMin,
-    prefer: initialPrefer,
-  });
+  // Per-day pool fetch controllers. Filter changes abort everything in here
+  // so stale full-pool results never overwrite Phase A's top-1 data.
+  const poolControllersRef = React.useRef<Map<string, AbortController>>(
+    new Map()
+  );
 
-  // oxlint-disable-next-line react-hooks/exhaustive-deps -- deps tracked manually below
-  React.useEffect(() => {
-    const lf = loadedFiltersRef.current;
-    const samePrefer = arraysEqual(prefer, lf.prefer);
-    const sameAvoid = arraysEqual(avoid, lf.avoid);
-    const sameExclude = arraysEqual(exclude, lf.exclude);
-    const sameDates = arraysEqual(selectedDates, lf.dates);
-    const sameKcal = activeMin === lf.kcalMin && activeMax === lf.kcalMax;
-    if (
-      (samePrefer && sameAvoid && sameExclude && sameDates && sameKcal) ||
-      selectedDates.length === 0
-    ) {
-      return () => {
-        // no-op cleanup — every code path must return a cleanup for consistent-return
-      };
-    }
-    const ctrl = new AbortController();
-    const runFetch = async () => {
-      setPending(true);
-      setFetchError(null);
+  // Per-catering loading state: keyed by `${date}::${companyId}`. Filter
+  // changes abort these too — see the Phase A effect's cleanup block.
+  const [loadingCaterings, setLoadingCaterings] = React.useState<
+    ReadonlySet<string>
+  >(() => new Set());
+  const cateringControllersRef = React.useRef<Map<string, AbortController>>(
+    new Map()
+  );
+
+  // Filter set the current `days` reflects. `null` means we haven't loaded
+  // anything yet — the next effect run treats every filter set as a miss
+  // and fires Phase A. After Phase A resolves we set this to the filters
+  // that produced the data.
+  interface FilterSnapshot {
+    readonly avoid: readonly string[];
+    readonly dates: readonly string[];
+    readonly exclude: readonly string[];
+    readonly kcalMax: number;
+    readonly kcalMin: number;
+    readonly prefer: readonly string[];
+    readonly sort: SortId;
+  }
+  const loadedFiltersRef = React.useRef<FilterSnapshot | null>(
+    hasInitialData
+      ? {
+          avoid: initialAvoid,
+          dates: initialSelectedDates,
+          exclude: initialExclude,
+          kcalMax: initialKcalMax,
+          kcalMin: initialKcalMin,
+          prefer: initialPrefer,
+          sort: "score-desc",
+        }
+      : null
+  );
+
+  const buildMatchUrl = React.useCallback(
+    (
+      datesArg: readonly string[],
+      limit: number | null,
+      includeCompanyIds?: readonly string[]
+    ): string => {
       const sp = new URLSearchParams();
       sp.set("city_id", String(cityId));
-      sp.set("dates", selectedDates.join(","));
+      sp.set("dates", datesArg.join(","));
       if (prefer.length > 0) {
         sp.set("prefer", prefer.join(","));
       }
@@ -290,10 +351,71 @@ export const MatchExperience2 = ({
       if (exclude.length > 0) {
         sp.set("exclude", exclude.join(","));
       }
+      if (includeCompanyIds && includeCompanyIds.length > 0) {
+        sp.set("include", includeCompanyIds.join(","));
+      }
       sp.set("kcal_min", String(activeMin));
       sp.set("kcal_max", String(activeMax));
+      sp.set("sort", sortId);
+      if (limit !== null) {
+        sp.set("limit", String(limit));
+      }
+      return `/api/match-week?${sp.toString()}`;
+    },
+    [activeMax, activeMin, avoid, cityId, exclude, prefer, sortId]
+  );
+
+  // Phase A refetch on initial mount (no SSR data) and on filter change.
+  // Also clears poolByDate / aborts in flight pool fetches so the user
+  // doesn't see scatter points from a previous filter state momentarily
+  // overlaid on the new top-1 rows.
+  // oxlint-disable-next-line react-hooks/exhaustive-deps -- deps tracked manually below
+  React.useEffect(() => {
+    if (selectedDates.length === 0) {
+      return () => {
+        // nothing to fetch — render path shows "brak danych" naturally
+      };
+    }
+    const lf = loadedFiltersRef.current;
+    if (lf !== null) {
+      const samePrefer = arraysEqual(prefer, lf.prefer);
+      const sameAvoid = arraysEqual(avoid, lf.avoid);
+      const sameExclude = arraysEqual(exclude, lf.exclude);
+      const sameDates = arraysEqual(selectedDates, lf.dates);
+      const sameKcal = activeMin === lf.kcalMin && activeMax === lf.kcalMax;
+      const sameSort = sortId === lf.sort;
+      if (
+        samePrefer &&
+        sameAvoid &&
+        sameExclude &&
+        sameDates &&
+        sameKcal &&
+        sameSort
+      ) {
+        return () => {
+          // current `days` already match these filters
+        };
+      }
+    }
+    for (const [, c] of poolControllersRef.current) {
+      c.abort();
+    }
+    poolControllersRef.current.clear();
+    for (const [, c] of cateringControllersRef.current) {
+      c.abort();
+    }
+    cateringControllersRef.current.clear();
+    setLoadingPoolDates(new Set());
+    setLoadingCaterings(new Set());
+    setPoolByDate({});
+    // Show the skeleton synchronously — the user gets instant feedback that
+    // their filter is being honored, even though the actual fetch is debounced.
+    setSkeletonDates(selectedDates);
+    const ctrl = new AbortController();
+    const runFetch = async () => {
+      setFetchError(null);
       try {
-        const res = await fetch(`/api/match-week?${sp.toString()}`, {
+        const res = await fetch(buildMatchUrl(selectedDates, 1), {
           signal: ctrl.signal,
         });
         // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- shape narrowed at use sites
@@ -308,16 +430,17 @@ export const MatchExperience2 = ({
           kcalMax: activeMax,
           kcalMin: activeMin,
           prefer,
+          sort: sortId,
         };
         setDays(json.days ?? []);
+        setSkeletonDates(null);
       } catch (error: unknown) {
         if (error instanceof Error && error.name === "AbortError") {
           return;
         }
         const msg = error instanceof Error ? error.message : "fetch failed";
         setFetchError(msg);
-      } finally {
-        setPending(false);
+        setSkeletonDates(null);
       }
     };
     const t = window.setTimeout(() => {
@@ -327,7 +450,129 @@ export const MatchExperience2 = ({
       ctrl.abort();
       window.clearTimeout(t);
     };
-  }, [activeMax, activeMin, avoid, cityId, exclude, prefer, selectedDates]);
+  }, [
+    activeMax,
+    activeMin,
+    avoid,
+    buildMatchUrl,
+    cityId,
+    exclude,
+    prefer,
+    selectedDates,
+    sortId,
+  ]);
+
+  // Fired by the list when the user expands a day. Idempotent: cached or
+  // in-flight dates are no-ops. limit=15 is the scatter's sweet spot — small
+  // enough to keep the SQL's per-offer LATERAL cheap, big enough that the
+  // scatter has meaningful comparison points around the chosen offer.
+  const requestPool = React.useCallback(
+    (date: string) => {
+      if (date in poolByDate || loadingPoolDates.has(date)) {
+        return;
+      }
+      const ctrl = new AbortController();
+      poolControllersRef.current.set(date, ctrl);
+      // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- React setter receives the previous Set value
+      setLoadingPoolDates((prev) => new Set([...prev, date]));
+      void (async () => {
+        try {
+          const res = await fetch(buildMatchUrl([date], 15), {
+            signal: ctrl.signal,
+          });
+          // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- shape narrowed at use sites
+          const json = (await res.json()) as MatchWeekResponse;
+          if (!res.ok) {
+            throw new Error(json.error ?? `HTTP ${res.status}`);
+          }
+          const dayResult = (json.days ?? []).find((d) => d.date === date);
+          if (dayResult) {
+            setPoolByDate((prev) => ({
+              ...prev,
+              [date]: dayResult.all_offers,
+            }));
+          }
+        } catch (error: unknown) {
+          if (error instanceof Error && error.name === "AbortError") {
+            return;
+          }
+          const msg = error instanceof Error ? error.message : "fetch failed";
+          setFetchError(msg);
+        } finally {
+          poolControllersRef.current.delete(date);
+          // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- React setter receives the previous Set value
+          setLoadingPoolDates((prev) => {
+            if (!prev.has(date)) {
+              return prev;
+            }
+            return new Set([...prev].filter((d) => d !== date));
+          });
+        }
+      })();
+    },
+    [buildMatchUrl, loadingPoolDates, poolByDate]
+  );
+
+  // Fired when the user clicks a catering chip in the expanded-row picker.
+  // Fetches that single catering's offer for that date (limit=1 + include
+  // whitelist) and appends to poolByDate so the scatter picks up the new dot.
+  const loadCateringForDate = React.useCallback(
+    (date: string, companyId: string) => {
+      const key = `${date}::${companyId}`;
+      // Already loaded as part of the existing pool? skip.
+      const existing = poolByDate[date];
+      if (existing?.some((o) => o.company_id === companyId)) {
+        return;
+      }
+      if (loadingCaterings.has(key)) {
+        return;
+      }
+      const ctrl = new AbortController();
+      cateringControllersRef.current.set(key, ctrl);
+      // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- React setter receives the previous Set value
+      setLoadingCaterings((prev) => new Set([...prev, key]));
+      void (async () => {
+        try {
+          const res = await fetch(buildMatchUrl([date], 1, [companyId]), {
+            signal: ctrl.signal,
+          });
+          // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- shape narrowed at use sites
+          const json = (await res.json()) as MatchWeekResponse;
+          if (!res.ok) {
+            throw new Error(json.error ?? `HTTP ${res.status}`);
+          }
+          const dayResult = (json.days ?? []).find((d) => d.date === date);
+          const newOffer = dayResult?.all_offers[0];
+          if (newOffer) {
+            setPoolByDate((prev) => {
+              const current = prev[date] ?? [];
+              // Guard against double-add if two clicks raced; key by offer_id.
+              if (current.some((o) => o.offer_id === newOffer.offer_id)) {
+                return prev;
+              }
+              return { ...prev, [date]: [...current, newOffer] };
+            });
+          }
+        } catch (error: unknown) {
+          if (error instanceof Error && error.name === "AbortError") {
+            return;
+          }
+          const msg = error instanceof Error ? error.message : "fetch failed";
+          setFetchError(msg);
+        } finally {
+          cateringControllersRef.current.delete(key);
+          // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- React setter receives the previous Set value
+          setLoadingCaterings((prev) => {
+            if (!prev.has(key)) {
+              return prev;
+            }
+            return new Set([...prev].filter((k) => k !== key));
+          });
+        }
+      })();
+    },
+    [buildMatchUrl, loadingCaterings, poolByDate]
+  );
 
   return (
     <>
@@ -363,7 +608,11 @@ export const MatchExperience2 = ({
             />
           </div>
         </div>
-        <SortBar activeId={sortId} onChange={handleSortChange} />
+        <SortBar
+          activeId={sortId}
+          hasPreferences={hasPreferences}
+          onChange={handleSortChange}
+        />
         {fetchError !== null && (
           <div className="px-5 sm:px-8 lg:px-14 py-2 text-[12px] text-[var(--color-paprika)]">
             nie udało się załadować ofert: {fetchError}
@@ -371,13 +620,17 @@ export const MatchExperience2 = ({
         )}
       </div>
 
-      <main
-        className={`flex-1 ${pending ? "opacity-70 transition-opacity" : ""}`}
-      >
+      <main className="flex-1">
         <DayByDayListSingle
+          availableCaterings={availableCaterings}
           days={days}
+          loadingCaterings={loadingCaterings}
           onChangeX={setXId}
           onChangeY={setYId}
+          onExpandDate={requestPool}
+          onLoadCatering={loadCateringForDate}
+          poolByDate={poolByDate}
+          skeletonDates={skeletonDates}
           sortId={sortId}
           xId={xId}
           yId={yId}

@@ -1,12 +1,11 @@
 import { Header } from "@/components/header";
 import { MatchExperience2 } from "@/components/match-experience-2";
-import { toViewDay } from "@/lib/match-types";
+import type { Day } from "@/lib/match-types";
 import {
   getAvailableDates,
   getCaterings,
   getCities,
   getKcalBounds,
-  getWeekView,
 } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
@@ -111,17 +110,11 @@ const Page = async ({ searchParams }: Readonly<PageProps>) => {
   const effectiveDates =
     selectedDates.length > 0 ? selectedDates : availableDatesAll;
 
-  const weekView = await getWeekView({
-    avoid,
-    cityId,
-    dates: effectiveDates,
-    excludeCompanyIds: exclude,
-    kcalMax,
-    kcalMin,
-    prefer,
-  }).catch(() => [] as Awaited<ReturnType<typeof getWeekView>>);
-
-  const initialDays = weekView.map(toViewDay);
+  // Intentionally don't await getWeekView on SSR — it's the slow per-day
+  // full-pool query (5–10s on a cold cache) and would block initial paint.
+  // The client renders skeleton rows immediately and fires Phase A (top-1
+  // per day) as its first effect; expansion fires the per-day full pool.
+  const initialDays: readonly Day[] = [];
 
   return (
     <>

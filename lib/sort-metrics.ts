@@ -4,10 +4,12 @@ import type { Offer } from "@/lib/match-types";
 export type SortId =
   | "price-asc"
   | "score-desc"
+  | "review-desc"
   | "protein-per-zl"
   | "fiber-per-zl"
   | "score-per-zl"
   | "kcal-per-zl"
+  | "review-per-zl"
   | "protein-desc"
   | "fiber-desc"
   | "fat-asc"
@@ -29,6 +31,14 @@ export interface SortOption {
   readonly format: (o: Offer) => string;
   /** Optional explanation shown in the dropdown. */
   readonly hint?: string;
+  /**
+   * Optional eligibility filter applied before ranking. Used to drop offers
+   * whose macro value is missing (reported as 0) when sorting in a direction
+   * where that missing-as-0 would dishonestly win — e.g. fat-asc / carbs-asc.
+   * If the filter wipes every offer for a day, `rankOffers` falls back to the
+   * unfiltered list so the day doesn't silently vanish.
+   */
+  readonly filter?: (o: Offer) => boolean;
 }
 
 const formatScore = (v: number): string => {
@@ -74,6 +84,17 @@ export const SORT_OPTIONS: readonly SortOption[] = [
     short: "score",
   },
   {
+    accessor: (o) => o.review_score ?? 0,
+    direction: "desc",
+    format: (o) =>
+      o.review_score === null ? "—" : `${formatFixed(o.review_score, 2)} ★`,
+    group: "basic",
+    hint: "średnia ocena posiłków (fallback: ocena cateringu)",
+    id: "review-desc",
+    label: "ocena (najwyższa)",
+    short: "ocena",
+  },
+  {
     accessor: (o) => safeDiv(o.total_protein_g, o.price_per_day),
     direction: "desc",
     format: (o) =>
@@ -117,6 +138,25 @@ export const SORT_OPTIONS: readonly SortOption[] = [
     short: "kcal/zł",
   },
   {
+    // ×100 keeps the displayed number in the same readable range as the other
+    // ratios — raw avg-rating-over-price sits around 0.06 (≈4.5 ★ / 70 zł)
+    // which truncates to "0,06" and reads as noise.
+    accessor: (o) =>
+      o.review_score === null
+        ? 0
+        : safeDiv(o.review_score, o.price_per_day) * 100,
+    direction: "desc",
+    format: (o) =>
+      o.review_score === null
+        ? "—"
+        : formatFixed(safeDiv(o.review_score, o.price_per_day) * 100, 2),
+    group: "ratio",
+    hint: "średnia ocena posiłków (fallback: ocena cateringu) podzielona przez cenę (×100)",
+    id: "review-per-zl",
+    label: "ocena za złotówkę",
+    short: "ocena/zł",
+  },
+  {
     accessor: (o) => o.total_protein_g,
     direction: "desc",
     format: (o) => `${formatFixed(o.total_protein_g, 0)} g`,
@@ -139,9 +179,12 @@ export const SORT_OPTIONS: readonly SortOption[] = [
   {
     accessor: (o) => o.total_fat_g,
     direction: "asc",
+    // Caterings that don't report macros surface as 0 g, which would otherwise
+    // top an asc sort. Drop them so "least fat" reflects real diets only.
+    filter: (o) => o.total_fat_g > 0,
     format: (o) => `${formatFixed(o.total_fat_g, 0)} g`,
     group: "macro",
-    hint: "najmniej tłuszczu na dzień",
+    hint: "najmniej tłuszczu na dzień (pomija cateringi bez deklarowanych makro)",
     id: "fat-asc",
     label: "tłuszcz (najmniej)",
     short: "tłuszcz",
@@ -149,9 +192,10 @@ export const SORT_OPTIONS: readonly SortOption[] = [
   {
     accessor: (o) => o.total_carbs_g,
     direction: "asc",
+    filter: (o) => o.total_carbs_g > 0,
     format: (o) => `${formatFixed(o.total_carbs_g, 0)} g`,
     group: "macro",
-    hint: "najmniej węglowodanów na dzień",
+    hint: "najmniej węglowodanów na dzień (pomija cateringi bez deklarowanych makro)",
     id: "carbs-asc",
     label: "węglowodany (najmniej)",
     short: "węgle",
@@ -172,12 +216,24 @@ export const rankOffers = <T extends Offer>(
 ): readonly T[] => {
   const opt = getSortOption(sortId);
   const sign = opt.direction === "asc" ? 1 : -1;
-  return [...offers].toSorted(
+  const eligible =
+    opt.filter === undefined ? offers : offers.filter(opt.filter);
+  // If the eligibility filter drops every offer (e.g. no catering reports fat
+  // for the day), fall back to the raw set so the day still renders something.
+  const pool = eligible.length > 0 ? eligible : offers;
+  return [...pool].toSorted(
     (a, b) => sign * (opt.accessor(a) - opt.accessor(b))
   );
 };
 
-type ScatterYMetric = "score" | "kcal" | "protein" | "fat" | "carbs" | "fiber";
+type ScatterYMetric =
+  | "score"
+  | "kcal"
+  | "protein"
+  | "fat"
+  | "carbs"
+  | "fiber"
+  | "review";
 
 const SORT_TO_Y: Readonly<Record<SortId, ScatterYMetric>> = {
   "carbs-asc": "carbs",
@@ -188,6 +244,8 @@ const SORT_TO_Y: Readonly<Record<SortId, ScatterYMetric>> = {
   "price-asc": "score",
   "protein-desc": "protein",
   "protein-per-zl": "protein",
+  "review-desc": "review",
+  "review-per-zl": "review",
   "score-desc": "score",
   "score-per-zl": "score",
 };

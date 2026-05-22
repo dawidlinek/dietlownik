@@ -18,6 +18,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { formatPriceNumber } from "@/lib/format";
 import type { Offer } from "@/lib/match-types";
 import type { Metric, MetricId } from "@/lib/scatter-metrics";
 import { cn } from "@/lib/utils";
@@ -36,9 +37,16 @@ interface ScatterPoint {
   readonly tier_name: string | null;
   readonly calories: number;
   readonly is_menu_configuration: boolean;
-  /** Raw price + score kept for the tooltip body, even when off-axis. */
+  // Full info dump for the tooltip — every field is shown regardless of
+  // which X/Y axes the user has picked.
   readonly price: number;
   readonly score: number;
+  readonly review_score: number | null;
+  readonly total_kcal: number;
+  readonly total_protein_g: number;
+  readonly total_fat_g: number;
+  readonly total_carbs_g: number;
+  readonly total_fiber_g: number;
 }
 
 const toPoint = (o: Offer, xM: Metric, yM: Metric): ScatterPoint => ({
@@ -49,8 +57,14 @@ const toPoint = (o: Offer, xM: Metric, yM: Metric): ScatterPoint => ({
   logo_url: o.logo_url ?? null,
   offer_id: o.offer_id,
   price: o.price_per_day,
+  review_score: o.review_score ?? null,
   score: o.score_best,
   tier_name: o.tier_name,
+  total_carbs_g: o.total_carbs_g,
+  total_fat_g: o.total_fat_g,
+  total_fiber_g: o.total_fiber_g,
+  total_kcal: o.total_kcal,
+  total_protein_g: o.total_protein_g,
   x: xM.accessor(o),
   y: yM.accessor(o),
 });
@@ -67,18 +81,61 @@ const scoreColorClass = (v: number): string => {
 
 interface TooltipBodyProps {
   readonly point: ScatterPoint;
-  readonly xMetric: Metric;
-  readonly yMetric: Metric;
 }
 
-const TooltipBody = ({
-  point,
-  xMetric,
-  yMetric,
-}: Readonly<TooltipBodyProps>) => {
+const formatScore = (v: number): string => {
+  if (Math.abs(v) < 0.05) {
+    return "0,0";
+  }
+  const sign = v > 0 ? "+" : "−";
+  return `${sign}${Math.abs(v).toFixed(1).replace(".", ",")}`;
+};
+
+const formatReview = (v: number | null): string => {
+  if (v === null) {
+    return "—";
+  }
+  return new Intl.NumberFormat("pl-PL", {
+    maximumFractionDigits: 2,
+    minimumFractionDigits: 1,
+  }).format(v);
+};
+
+interface StatRowProps {
+  readonly label: string;
+  readonly value: string;
+  readonly unit?: string;
+  readonly valueClass?: string;
+}
+
+const StatRow = ({
+  label,
+  unit,
+  value,
+  valueClass,
+}: Readonly<StatRowProps>) => (
+  <div className="flex items-baseline justify-between gap-3">
+    <span className="text-[10px] uppercase tracking-[0.08em] text-[var(--color-ink-3)]">
+      {label}
+    </span>
+    <span
+      className={cn(
+        "tnum text-[12px]",
+        valueClass ?? "text-[var(--color-ink)]"
+      )}
+    >
+      {value}
+      {unit !== undefined && unit !== "" && (
+        <span className="text-[var(--color-ink-3)] ml-1">{unit}</span>
+      )}
+    </span>
+  </div>
+);
+
+const TooltipBody = ({ point }: Readonly<TooltipBodyProps>) => {
   const scoreColor = scoreColorClass(point.score);
   return (
-    <div className="rounded-md border border-[var(--color-bone)] bg-[var(--color-cream)] px-3 py-2 shadow-[0_8px_24px_-12px_oklch(22%_0.018_60_/_0.18)]">
+    <div className="rounded-md border border-[var(--color-bone)] bg-[var(--color-cream)] px-3 py-2 shadow-[0_8px_24px_-12px_oklch(22%_0.018_60_/_0.18)] min-w-[220px]">
       <div className="text-[13px] font-medium text-[var(--color-ink)]">
         {point.company_name}
       </div>
@@ -98,41 +155,71 @@ const TooltipBody = ({
           </span>
         )}
       </div>
-      <div className="mt-1.5 flex flex-col gap-0.5 text-[12px]">
-        <div className="flex items-baseline justify-between gap-3">
-          <span className="text-[10px] uppercase tracking-[0.08em] text-[var(--color-ink-3)]">
-            {xMetric.label}
-          </span>
-          <span className="tnum text-[var(--color-ink)]">
-            {xMetric.format(point.x)}
-            {xMetric.unit && (
-              <span className="text-[var(--color-ink-3)] ml-1">
-                {xMetric.unit}
-              </span>
-            )}
-          </span>
-        </div>
-        <div className="flex items-baseline justify-between gap-3">
-          <span className="text-[10px] uppercase tracking-[0.08em] text-[var(--color-ink-3)]">
-            {yMetric.label}
-          </span>
-          <span
-            className={`tnum ${yMetric.id === "score" || yMetric.id === "score_default" ? scoreColor : "text-[var(--color-ink)]"}`}
-          >
-            {yMetric.format(point.y)}
-            {yMetric.unit && (
-              <span className="text-[var(--color-ink-3)] ml-1">
-                {yMetric.unit}
-              </span>
-            )}
-          </span>
-        </div>
+      <div className="mt-1.5 flex flex-col gap-0.5">
+        <StatRow
+          label="cena"
+          unit="zł"
+          value={formatPriceNumber(point.price)}
+        />
+        <StatRow
+          label="score"
+          value={formatScore(point.score)}
+          valueClass={scoreColor}
+        />
+        <StatRow
+          label="opinia"
+          unit={point.review_score === null ? "" : "★"}
+          value={formatReview(point.review_score)}
+        />
+      </div>
+      <div className="mt-1.5 pt-1.5 border-t border-[var(--color-bone)]/60 flex flex-col gap-0.5">
+        <StatRow
+          label="kcal"
+          unit="kcal"
+          value={String(Math.round(point.total_kcal))}
+        />
+        <StatRow
+          label="białko"
+          unit="g"
+          value={String(Math.round(point.total_protein_g))}
+        />
+        <StatRow
+          label="tłuszcz"
+          unit="g"
+          value={String(Math.round(point.total_fat_g))}
+        />
+        <StatRow
+          label="węgle"
+          unit="g"
+          value={String(Math.round(point.total_carbs_g))}
+        />
+        <StatRow
+          label="błonnik"
+          unit="g"
+          value={String(Math.round(point.total_fiber_g))}
+        />
       </div>
       <div className="mt-1 text-[11px] italic text-[var(--color-ink-3)]">
         kliknij, aby wybrać
       </div>
     </div>
   );
+};
+
+interface TooltipShape {
+  readonly active?: boolean;
+  readonly payload?: readonly Readonly<{ payload?: ScatterPoint }>[];
+}
+
+const renderTooltip = ({ active, payload }: Readonly<TooltipShape>) => {
+  if (active !== true || !payload || payload.length === 0) {
+    return null;
+  }
+  const point = payload[0]?.payload;
+  if (!point) {
+    return null;
+  }
+  return <TooltipBody point={point} />;
 };
 
 // ── Logo marker shape ──────────────────────────────────────────────────────
@@ -271,6 +358,12 @@ const tooltipCursor = {
   strokeDasharray: "2 4",
 };
 
+/** Catering the user can load on demand (i.e. not yet a dot on the scatter). */
+export interface UnloadedCatering {
+  readonly company_id: string;
+  readonly name: string;
+}
+
 export interface OfferScatterProps {
   readonly offers: readonly Offer[];
   readonly cheapestId: string;
@@ -283,6 +376,13 @@ export interface OfferScatterProps {
   /** Label for the filter trigger. Defaults to "filtruj firmy". */
   // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- React.ReactNode union recursively includes mutable Iterable<ReactNode>; cannot be made deeply readonly
   readonly filterLabel?: React.ReactNode;
+  /** Caterings that aren't yet loaded as dots. Shown at the bottom of the
+   *  company filter popover with a "click to load" action. */
+  readonly unloadedCaterings?: readonly UnloadedCatering[];
+  /** Set of company_ids whose data is currently being fetched. */
+  readonly loadingCateringIds?: ReadonlySet<string>;
+  /** Fired when the user clicks an unloaded catering entry. */
+  readonly onLoadCatering?: (companyId: string) => void;
 }
 
 const TOP_N = 5;
@@ -304,11 +404,14 @@ const topByMetric = (
 export const OfferScatter = ({
   cheapestId,
   filterLabel,
+  loadingCateringIds,
   offers,
   onChangeX,
   onChangeY,
+  onLoadCatering,
   onPick,
   selectedId,
+  unloadedCaterings,
   xMetric,
   yMetric,
 }: Readonly<OfferScatterProps>) => {
@@ -418,6 +521,18 @@ export const OfferScatter = ({
 
   const includedCount = visibleCompanies.size;
 
+  // True catering universe = loaded (`companies`) ∪ not-yet-loaded
+  // (`unloadedCaterings`). `includedCount` can pre-add unloaded names on a
+  // "zaznacz wszystkie" click, so using `companies.length` alone would let
+  // the numerator outrun the denominator (e.g. "150 z 66").
+  const totalAvailable = React.useMemo(() => {
+    const names = new Set<string>(companies);
+    for (const c of unloadedCaterings ?? []) {
+      names.add(c.name);
+    }
+    return names.size;
+  }, [companies, unloadedCaterings]);
+
   const points = React.useMemo(
     () => visibleOffers.map((o) => toPoint(o, xMetric, yMetric)),
     [visibleOffers, xMetric, yMetric]
@@ -443,35 +558,21 @@ export const OfferScatter = ({
     }
   };
 
-  const renderTooltip = ({
-    active,
-    payload,
-  }: Readonly<{
-    active?: boolean;
-    payload?: readonly Readonly<{ payload?: ScatterPoint }>[];
-  }>) => {
-    if (active !== true || !payload || payload.length === 0) {
-      return null;
-    }
-    const point = payload[0]?.payload;
-    if (!point) {
-      return null;
-    }
-    return <TooltipBody point={point} xMetric={xMetric} yMetric={yMetric} />;
-  };
-
-  const filterActive = addedCompanies.size > 0 || excludedCompanies.size > 0;
-  const triggerContent =
-    filterLabel === undefined ? (
-      <>
-        filtruj firmy ·{" "}
-        <span className="tnum">
-          {includedCount} z {companies.length}
-        </span>
-      </>
-    ) : (
-      filterLabel
-    );
+  // Loading indicator — pulsing amber dot while any per-catering fetch is
+  // in flight (from clicking a single entry or from "zaznacz wszystkie").
+  // Disappears the moment the last fetch resolves.
+  const loadingActive = (loadingCateringIds?.size ?? 0) > 0;
+  // Trigger label always shows the toggled-visible count so it matches the
+  // popover's `widoczne · N`. If a caller passed `filterLabel`, render it
+  // before the count.
+  const triggerContent = (
+    <>
+      <span className="text-[10px] uppercase tracking-[0.08em] text-[var(--color-ink-3)]">
+        {filterLabel ?? "alternatywy"}
+      </span>{" "}
+      <span className="tnum">{includedCount}</span>
+    </>
+  );
   const companyFilter = (
     <Popover>
       <PopoverTrigger asChild>
@@ -485,10 +586,11 @@ export const OfferScatter = ({
           type="button"
         >
           {triggerContent}
-          {filterActive && (
-            <span aria-hidden className="text-[var(--color-amber-deep)]">
-              ●
-            </span>
+          {loadingActive && (
+            <span
+              aria-hidden
+              className="inline-block h-1.5 w-1.5 rounded-full bg-[var(--color-amber)] animate-pulse"
+            />
           )}
           <span
             aria-hidden
@@ -521,20 +623,54 @@ export const OfferScatter = ({
 
         {(() => {
           const q = companyQuery.trim().toLowerCase();
+          // Merge loaded companies and unloaded caterings into one alphabetical
+          // list. Unloaded entries carry the company_id so click can fire the
+          // on-demand fetch; loaded entries don't need it.
+          interface ListEntry {
+            readonly name: string;
+            readonly loaded: boolean;
+            readonly companyId: string | undefined;
+          }
+          const merged: ListEntry[] = [
+            ...companies.map((name) => ({
+              companyId: undefined,
+              loaded: true,
+              name,
+            })),
+            ...(unloadedCaterings ?? []).map((c) => ({
+              companyId: c.company_id,
+              loaded: false,
+              name: c.name,
+            })),
+          ].toSorted(
+            // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- Array.toSorted comparator receives mutable element refs
+            (a, b) => a.name.localeCompare(b.name, "pl")
+          );
           const matches =
             q === ""
-              ? companies
-              : companies.filter((c) => c.toLowerCase().includes(q));
-          const matchHasInvisible = matches.some(
-            (m) => !visibleCompanies.has(m)
+              ? merged
+              : merged.filter((m) => m.name.toLowerCase().includes(q));
+          const loadedMatches = matches
+            .filter((m) => m.loaded)
+            .map((m) => m.name);
+          const unloadedMatches = matches.filter(
+            (m): m is ListEntry & { readonly companyId: string } =>
+              !m.loaded && m.companyId !== undefined
           );
-          const matchHasVisible = matches.some((m) => visibleCompanies.has(m));
+          // Show "zaznacz" whenever there's anything to enable: loaded-but-hidden
+          // companies OR unloaded caterings that the click will load on demand.
+          const matchHasInvisible =
+            loadedMatches.some((m) => !visibleCompanies.has(m)) ||
+            unloadedMatches.length > 0;
+          const matchHasVisible = loadedMatches.some((m) =>
+            visibleCompanies.has(m)
+          );
           const bulkInclude = () => {
             setExcludedCompanies(
               // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- React.SetStateAction passes prev mutably
               (prev) => {
                 const next = new Set(prev);
-                for (const m of matches) {
+                for (const m of loadedMatches) {
                   next.delete(m);
                 }
                 return next;
@@ -544,21 +680,32 @@ export const OfferScatter = ({
               // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- React.SetStateAction passes prev mutably
               (prev) => {
                 const next = new Set(prev);
-                for (const m of matches) {
+                for (const m of loadedMatches) {
                   if (!modeDefaultCompanies.has(m)) {
                     next.add(m);
                   }
                 }
+                // Unloaded caterings get pre-added so their dots are visible
+                // the moment each fetch resolves (same trick as a single
+                // click in the merged list).
+                for (const u of unloadedMatches) {
+                  next.add(u.name);
+                }
                 return next;
               }
             );
+            // Fire the per-catering fetches. Idempotent on the parent side —
+            // already-loading or already-cached entries are no-ops.
+            for (const u of unloadedMatches) {
+              onLoadCatering?.(u.companyId);
+            }
           };
           const bulkExclude = () => {
             setAddedCompanies(
               // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- React.SetStateAction passes prev mutably
               (prev) => {
                 const next = new Set(prev);
-                for (const m of matches) {
+                for (const m of loadedMatches) {
                   next.delete(m);
                 }
                 return next;
@@ -568,7 +715,7 @@ export const OfferScatter = ({
               // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- React.SetStateAction passes prev mutably
               (prev) => {
                 const next = new Set(prev);
-                for (const m of matches) {
+                for (const m of loadedMatches) {
                   if (modeDefaultCompanies.has(m)) {
                     next.add(m);
                   }
@@ -582,8 +729,8 @@ export const OfferScatter = ({
               <div className="px-2 py-1 flex items-center justify-between text-[10px] uppercase tracking-[0.08em] text-[var(--color-ink-3)] border-b border-[var(--color-bone)]/60">
                 <span>
                   {q === ""
-                    ? `widoczne · ${includedCount} z ${companies.length}`
-                    : `pasuje ${matches.length} z ${companies.length}`}
+                    ? `widoczne · ${includedCount}`
+                    : `pasuje ${matches.length} z ${totalAvailable}`}
                 </span>
                 <div className="flex items-center gap-2">
                   {matchHasInvisible && (
@@ -627,20 +774,44 @@ export const OfferScatter = ({
                     brak dopasowań
                   </div>
                 ) : (
-                  matches.map((name) => {
-                    const included = visibleCompanies.has(name);
+                  matches.map((m) => {
+                    const included = m.loaded
+                      ? visibleCompanies.has(m.name)
+                      : addedCompanies.has(m.name);
+                    const isLoading =
+                      m.companyId !== undefined &&
+                      (loadingCateringIds?.has(m.companyId) ?? false);
+                    const onClickEntry = () => {
+                      if (m.loaded) {
+                        toggleCompany(m.name);
+                        return;
+                      }
+                      if (m.companyId === undefined) {
+                        return;
+                      }
+                      // Pre-add the name to addedCompanies so the dot is
+                      // visible the moment the offer lands in `offers`.
+                      // Without this the new dot would be filtered out by
+                      // visibleCompanies and silently invisible.
+                      setAddedCompanies(
+                        // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- React.SetStateAction passes prev mutably
+                        (prev) => new Set(prev).add(m.name)
+                      );
+                      onLoadCatering?.(m.companyId);
+                    };
                     return (
                       <button
                         aria-pressed={included}
                         className={cn(
                           "w-full text-left px-2.5 py-1.5 rounded-sm text-[12px]",
                           "flex items-baseline justify-between gap-2 transition-colors",
-                          "hover:bg-[var(--color-oat)]"
+                          isLoading
+                            ? "opacity-60 cursor-wait"
+                            : "hover:bg-[var(--color-oat)]"
                         )}
-                        key={name}
-                        onClick={() => {
-                          toggleCompany(name);
-                        }}
+                        disabled={isLoading}
+                        key={m.loaded ? m.name : `unloaded:${m.companyId}`}
+                        onClick={onClickEntry}
                         type="button"
                       >
                         <span
@@ -650,19 +821,26 @@ export const OfferScatter = ({
                               : "text-[var(--color-ink-3)]"
                           )}
                         >
-                          {name}
+                          {m.name}
                         </span>
-                        <span
-                          aria-hidden
-                          className={cn(
-                            "tnum text-[10px]",
-                            included
-                              ? "text-[var(--color-olive)]"
-                              : "text-[var(--color-ink-3)]/50"
-                          )}
-                        >
-                          {included ? "✓" : "—"}
-                        </span>
+                        {isLoading ? (
+                          <span
+                            aria-hidden
+                            className="inline-block h-2 w-2 rounded-full bg-[var(--color-amber)] animate-pulse"
+                          />
+                        ) : (
+                          <span
+                            aria-hidden
+                            className={cn(
+                              "tnum text-[10px]",
+                              included
+                                ? "text-[var(--color-olive)]"
+                                : "text-[var(--color-ink-3)]/50"
+                            )}
+                          >
+                            {included ? "✓" : "—"}
+                          </span>
+                        )}
                       </button>
                     );
                   })

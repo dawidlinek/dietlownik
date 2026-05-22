@@ -61,44 +61,51 @@ const MacroCell = ({
   </div>
 );
 
-const DishMeta = ({ option }: Readonly<{ option: MealOption }>) => (
-  <div className="flex flex-col gap-3 px-2.5 py-2">
-    {/* Ingredients */}
-    {option.ingredients_raw !== "" && option.ingredients_raw !== "—" && (
+const DishMeta = ({ option }: Readonly<{ option: MealOption }>) => {
+  const hasIngredients =
+    option.ingredients_raw !== "" && option.ingredients_raw !== "—";
+  return (
+    <div className="flex flex-col gap-3 px-2.5 py-2">
+      {/* Macros — always shown first, always a constant-size 2×3 grid. Putting
+          it at the top means the macro cells (the bit the user actually wants
+          to compare on hover) don't jump around when ingredients or allergens
+          change between previewed options. */}
       <div>
-        <SectionLabel>składniki</SectionLabel>
-        <div className="text-[12px] text-[var(--color-ink-2)] leading-snug">
-          {option.ingredients_raw}
+        <SectionLabel>wartości odżywcze</SectionLabel>
+        <div className="grid grid-cols-2 gap-x-4">
+          <MacroCell label="kcal" unit="" value={option.kcal} />
+          <MacroCell label="białko" unit="g" value={option.protein_g} />
+          <MacroCell label="tłuszcz" unit="g" value={option.fat_g} />
+          <MacroCell label="węgle" unit="g" value={option.carbs_g} />
+          <MacroCell label="błonnik" unit="g" value={option.fiber_g} />
+          <MacroCell label="cukry" unit="g" value={option.sugar_g} />
         </div>
       </div>
-    )}
 
-    {/* Allergens */}
-    {option.allergens.length > 0 && (
-      <div>
-        <SectionLabel>alergeny</SectionLabel>
-        <div className="flex flex-wrap gap-1">
-          {option.allergens.map((a) => (
-            <AllergenChip key={a} name={a} />
-          ))}
+      {/* Ingredients — full list, no clamp. */}
+      {hasIngredients && (
+        <div>
+          <SectionLabel>składniki</SectionLabel>
+          <div className="text-[12px] text-[var(--color-ink-2)] leading-snug">
+            {option.ingredients_raw}
+          </div>
         </div>
-      </div>
-    )}
+      )}
 
-    {/* Macros */}
-    <div>
-      <SectionLabel>wartości odżywcze</SectionLabel>
-      <div className="grid grid-cols-2 gap-x-4">
-        <MacroCell label="kcal" unit="" value={option.kcal} />
-        <MacroCell label="białko" unit="g" value={option.protein_g} />
-        <MacroCell label="tłuszcz" unit="g" value={option.fat_g} />
-        <MacroCell label="węgle" unit="g" value={option.carbs_g} />
-        <MacroCell label="błonnik" unit="g" value={option.fiber_g} />
-        <MacroCell label="cukry" unit="g" value={option.sugar_g} />
-      </div>
+      {/* Allergens */}
+      {option.allergens.length > 0 && (
+        <div>
+          <SectionLabel>alergeny</SectionLabel>
+          <div className="flex flex-wrap gap-1">
+            {option.allergens.map((a) => (
+              <AllergenChip key={a} name={a} />
+            ))}
+          </div>
+        </div>
+      )}
     </div>
-  </div>
-);
+  );
+};
 
 // ── Alternates (only when onSwap is provided) ───────────────────────────────
 
@@ -168,6 +175,7 @@ export const DishDetailsPopover = ({
     meal_name: pick.meal_name,
     meal_score: pick.meal_score,
     protein_g: pick.protein_g,
+    review_score: pick.review_score,
     sugar_g: pick.sugar_g,
   };
   const others = alternates.filter(
@@ -179,7 +187,6 @@ export const DishDetailsPopover = ({
   // committed pick so users can scan macros before clicking.
   const previewed = others.find((o) => o.meal_name === previewName);
   const displayed = previewed ?? currentAsOption;
-  const isPreviewing = previewed !== undefined;
 
   return (
     <Popover
@@ -211,30 +218,26 @@ export const DishDetailsPopover = ({
         </button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-[340px] p-0">
-        {/* Header */}
+        {/* Header — pinned to the current pick so the trigger of the popover
+            never moves on hover-preview. */}
         <div className="px-3 pt-2.5 pb-2 border-b border-[var(--color-bone)]">
           <div className="text-[10px] uppercase tracking-[0.08em] text-[var(--color-ink-3)]">
             {pick.slot_name}
-            {displayed.is_default && (
+            {pick.is_default && (
               <span className="ml-2 text-[var(--color-ink-3)]">· default</span>
             )}
-            {isPreviewing && (
-              <span className="ml-2 text-[var(--color-amber-deep)]">
-                · podgląd
-              </span>
-            )}
           </div>
-          <div className="font-display text-[15px] leading-snug text-[var(--color-ink)] mt-0.5">
-            {displayed.meal_name}
+          <div className="font-display text-[15px] leading-snug text-[var(--color-ink)] mt-0.5 line-clamp-2">
+            {pick.meal_name}
           </div>
         </div>
 
-        {/* Body */}
-        <DishMeta option={displayed} />
-
-        {/* Swap section */}
+        {/* Swap section directly under the header — keeps the hover targets
+            at a fixed offset from the popover's top anchor, so DishMeta below
+            can grow/shrink with the previewed option without shifting these
+            rows under the cursor. */}
         {showSwap && (
-          <div className="border-t border-[var(--color-bone)] px-1.5 py-2">
+          <div className="border-b border-[var(--color-bone)] px-1.5 py-2">
             <div className="px-1 mb-1 text-[10px] uppercase tracking-[0.08em] text-[var(--color-ink-3)]">
               inne opcje na ten slot · {others.length} · kliknij aby wybrać
             </div>
@@ -260,6 +263,9 @@ export const DishDetailsPopover = ({
             </div>
           </div>
         )}
+
+        {/* Body — shows the previewed option (or current pick). */}
+        <DishMeta option={displayed} />
       </PopoverContent>
     </Popover>
   );

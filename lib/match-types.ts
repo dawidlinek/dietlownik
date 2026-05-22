@@ -39,6 +39,8 @@ export interface MealOption extends MealMacros {
   readonly ingredients_raw: string;
   /** Normalized allergen names from `dietlyAllergenName`. */
   readonly allergens: readonly string[];
+  /** 0–5 rating from `meals.reviews_score`; null when not collected. */
+  readonly review_score: number | null;
 }
 
 export interface Pick extends MealOption {
@@ -83,6 +85,9 @@ export interface Offer {
   readonly total_carbs_g: number;
   readonly total_fiber_g: number;
   readonly total_sugar_g: number;
+  /** 0–5 rating: avg of picked-meal ratings, falling back to the catering
+   *  average. Null when neither source has data. */
+  readonly review_score: number | null;
 }
 
 export interface Day {
@@ -166,6 +171,7 @@ const toMealOption = (
   meal_name: meal.meal_name,
   meal_score: numOr(meal.score, 0),
   protein_g: numOr(meal.protein_g ?? null, 0),
+  review_score: meal.review_score ?? null,
   sugar_g: numOr(meal.sugar_g ?? null, 0),
 });
 
@@ -207,6 +213,7 @@ export const toViewOffer = (r: Readonly<RankedDayOffer>): Offer => {
     price_per_day: priceFinal,
     price_per_day_before_promo: priceBefore,
     promos,
+    review_score: r.review_score ?? null,
     score_best: numOr(r.verdict.score_best, 0),
     score_default: numOr(r.verdict.score_default, 0),
     tier_name: r.tier?.name ?? null,

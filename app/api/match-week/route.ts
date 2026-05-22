@@ -2,6 +2,30 @@ import { NextResponse } from "next/server";
 
 import { toViewDay } from "@/lib/match-types";
 import { getWeekView } from "@/lib/queries";
+import type { SortId } from "@/lib/sort-metrics";
+
+const VALID_SORTS: ReadonlySet<SortId> = new Set<SortId>([
+  "carbs-asc",
+  "fat-asc",
+  "fiber-desc",
+  "fiber-per-zl",
+  "kcal-per-zl",
+  "price-asc",
+  "protein-desc",
+  "protein-per-zl",
+  "review-desc",
+  "review-per-zl",
+  "score-desc",
+  "score-per-zl",
+]);
+
+const parseSort = (raw: string | null): SortId | undefined => {
+  if (raw === null || raw === "") {
+    return undefined;
+  }
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- narrowed by VALID_SORTS membership
+  return VALID_SORTS.has(raw as SortId) ? (raw as SortId) : undefined;
+};
 
 export const dynamic = "force-dynamic";
 
@@ -39,6 +63,7 @@ export const GET = async (request: Request) => {
   const prefer = parseList(searchParams.get("prefer"));
   const avoid = parseList(searchParams.get("avoid"));
   const excludeCompanyIds = parseList(searchParams.get("exclude"));
+  const includeCompanyIds = parseList(searchParams.get("include"));
   const kcalMinRaw = searchParams.get("kcal_min");
   const kcalMaxRaw = searchParams.get("kcal_max");
   const kcalMin =
@@ -48,6 +73,12 @@ export const GET = async (request: Request) => {
   const orderDaysRaw = searchParams.get("order_days");
   const orderDays =
     orderDaysRaw === null ? undefined : parseIntOr(orderDaysRaw, 5);
+  // Per-day top-N cap. The home page's two-phase loader uses `1` for the
+  // fast first-paint table and omits the param (= 0 = no cap) for the
+  // per-day lazy fetch that powers the expanded-row scatter.
+  const limitRaw = searchParams.get("limit");
+  const limit = limitRaw === null ? 0 : parseIntOr(limitRaw, 0);
+  const sort = parseSort(searchParams.get("sort"));
 
   try {
     const weekView = await getWeekView({
@@ -55,10 +86,13 @@ export const GET = async (request: Request) => {
       cityId,
       dates,
       excludeCompanyIds,
+      includeCompanyIds,
       kcalMax: Number.isFinite(kcalMax) ? kcalMax : undefined,
       kcalMin: Number.isFinite(kcalMin) ? kcalMin : undefined,
+      limit,
       orderDays,
       prefer,
+      sort,
     });
     const days = weekView.map(toViewDay);
     return NextResponse.json({ days });

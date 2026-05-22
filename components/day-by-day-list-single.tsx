@@ -2,6 +2,8 @@
 
 import * as React from "react";
 
+import { DayRowSkeleton } from "@/components/day-row-skeleton";
+import type { CateringChoice } from "@/components/exclude-filter";
 import { DishDetailsPopover } from "@/components/meal-swap-popover";
 import { OfferScatter } from "@/components/offer-scatter";
 import {
@@ -164,6 +166,15 @@ const PicksTable = ({
   const sorted = [...picks].toSorted(
     (a, b) => slotRank(a.slot_name) - slotRank(b.slot_name)
   );
+  // Drop dead columns: when no pick has a non-zero score (no prefer/avoid
+  // filters matched, or none set at all) the score column is pure noise; same
+  // story for ocena when none of the meals carry a per-meal rating.
+  const showScore = sorted.some(
+    (p) =>
+      Math.abs(p.meal_score) > 0.05 ||
+      p.hits.some((h) => Math.abs(h.contribution) >= 0.05)
+  );
+  const showReview = sorted.some((p) => p.review_score !== null);
   return (
     <div className="mt-3 border-t border-[var(--color-bone)] pt-3">
       <table className="w-full text-[12px]">
@@ -171,7 +182,16 @@ const PicksTable = ({
           <tr className="text-[10px] uppercase tracking-[0.08em] text-[var(--color-ink-3)]">
             <th className="text-left font-medium py-1 pr-3 w-[80px]">slot</th>
             <th className="text-left font-medium py-1 pr-3">posiłek</th>
-            <th className="text-right font-medium py-1 pr-3 w-[60px]">score</th>
+            {showScore && (
+              <th className="text-right font-medium py-1 pr-3 w-[60px]">
+                score
+              </th>
+            )}
+            {showReview && (
+              <th className="text-right font-medium py-1 pr-3 w-[60px]">
+                ocena
+              </th>
+            )}
             <th className="text-right font-medium py-1 pr-3 w-[60px]">
               białko
             </th>
@@ -196,33 +216,42 @@ const PicksTable = ({
                 <td className="py-1.5 pr-3 text-[var(--color-ink)]">
                   <DishDetailsPopover onSwap={swapHandler} pick={p} />
                 </td>
-                <td
-                  className={cn(
-                    "py-1.5 pr-3 text-right tnum",
-                    p.meal_score > 0.05 && "text-[var(--color-olive)]",
-                    p.meal_score < -0.05 && "text-[var(--color-clay)]",
-                    Math.abs(p.meal_score) <= 0.05 &&
-                      "text-[var(--color-ink-3)]"
-                  )}
-                >
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span
-                        className={cn(
-                          "cursor-help border-b border-dotted",
-                          p.hits.some((h) => Math.abs(h.contribution) >= 0.05)
-                            ? "border-[var(--color-bone)]"
-                            : "border-transparent"
-                        )}
-                      >
-                        {formatScore(p.meal_score)}
-                      </span>
-                    </TooltipTrigger>
-                    <TooltipContent align="end" side="left">
-                      <MealScoreBreakdown pick={p} />
-                    </TooltipContent>
-                  </Tooltip>
-                </td>
+                {showScore && (
+                  <td
+                    className={cn(
+                      "py-1.5 pr-3 text-right tnum",
+                      p.meal_score > 0.05 && "text-[var(--color-olive)]",
+                      p.meal_score < -0.05 && "text-[var(--color-clay)]",
+                      Math.abs(p.meal_score) <= 0.05 &&
+                        "text-[var(--color-ink-3)]"
+                    )}
+                  >
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span
+                          className={cn(
+                            "cursor-help border-b border-dotted",
+                            p.hits.some((h) => Math.abs(h.contribution) >= 0.05)
+                              ? "border-[var(--color-bone)]"
+                              : "border-transparent"
+                          )}
+                        >
+                          {formatScore(p.meal_score)}
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent align="end" side="left">
+                        <MealScoreBreakdown pick={p} />
+                      </TooltipContent>
+                    </Tooltip>
+                  </td>
+                )}
+                {showReview && (
+                  <td className="py-1.5 pr-3 text-right tnum text-[var(--color-ink-2)]">
+                    {p.review_score === null
+                      ? "—"
+                      : `${p.review_score.toFixed(2).replace(".", ",")} ★`}
+                  </td>
+                )}
                 <td className="py-1.5 pr-3 text-right tnum text-[var(--color-ink-2)]">
                   {Math.round(p.protein_g)} g
                 </td>
@@ -262,6 +291,13 @@ interface SingleRowProps {
   readonly onChangeY: (id: MetricId) => void;
   readonly onSwapMeal: (slot: string, option: MealOption) => void;
   readonly onPickFromScatter: (offerId: string) => void;
+  /** Caterings the user can add to the scatter on demand — already-loaded
+   *  ones are filtered out by the parent. */
+  readonly unloadedCaterings: readonly CateringChoice[];
+  /** Set of `${date}::${companyId}` keys currently loading. */
+  readonly loadingCaterings: ReadonlySet<string>;
+  /** Fired when the user clicks an unloaded catering chip. */
+  readonly onLoadCatering: (companyId: string) => void;
 }
 
 const ScoreChip = ({ score }: Readonly<{ score: number }>) => {
@@ -298,20 +334,32 @@ interface ScatterPanelProps {
   readonly yId: MetricId;
   readonly onChangeX: (id: MetricId) => void;
   readonly onChangeY: (id: MetricId) => void;
-  readonly altsCount: number;
+  /** Caterings the user can load on demand via the Alternatywy popover. */
+  readonly unloadedCaterings: readonly CateringChoice[];
+  /** Set of company_ids currently loading for this day. */
+  readonly loadingCateringIds: ReadonlySet<string>;
+  /** Fired by the popover entry click; parent triggers the per-catering fetch. */
+  readonly onLoadCatering: (companyId: string) => void;
 }
 
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- props include a ReadonlySet (loadingCateringIds) which already conveys read-only intent
 const ScatterPanel = ({
-  altsCount,
   cheapestId,
+  loadingCateringIds,
   offers,
   onChangeX,
   onChangeY,
+  onLoadCatering,
   onPick,
   selectedId,
+  unloadedCaterings,
   xId,
   yId,
 }: Readonly<ScatterPanelProps>) => {
+  // No placeholder while Phase B is in flight — the scatter renders with
+  // whatever offers are already in memory (the row's chosen offer from
+  // Phase A) and Phase B's additional points fade in when they arrive.
+  // The loading indicator lives on the "alternatywy" trigger's pulsing dot.
   if (offers.length === 0) {
     return (
       <div className="mt-3 border-t border-[var(--color-bone)] pt-3 text-[12px] text-[var(--color-ink-3)] italic">
@@ -320,19 +368,17 @@ const ScatterPanel = ({
     );
   }
   return (
-    <div>
+    <div className="animate-in fade-in duration-300">
       <OfferScatter
         cheapestId={cheapestId}
-        filterLabel={
-          <span className="text-[10px] uppercase tracking-[0.08em] text-[var(--color-ink-3)]">
-            alternatywy ({altsCount})
-          </span>
-        }
+        loadingCateringIds={loadingCateringIds}
         offers={offers}
         onChangeX={onChangeX}
         onChangeY={onChangeY}
+        onLoadCatering={onLoadCatering}
         onPick={onPick}
         selectedId={selectedId}
+        unloadedCaterings={unloadedCaterings}
         xMetric={getMetric(xId)}
         yMetric={getMetric(yId)}
       />
@@ -345,30 +391,41 @@ const stopRowClick = (e: React.MouseEvent | React.KeyboardEvent): void => {
   e.stopPropagation();
 };
 
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- props include a ReadonlySet (loadingCaterings) which already conveys read-only intent
 const SingleRow = ({
   allOffers,
   cheapestId,
   day,
   formatMetric,
+  loadingCaterings,
   metricLabel,
   offer,
   onChangeX,
   onChangeY,
+  onLoadCatering,
   onPickFromScatter,
   onSwapMeal,
   onToggle,
   open,
   rank,
   totalForDay,
+  unloadedCaterings,
   xId,
   yId,
 }: Readonly<SingleRowProps>) => {
+  // Narrow the global `${date}::${companyId}` loading set to just this row's
+  // date. The OfferScatter popover wants a flat Set<companyId>.
+  const loadingCateringIds = React.useMemo(() => {
+    const prefix = `${day.date}::`;
+    const out = new Set<string>();
+    for (const key of loadingCaterings) {
+      if (key.startsWith(prefix)) {
+        out.add(key.slice(prefix.length));
+      }
+    }
+    return out;
+  }, [day.date, loadingCaterings]);
   const metricValue = formatMetric(offer);
-  // "Alternatives" count = distinct caterings competing for this day,
-  // minus the one currently chosen. The raw variant count is shown next to
-  // the day label ("N wariantów") so we don't duplicate it here.
-  const distinctCompanies = new Set(allOffers.map((o) => o.company_id)).size;
-  const altsCount = Math.max(distinctCompanies - 1, 0);
 
   // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- React synthetic events carry DOM refs; cannot be deeply readonly
   const handleHeaderKey = (e: React.KeyboardEvent<HTMLDivElement>): void => {
@@ -515,9 +572,9 @@ const SingleRow = ({
               <span className="text-[var(--color-ink-3)]"> · błonnik </span>
               {Math.round(offer.total_fiber_g)} g
             </span>
-            {altsCount > 0 && (
+            {open && (
               <span className="ml-auto text-[11px] uppercase tracking-[0.08em] text-[var(--color-ink-3)]">
-                {open ? "zwiń" : `${altsCount} alternatyw`}
+                zwiń
               </span>
             )}
           </div>
@@ -544,13 +601,15 @@ const SingleRow = ({
                 />
               </div>
               <ScatterPanel
-                altsCount={altsCount}
                 cheapestId={cheapestId}
+                loadingCateringIds={loadingCateringIds}
                 offers={allOffers}
                 onChangeX={onChangeX}
                 onChangeY={onChangeY}
+                onLoadCatering={onLoadCatering}
                 onPick={onPickFromScatter}
                 selectedId={offer.offer_id}
+                unloadedCaterings={unloadedCaterings}
                 xId={xId}
                 yId={yId}
               />
@@ -646,6 +705,24 @@ const OrderSummary = ({
 
 export interface DayByDaySingleProps {
   readonly days: readonly Day[];
+  /** When non-null, render shimmer placeholders for these dates instead of
+   *  the real days. Set during Phase A after a config change. */
+  readonly skeletonDates?: readonly string[] | null;
+  /** Full-pool offers per date, populated lazily on row expand by the parent.
+   *  When a date is missing here, the row falls back to `day.all_offers`
+   *  (which after Phase A is just the top-1 winner). */
+  readonly poolByDate?: Readonly<Record<string, readonly Offer[]>>;
+  /** Fired when the user opens a row. Parent triggers the per-day pool
+   *  fetch. Not called on collapse. */
+  readonly onExpandDate?: (date: string) => void;
+  /** All caterings available for the city (from getCaterings). Used by the
+   *  per-row picker to list caterings the user can add to the scatter on
+   *  demand. */
+  readonly availableCaterings?: readonly CateringChoice[];
+  /** Per-(date, catering) loading state. Keyed by `${date}::${companyId}`. */
+  readonly loadingCaterings?: ReadonlySet<string>;
+  /** Fired when the user clicks a catering chip in the expanded-row picker. */
+  readonly onLoadCatering?: (date: string, companyId: string) => void;
   readonly sortId: SortId;
   readonly xId: MetricId;
   readonly yId: MetricId;
@@ -657,10 +734,17 @@ type Overrides = Readonly<Record<string, string>>;
 /** Date of the currently-expanded row, or null. Only one row open at a time. */
 type Expansion = string | null;
 
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- props carry a ReadonlySet which the lint already treats as readonly
 export const DayByDayListSingle = ({
+  availableCaterings,
   days,
+  loadingCaterings,
   onChangeX,
   onChangeY,
+  onExpandDate,
+  onLoadCatering,
+  poolByDate,
+  skeletonDates,
   sortId,
   xId,
   yId,
@@ -671,6 +755,17 @@ export const DayByDayListSingle = ({
   const [overrides, setOverrides] = React.useState<Overrides>({});
 
   const sortOpt = getSortOption(sortId);
+
+  const toggleExpansion = React.useCallback(
+    (date: string, currentlyOpen: boolean) => {
+      const next = currentlyOpen ? null : date;
+      setExpansion(next);
+      if (next !== null && onExpandDate) {
+        onExpandDate(next);
+      }
+    },
+    [onExpandDate]
+  );
 
   // Reset overrides when the sort changes — the user picked a new ranking
   // criterion, so previous manual picks no longer reflect intent.
@@ -724,6 +819,23 @@ export const DayByDayListSingle = ({
     return out;
   }, [days, overrides, sortId, swaps]);
 
+  // Phase A is in flight after a config change — show shimmer placeholders
+  // for every selected date. Inputs above stay live; debounce + abort in
+  // the parent handles successive changes.
+  if (skeletonDates && skeletonDates.length > 0) {
+    return (
+      <TooltipProvider delayDuration={120} skipDelayDuration={200}>
+        <div className="px-5 sm:px-8 lg:px-14 pt-3 pb-6">
+          <div>
+            {skeletonDates.map((d) => (
+              <DayRowSkeleton date={d} key={d} />
+            ))}
+          </div>
+        </div>
+      </TooltipProvider>
+    );
+  }
+
   return (
     <TooltipProvider delayDuration={120} skipDelayDuration={200}>
       <div className="px-5 sm:px-8 lg:px-14 pt-3 pb-6">
@@ -756,8 +868,13 @@ export const DayByDayListSingle = ({
               );
             }
 
-            // Apply swaps to each offer, then rank.
-            const swapped: readonly Offer[] = day.all_offers.map((o) =>
+            // Prefer the lazily-fetched full pool when present; fall back to
+            // the day's own offers (which after Phase A is just top-1). This
+            // lets the row header render instantly off Phase A data while
+            // the scatter waits for the per-day pool.
+            const pool = poolByDate?.[day.date];
+            const baseOffers = pool ?? day.all_offers;
+            const swapped: readonly Offer[] = baseOffers.map((o) =>
               applySwaps(o, swaps[`${day.date}::${o.offer_id}`] ?? {})
             );
             const ranked = rankOffers(swapped, sortId);
@@ -776,6 +893,16 @@ export const DayByDayListSingle = ({
 
             const open = expansion === day.date;
 
+            // Caterings that aren't yet represented as dots on the scatter.
+            // The picker chip list lets the user click any of these to load
+            // its data on demand.
+            const loadedCompanyIds = new Set(
+              baseOffers.map((o) => o.company_id)
+            );
+            const unloadedCaterings = (availableCaterings ?? []).filter(
+              (c) => !loadedCompanyIds.has(c.company_id)
+            );
+
             return (
               <SingleRow
                 allOffers={swapped}
@@ -783,10 +910,14 @@ export const DayByDayListSingle = ({
                 day={day}
                 formatMetric={sortOpt.format}
                 key={day.date}
+                loadingCaterings={loadingCaterings ?? new Set()}
                 metricLabel={sortOpt.short}
                 offer={chosen}
                 onChangeX={onChangeX}
                 onChangeY={onChangeY}
+                onLoadCatering={(companyId) => {
+                  onLoadCatering?.(day.date, companyId);
+                }}
                 onPickFromScatter={(offerId) => {
                   handlePickFromScatter(day.date, offerId);
                 }}
@@ -794,11 +925,12 @@ export const DayByDayListSingle = ({
                   handleSwap(day.date, chosen.offer_id, slot, opt);
                 }}
                 onToggle={() => {
-                  setExpansion(open ? null : day.date);
+                  toggleExpansion(day.date, open);
                 }}
                 open={open}
                 rank={chosenRank + 1}
                 totalForDay={day.total_considered}
+                unloadedCaterings={unloadedCaterings}
                 xId={xId}
                 yId={yId}
               />

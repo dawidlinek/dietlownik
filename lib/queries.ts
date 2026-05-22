@@ -3,6 +3,35 @@ import { query } from "./db";
 import { toPgVector } from "./embeddings";
 import { routePreferences } from "./preference-router";
 import type { MacroField, RoutedIntents } from "./preference-router";
+import type { SortId } from "./sort-metrics";
+
+// SortId → SQL ORDER BY fragment for the `ranked` CTE / final SELECT in
+// getRankedOffersForDay. `T` is the table alias placeholder (`pr` in the
+// `ranked` CTE, `r` in the final SELECT). Keys are exhaustive (TS flags if
+// SortId grows); values are static strings, no injection surface even though
+// they're string-interpolated rather than $-parameterized.
+const SORT_TO_ORDER_TEMPLATE: Readonly<Record<SortId, string>> = {
+  "carbs-asc": "T.total_carbs_g ASC NULLS LAST",
+  "fat-asc": "T.total_fat_g ASC NULLS LAST",
+  "fiber-desc": "T.total_fiber_g DESC NULLS LAST",
+  "fiber-per-zl":
+    "(T.total_fiber_g / NULLIF(T.price_per_day, 0)) DESC NULLS LAST",
+  "kcal-per-zl": "(T.total_kcal / NULLIF(T.price_per_day, 0)) DESC NULLS LAST",
+  "price-asc": "T.price_per_day ASC NULLS LAST",
+  "protein-desc": "T.total_protein_g DESC NULLS LAST",
+  "protein-per-zl":
+    "(T.total_protein_g / NULLIF(T.price_per_day, 0)) DESC NULLS LAST",
+  "review-desc": "T.review_score DESC NULLS LAST",
+  "review-per-zl":
+    "(T.review_score / NULLIF(T.price_per_day, 0)) DESC NULLS LAST",
+  "score-desc": "T.score_best DESC NULLS LAST",
+  "score-per-zl": "(T.score_best / NULLIF(T.price_per_day, 0)) DESC NULLS LAST",
+};
+
+const sortOrderSql = (sortId: SortId, alias: "pr" | "r"): string =>
+  SORT_TO_ORDER_TEMPLATE[sortId].replaceAll("T.", `${alias}.`);
+
+const DEFAULT_SORT: SortId = "score-desc";
 
 export interface CityRow {
   readonly city_id: number;
@@ -319,6 +348,8 @@ export interface MealScore {
   readonly sugar_g: number | null;
   readonly ingredients_raw: string | null;
   readonly allergens: readonly string[];
+  /** Per-meal rating (`meals.reviews_score`), 0–5; null when not collected. */
+  readonly review_score: number | null;
 }
 
 export interface DayPick {
@@ -358,6 +389,9 @@ export interface RankedDayOffer {
   readonly picks: readonly DayPick[];
   readonly picks_default: readonly DayPick[] | null;
   readonly verdict: DayVerdict;
+  /** Avg of `meals.reviews_score` across this offer's picked meals; falls back
+   *  to `companies.avg_score` when no picked meal carries a per-meal rating. */
+  readonly review_score: number | null;
 }
 
 // Discriminate macro field op as a stable string label suitable for SQL
@@ -395,6 +429,7 @@ interface RankedRow {
   readonly n_slots: number;
   readonly picks_json: string;
   readonly picks_default_json: string;
+  readonly review_score: string | null;
   readonly considered_count: number;
 }
 
@@ -412,6 +447,7 @@ interface MealJsonShape {
   readonly sugar_g: number | string | null;
   readonly ingredients_raw: string | null;
   readonly allergens: readonly string[] | null;
+  readonly reviews_score: number | string | null;
 }
 
 interface PickJsonShape {
@@ -564,6 +600,7 @@ const decodeMeal = (m: MealJsonShape, hitsScale: number): MealScore => ({
   meal_id: m.meal_id,
   meal_name: m.meal_name,
   protein_g: nullableNumber(m.protein_g),
+  review_score: nullableNumber(m.reviews_score),
   score: Number(m.score) * hitsScale,
   sugar_g: nullableNumber(m.sugar_g),
 });
@@ -626,6 +663,7 @@ const resolveRankedLimit = (raw: number | null | undefined): number | null => {
 };
 
 export const getRankedOffersForDay = async (
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- RoutedIntents transitively references Float32Array (in EmbeddingIntent.vector) which has no readonly variant; the structure is treat-as-immutable in practice
   args: Readonly<{
     cityId: number;
     date: string;
@@ -643,6 +681,18 @@ export const getRankedOffersForDay = async (
     /** Catering slugs (company_ids) to exclude from results. Filtered at the
      *  earliest CTE so they don't waste downstream work. */
     excludeCompanyIds?: readonly string[];
+    /** Catering slugs to restrict results to. Non-empty list = only those
+     *  caterings considered. Used by the per-row "load this catering" picker
+     *  to fetch a single catering's offer for a day on demand. */
+    includeCompanyIds?: readonly string[];
+    /** Pre-routed intents — callers that fan out N parallel per-day queries
+     *  (getWeekView, getWeeklyPlan) compute this once and share, so we don't
+     *  re-hit keyword_embeddings + taxonomy N times for the same prefer/avoid. */
+    routedIntents?: RoutedIntents;
+    /** Sort metric used for the per-day top-N ranking. With `limit=1` this
+     *  controls which offer wins the row header (the user's pick). Defaults
+     *  to "score-desc" (the existing behavior). */
+    sort?: SortId;
   }>
 ): Promise<{
   readonly offers: readonly RankedDayOffer[];
@@ -653,11 +703,17 @@ export const getRankedOffersForDay = async (
   const wPrefer = args.weights?.prefer ?? 1;
   const wAvoid = args.weights?.avoid ?? 1;
   const excludeCompanyIds = args.excludeCompanyIds ?? [];
+  const includeCompanyIds = args.includeCompanyIds ?? [];
+  const sortId: SortId = args.sort ?? DEFAULT_SORT;
+  const sortSqlPr = sortOrderSql(sortId, "pr");
+  const sortSqlR = sortOrderSql(sortId, "r");
 
-  const intents = await routePreferences({
-    avoid: args.avoid,
-    prefer: args.prefer,
-  });
+  const intents =
+    args.routedIntents ??
+    (await routePreferences({
+      avoid: args.avoid,
+      prefer: args.prefer,
+    }));
 
   const p = intentParamsFromRouter(intents);
 
@@ -673,6 +729,7 @@ export const getRankedOffersForDay = async (
   //   $8  wAvoid                                   $23 embVectors
   //   $24 ingredientKeywords  $25 ingredientStems  $26 ingredientChannels
   //   $27 excludeCompanyIds (catering slugs to skip)
+  //   $28 includeCompanyIds (catering slugs whitelist; empty = no filter)
   const params: readonly unknown[] = [
     args.cityId,
     args.date,
@@ -701,6 +758,7 @@ export const getRankedOffersForDay = async (
     p.ingredientStems,
     p.ingredientChannels,
     excludeCompanyIds,
+    includeCompanyIds,
   ];
 
   const sql = `
@@ -708,20 +766,35 @@ export const getRankedOffersForDay = async (
     -- ── Step A: per-(offer, slot, meal-option) candidate rows for the day.
     -- The exclude filter at the bottom drops caterings the user opted out of
     -- (the "wyklucz" UI multi-select). Empty list = no filter.
+    --
+    -- We inline the DISTINCT ON dedupe instead of going through the
+    -- current_daily_menu view: the view dedupes across ALL menu_dates and
+    -- cities before our filter can prune, which forced a seq-scan over the
+    -- whole event log. Filtering city_id + menu_date BEFORE the DISTINCT ON
+    -- lets the idx_daily_menu_city_date index drive a small range scan.
     offer_slots AS (
-      SELECT
-        cdm.company_id,
-        cdm.diet_calories_id,
-        cdm.tier_id,
-        cdm.slot_name,
-        cdm.meal_id,
-        cdm.is_default
-      FROM current_daily_menu cdm
-      WHERE cdm.city_id    = $1
-        AND cdm.menu_date  = $2::date
-        AND cdm.meal_id IS NOT NULL
+      SELECT DISTINCT ON (
+        company_id, diet_calories_id, COALESCE(tier_id, -1),
+        slot_name, COALESCE(meal_id, -1)
+      )
+        company_id,
+        diet_calories_id,
+        tier_id,
+        slot_name,
+        meal_id,
+        is_default
+      FROM daily_menu
+      WHERE city_id   = $1
+        AND menu_date = $2::date
+        AND meal_id IS NOT NULL
         AND (COALESCE(array_length($27::text[], 1), 0) = 0
-             OR cdm.company_id <> ALL ($27::text[]))
+             OR company_id <> ALL ($27::text[]))
+        AND (COALESCE(array_length($28::text[], 1), 0) = 0
+             OR company_id = ANY ($28::text[]))
+      ORDER BY
+        company_id, diet_calories_id, COALESCE(tier_id, -1),
+        slot_name, COALESCE(meal_id, -1),
+        captured_at DESC
     ),
     -- Step B: kcal filter + canonical-menu fan-out via diet_calories metadata.
     --
@@ -909,35 +982,62 @@ export const getRankedOffersForDay = async (
       FROM UNNEST($21::text[], $22::text[], $23::text[])
            AS t(keyword, channel, vec)
     ),
+    -- Scope the embedding scan to the candidate meal set BEFORE doing the
+    -- DISTINCT ON dedupe. The previous current_meal_embeddings view did
+    -- DISTINCT ON across every meal_id in the entire embedding table; even
+    -- when filtered by JOIN, the planner had to materialize the dedupe
+    -- output first. Restricting to ~hundreds of candidates collapses the
+    -- cross-product with K embedding intents from K × all_meals to
+    -- K × candidates. The EXISTS short-circuits the scan entirely when
+    -- there are no embedding intents.
+    candidate_embeddings AS (
+      SELECT DISTINCT ON (me.meal_id)
+        me.meal_id, me.embedding
+      FROM meal_embeddings me
+      WHERE me.meal_id IN (SELECT meal_id FROM candidate_meals)
+        AND EXISTS (SELECT 1 FROM embedding_intents)
+      ORDER BY me.meal_id, me.embedded_at DESC
+    ),
     embedding_hits AS (
       SELECT
         osk.company_id, osk.diet_calories_id, osk.slot_name, osk.meal_id,
         'embedding'::text  AS source,
         ei.keyword         AS keyword,
         ei.channel         AS channel,
-        (0.5 + (((1 - (cme.embedding <=> ei.vec))::numeric - 0.80) / 0.20) * 1.5)
+        (0.5 + (((1 - (ce.embedding <=> ei.vec))::numeric - 0.80) / 0.20) * 1.5)
                            AS penalty,
         ('embedding: ' || ei.keyword || ' (sim='
-          || ROUND((1 - (cme.embedding <=> ei.vec))::numeric, 2)::text || ')')
+          || ROUND((1 - (ce.embedding <=> ei.vec))::numeric, 2)::text || ')')
                             AS reason
       FROM offer_slots_kcal osk
-      JOIN current_meal_embeddings cme ON cme.meal_id = osk.meal_id
+      JOIN candidate_embeddings ce ON ce.meal_id = osk.meal_id
       JOIN embedding_intents ei ON TRUE
-      WHERE (1 - (cme.embedding <=> ei.vec))::numeric >= 0.80
+      WHERE (1 - (ce.embedding <=> ei.vec))::numeric >= 0.80
     ),
-    -- ── Step C5: ingredient hits — pg_trgm fuzzy match against the per-meal
-    -- ingredient list AND the meal's display name. Uses gin_trgm_ops indexes
-    -- on meal_ingredients.name_normalized and meals.name_normalized (the
-    -- latter added in migrate_v9). The stem (diacritic-folded + lightly
-    -- suffix-stripped via lib/polish-stem.ts) is what we feed to similarity()
-    -- — trigram is lenient about morphological tails but benefits from the
-    -- suffix folding for declined forms.
+    -- ── Step C5: ingredient hits — pg_trgm word_similarity match against the
+    -- per-meal ingredient list AND the meal's display name. The stem
+    -- (diacritic-folded + lightly suffix-stripped via lib/polish-stem.ts) is
+    -- fed to word_similarity() — which finds the best-matching word region
+    -- within a longer string instead of comparing whole strings.
+    --
+    -- Why word_similarity not similarity: plain similarity('pomidor', 'sos
+    -- pomidorowy z bazylia') ≈ 0.15 (dominated by the rest of the string)
+    -- which misses ~99% of meal-name hits. word_similarity('pomidor', ...)
+    -- finds the best-matching contiguous substring → 0.88 for 'pomidorowy',
+    -- 1.00 for the literal word. Net recall ~10× on real Wrocław data.
     --
     -- Two scopes feed one channel: ingredient-row matches catch substances
     -- ('pomidor', 'ser', 'kurczak'), and meal-name matches catch dish-level
     -- terms ('zupa', 'shake', 'pierogi'). We UNION them and aggregate to one
-    -- hit per (offer, slot, meal, keyword) — the best-matching source wins,
-    -- so multi-ingredient meals don't get double-counted.
+    -- hit per (offer, slot, meal, keyword) — best-matching source wins so
+    -- multi-ingredient meals don't get double-counted.
+    --
+    -- The <% operator is gist_trgm_ops-indexed (see migrate_v10) and
+    -- short-circuits to "definitely below threshold" before the more
+    -- expensive word_similarity() recompute fires for ranking. Keeping the
+    -- explicit >= 0.6 check after <% because pg_trgm's default
+    -- similarity_threshold (0.3) is lower than our 0.6, and we want the
+    -- tighter cutoff to apply regardless of per-session GUC.
     ingredient_intents AS (
       SELECT keyword, stem, channel
       FROM UNNEST($24::text[], $25::text[], $26::text[])
@@ -949,22 +1049,24 @@ export const getRankedOffersForDay = async (
         osk.company_id, osk.diet_calories_id, osk.slot_name, osk.meal_id,
         ii.keyword, ii.channel, ii.stem,
         mi.name_normalized AS matched_text,
-        similarity(mi.name_normalized, ii.stem)::numeric AS sim
+        word_similarity(ii.stem, mi.name_normalized)::numeric AS sim
       FROM offer_slots_kcal osk
       JOIN meal_ingredients mi ON mi.meal_id = osk.meal_id
-      JOIN ingredient_intents ii ON mi.name_normalized % ii.stem
-      WHERE similarity(mi.name_normalized, ii.stem) >= 0.45
+      JOIN ingredient_intents ii ON TRUE
+      WHERE ii.stem <% mi.name_normalized
+        AND word_similarity(ii.stem, mi.name_normalized) >= 0.6
       UNION ALL
       -- meal-name matches
       SELECT
         osk.company_id, osk.diet_calories_id, osk.slot_name, osk.meal_id,
         ii.keyword, ii.channel, ii.stem,
         m.name_normalized AS matched_text,
-        similarity(m.name_normalized, ii.stem)::numeric AS sim
+        word_similarity(ii.stem, m.name_normalized)::numeric AS sim
       FROM offer_slots_kcal osk
       JOIN meals m ON m.id = osk.meal_id
-      JOIN ingredient_intents ii ON m.name_normalized % ii.stem
-      WHERE similarity(m.name_normalized, ii.stem) >= 0.45
+      JOIN ingredient_intents ii ON TRUE
+      WHERE ii.stem <% m.name_normalized
+        AND word_similarity(ii.stem, m.name_normalized) >= 0.6
     ),
     ingredient_hits AS (
       SELECT
@@ -1048,74 +1150,68 @@ export const getRankedOffersForDay = async (
       GROUP BY osk.company_id, osk.diet_calories_id, osk.tier_id,
                osk.slot_name, osk.meal_id, osk.is_default
     ),
-    -- ── Step E: per-slot — best option AND default option
-    -- We pre-build the per-option jsonb once to avoid duplicating projection.
-    -- The payload now carries the meal's macros + ingredients + allergens
-    -- (so the UI can render macros and the swap popover without a second round-trip).
-    option_payload AS (
-      SELECT
-        pos.company_id, pos.diet_calories_id, pos.tier_id,
-        pos.slot_name, pos.meal_id, pos.is_default, pos.score,
-        jsonb_build_object(
-          'meal_id',         pos.meal_id,
-          'meal_name',       m.name,
-          'is_default',      pos.is_default,
-          'score',           pos.score,
-          'hits',            pos.hits_json,
-          'kcal',            m.kcal,
-          'protein_g',       m.protein_g,
-          'fat_g',           m.fat_g,
-          'carbs_g',         m.carbs_g,
-          'fiber_g',         m.fiber_g,
-          'sugar_g',         m.sugar_g,
-          'ingredients_raw', m.ingredients_raw,
-          'allergens',       COALESCE(m.allergens, ARRAY[]::TEXT[])
-        ) AS payload
-      FROM per_option_score pos
-      JOIN meals m ON m.id = pos.meal_id
-    ),
+    -- ── Step E: per-slot — best option, default option, all options.
+    -- Stores SCALARS + parallel arrays only — no meal payloads yet. The
+    -- meals JOIN + jsonb_build_object are deferred to the final LATERAL,
+    -- which runs for the top-N surviving offers only. Earlier versions
+    -- materialized 120 MB of jsonb here on every call (EXPLAIN showed
+    -- per_slot spilling to disk + scanned twice — once by per_offer_score,
+    -- once by the lateral) just to throw 99% away at LIMIT 10.
+    --
+    -- Option arrays are ordered (score DESC, meal_id ASC) so unnest WITH
+    -- ORDINALITY in the lateral preserves the displayed-alternates order.
     per_slot AS (
       SELECT
-        op.company_id, op.diet_calories_id, op.tier_id, op.slot_name,
-        (array_agg(op.payload
-          ORDER BY op.score DESC NULLS LAST, op.meal_id ASC))[1] AS best_pick,
-        MAX(op.score) FILTER (WHERE TRUE) AS best_score,
-        -- Default: prefer the is_default=TRUE option; tiebreak by meal_id ASC.
-        (array_agg(op.payload
-          ORDER BY op.is_default DESC, op.meal_id ASC))[1]      AS default_pick,
-        (array_agg(op.score
-          ORDER BY op.is_default DESC, op.meal_id ASC))[1]      AS default_score,
-        -- ALL options for this slot, score-descending. Used as alternates in
-        -- the swap popover for menu-config offers.
-        jsonb_agg(op.payload
-          ORDER BY op.score DESC NULLS LAST, op.meal_id ASC)     AS options_json
-      FROM option_payload op
-      GROUP BY op.company_id, op.diet_calories_id, op.tier_id, op.slot_name
+        pos.company_id, pos.diet_calories_id, pos.tier_id, pos.slot_name,
+        -- Best: highest score, tiebreak by meal_id ASC.
+        (array_agg(pos.meal_id    ORDER BY pos.score DESC NULLS LAST, pos.meal_id ASC))[1] AS best_meal_id,
+        (array_agg(pos.is_default ORDER BY pos.score DESC NULLS LAST, pos.meal_id ASC))[1] AS best_is_default,
+        (array_agg(pos.hits_json  ORDER BY pos.score DESC NULLS LAST, pos.meal_id ASC))[1] AS best_hits_json,
+        MAX(pos.score) AS best_score,
+        -- Default: prefer is_default=TRUE, tiebreak by meal_id ASC.
+        (array_agg(pos.meal_id    ORDER BY pos.is_default DESC, pos.meal_id ASC))[1] AS default_meal_id,
+        (array_agg(pos.is_default ORDER BY pos.is_default DESC, pos.meal_id ASC))[1] AS default_is_default,
+        (array_agg(pos.hits_json  ORDER BY pos.is_default DESC, pos.meal_id ASC))[1] AS default_hits_json,
+        (array_agg(pos.score      ORDER BY pos.is_default DESC, pos.meal_id ASC))[1] AS default_score,
+        -- ALL options for the swap popover. Parallel arrays (one element
+        -- per option) — the lateral pairs them via UNNEST WITH ORDINALITY.
+        array_agg(pos.meal_id    ORDER BY pos.score DESC NULLS LAST, pos.meal_id ASC) AS option_meal_ids,
+        array_agg(pos.score      ORDER BY pos.score DESC NULLS LAST, pos.meal_id ASC) AS option_scores,
+        array_agg(pos.is_default ORDER BY pos.score DESC NULLS LAST, pos.meal_id ASC) AS option_is_defaults,
+        array_agg(pos.hits_json  ORDER BY pos.score DESC NULLS LAST, pos.meal_id ASC) AS option_hits_json
+      FROM per_option_score pos
+      GROUP BY pos.company_id, pos.diet_calories_id, pos.tier_id, pos.slot_name
     ),
-    -- ── Step F: per-offer verdict
-    per_offer AS (
+    -- ── Step F: per-offer verdict — scalars only.
+    -- Earlier versions built picks_json/picks_default_json here via
+    -- jsonb_agg over per_slot. EXPLAIN showed that materializing ~10k
+    -- offer rows × multi-KB jsonb payloads dominated the query (~200 MB
+    -- temp spill on every call), only to throw away 99% of them at LIMIT 10.
+    -- We now sort and limit on scalars, then re-fetch picks via a LATERAL
+    -- JOIN against per_slot for the surviving top-N offers in the final
+    -- SELECT. per_slot is referenced twice (here + in the lateral), so
+    -- Postgres materializes it automatically.
+    per_offer_score AS (
       SELECT
         ps.company_id, ps.diet_calories_id, ps.tier_id,
         SUM(ps.best_score)    AS score_best,
         SUM(ps.default_score) AS score_default,
         COUNT(*)::int         AS n_slots,
-        jsonb_agg(
-          jsonb_build_object(
-            'slot_name', ps.slot_name,
-            'meal',      ps.best_pick,
-            'options',   ps.options_json
-          )
-          ORDER BY ps.slot_name
-        ) AS picks_json,
-        jsonb_agg(
-          jsonb_build_object(
-            'slot_name', ps.slot_name,
-            'meal',      ps.default_pick,
-            'options',   ps.options_json
-          )
-          ORDER BY ps.slot_name
-        ) AS picks_default_json
+        -- Avg per-meal rating across this offer's picked best meals. NULL
+        -- when no picked meal has a reviews_score; pre_ranked falls back
+        -- to the catering-level companies.avg_score.
+        AVG(bm.reviews_score) AS meal_review_score,
+        -- Per-offer macro totals across the best-picked meals. Mirrors the
+        -- client-side aggregateMacros(picks) math — required server-side
+        -- so the sort metric (e.g. protein-per-zl) can ORDER BY them and
+        -- Phase A's limit=1 returns the offer the user actually wants on top.
+        COALESCE(SUM(bm.kcal),      0) AS total_kcal,
+        COALESCE(SUM(bm.protein_g), 0) AS total_protein_g,
+        COALESCE(SUM(bm.fat_g),     0) AS total_fat_g,
+        COALESCE(SUM(bm.carbs_g),   0) AS total_carbs_g,
+        COALESCE(SUM(bm.fiber_g),   0) AS total_fiber_g
       FROM per_slot ps
+      LEFT JOIN meals bm ON bm.id = ps.best_meal_id
       GROUP BY ps.company_id, ps.diet_calories_id, ps.tier_id
     ),
     -- ── Step G: latest price for (city, dc), with promo metadata.
@@ -1148,6 +1244,10 @@ export const getRankedOffersForDay = async (
         COALESCE(p.total_promo_code_discount, 0)             AS promo_discount_total
       FROM prices p
       WHERE p.city_id  = $1
+        -- Bound to recent prices so the DISTINCT ON works on a small slice
+        -- instead of the entire historical event log. The scraper writes
+        -- daily, so 30 days is comfortably above the staleness budget.
+        AND p.captured_at >= NOW() - INTERVAL '30 days'
         AND p.total_cost IS NOT NULL
         AND p.order_days > 0
         AND (
@@ -1212,71 +1312,220 @@ export const getRankedOffersForDay = async (
         ) AS promos_json
       FROM priced pr
     ),
-    -- ── Step H: join metadata, sort, limit
-    final AS (
+    -- ── Step H: pre_ranked — minimal scored set, ONLY per_offer_score
+    -- joined to priced_promos. NO metadata joins (diet_calories, diet_options,
+    -- tiers, diets, companies) — those are deferred to the final SELECT's
+    -- LATERAL so they run for the top-N surviving offers only.
+    -- An earlier version joined metadata here and the planner picked a
+    -- Merge Join with insufficient predicates → 3.8M materialize reads,
+    -- 3.5M rows discarded by post-join filter. Deferring eliminates that
+    -- entirely.
+    pre_ranked AS (
       SELECT
-        po.company_id                                       AS offer_id_company,
-        po.diet_calories_id                                 AS offer_id_dc,
-        CASE WHEN d.is_menu_configuration
-             THEN ("do".tier_diet_option_id)
-             ELSE NULL
-        END                                                 AS offer_id_tdo,
-        po.company_id,
-        co.name                                             AS company_name,
-        co.logo_url                                         AS company_logo_url,
-        d.name                                              AS diet_name,
-        d.diet_tag                                          AS diet_tag,
-        t.name                                              AS tier_name,
-        d.is_menu_configuration                             AS is_menu_configuration,
-        dc.calories                                         AS calories,
-        prp.price_per_day::text                             AS price_per_day,
-        prp.price_per_day_before_promo::text                AS price_per_day_before_promo,
-        prp.promos_json::text                               AS promos_json,
-        po.score_best::text                                 AS score_best,
-        po.score_default::text                              AS score_default,
-        po.n_slots                                          AS n_slots,
-        po.picks_json::text                                 AS picks_json,
-        po.picks_default_json::text                         AS picks_default_json,
-        COUNT(*) OVER ()::int                               AS considered_count
-      FROM per_offer po
-      -- diet_calories_id is NOT globally unique — caterings reuse small
-      -- per-company ids that collide across companies. Joining only on
-      -- diet_calories_id silently picks the wrong company's row, propagating
-      -- the wrong calories, diet name, and company through every downstream
-      -- join. Always pin by company_id.
-      JOIN diet_calories dc
-        ON dc.diet_calories_id = po.diet_calories_id
-       AND dc.company_id       = po.company_id
+        pos.company_id, pos.diet_calories_id, pos.tier_id,
+        pos.score_best, pos.score_default, pos.n_slots,
+        prp.price_per_day,
+        prp.price_per_day_before_promo,
+        prp.promos_json,
+        -- Per-meal avg first; fall back to the catering's overall avg_score
+        -- (already maintained on companies by the catalog scraper, same
+        -- source dietly itself shows). Either may still be NULL when neither
+        -- granularity has data.
+        COALESCE(pos.meal_review_score, co_rev.avg_score) AS review_score,
+        pos.total_kcal,
+        pos.total_protein_g,
+        pos.total_fat_g,
+        pos.total_carbs_g,
+        pos.total_fiber_g
+      FROM per_offer_score pos
+      JOIN priced_promos prp
+        ON prp.diet_calories_id = pos.diet_calories_id
+       AND prp.company_id       = pos.company_id
+       AND prp.price_per_day IS NOT NULL
+      LEFT JOIN companies co_rev
+        ON co_rev.company_id = pos.company_id
+    ),
+    -- Apply ORDER BY + LIMIT against minimal rows. COUNT(*) OVER () is
+    -- cheap because every row is narrow scalars only.
+    ranked AS (
+      SELECT
+        pr.*,
+        (COUNT(*) OVER ())::int AS considered_count
+      FROM pre_ranked pr
+      ORDER BY ${sortSqlPr},
+               pr.score_best DESC NULLS LAST,
+               pr.score_default DESC NULLS LAST,
+               pr.price_per_day ASC NULLS LAST,
+               pr.diet_calories_id ASC
+      LIMIT $6
+    )
+    -- Build picks_json + picks_default_json via LATERAL JOIN against
+    -- per_slot, run only for the top-N surviving offers. picks_default
+    -- short-circuits to '[]' for fixed (non-menu-config) offers — the TS
+    -- layer discards it anyway, so we avoid the second jsonb_agg pass.
+    SELECT
+      r.company_id                                  AS offer_id_company,
+      r.diet_calories_id                            AS offer_id_dc,
+      CASE WHEN meta.is_menu_configuration
+           THEN meta.tier_diet_option_id
+           ELSE NULL
+      END                                           AS offer_id_tdo,
+      r.company_id                                  AS company_id,
+      meta.company_name                             AS company_name,
+      meta.company_logo_url                         AS company_logo_url,
+      meta.diet_name                                AS diet_name,
+      meta.diet_tag                                 AS diet_tag,
+      meta.tier_name                                AS tier_name,
+      meta.is_menu_configuration                    AS is_menu_configuration,
+      meta.calories                                 AS calories,
+      r.price_per_day::text                         AS price_per_day,
+      r.price_per_day_before_promo::text            AS price_per_day_before_promo,
+      r.promos_json::text                           AS promos_json,
+      r.score_best::text                            AS score_best,
+      r.score_default::text                         AS score_default,
+      r.n_slots                                     AS n_slots,
+      pj.picks_json::text                           AS picks_json,
+      pj.picks_default_json::text                   AS picks_default_json,
+      r.review_score::text                          AS review_score,
+      r.considered_count                            AS considered_count
+    FROM ranked r
+    -- Resolve metadata for the top-N surviving offers only. Runs N times
+    -- via index lookups; the planner now has small, accurate row estimates
+    -- so it picks Nested Loop + Index Scan instead of the bad Merge Join
+    -- it chose when these joins fired across all ~10k offers.
+    CROSS JOIN LATERAL (
+      SELECT
+        dc.calories                          AS calories,
+        d.is_menu_configuration              AS is_menu_configuration,
+        d.name                               AS diet_name,
+        d.diet_tag                           AS diet_tag,
+        t.name                               AS tier_name,
+        "do".tier_diet_option_id             AS tier_diet_option_id,
+        co.name                              AS company_name,
+        co.logo_url                          AS company_logo_url
+      FROM diet_calories dc
       JOIN diet_options "do"
         ON "do".company_id     = dc.company_id
        AND "do".diet_id        = dc.diet_id
        AND "do".tier_id        = dc.tier_id
        AND "do".diet_option_id = dc.diet_option_id
       JOIN tiers t
-        ON t.company_id = "do".company_id
-       AND t.diet_id    = "do".diet_id
-       AND t.tier_id    = "do".tier_id
+        ON t.company_id = dc.company_id
+       AND t.diet_id    = dc.diet_id
+       AND t.tier_id    = dc.tier_id
       JOIN diets d
-        ON d.company_id = t.company_id
-       AND d.diet_id    = t.diet_id
-      JOIN companies co ON co.company_id = d.company_id
-      -- INNER JOIN: drop offers without a recent price for the requested
-      -- order_days. Otherwise the UI lists caterings at "0 zł" — caterings
-      -- that only sell 10/20-day packages would all show up at the bottom.
-      -- The company_id match is critical: diet_calories_id is not globally
-      -- unique, so without it we'd pair an offer with another catering's price.
-      JOIN priced_promos prp
-        ON prp.diet_calories_id = po.diet_calories_id
-       AND prp.company_id       = po.company_id
-       AND prp.price_per_day IS NOT NULL
-    )
-    SELECT *
-    FROM final
-    ORDER BY score_best::numeric DESC NULLS LAST,
-             score_default::numeric DESC NULLS LAST,
-             price_per_day::numeric ASC NULLS LAST,
-             offer_id_dc ASC
-    LIMIT $6
+        ON d.company_id = dc.company_id
+       AND d.diet_id    = dc.diet_id
+      JOIN companies co ON co.company_id = dc.company_id
+      WHERE dc.company_id       = r.company_id
+        AND dc.diet_calories_id = r.diet_calories_id
+    ) meta
+    CROSS JOIN LATERAL (
+      -- Build per-slot payloads on demand for THIS surviving offer.
+      -- The inner LATERAL computes options_json once per slot and the
+      -- outer aggregate stitches slots into picks_json/picks_default_json.
+      SELECT
+        jsonb_agg(slot_built.best_slot    ORDER BY ps.slot_name) AS picks_json,
+        CASE WHEN meta.is_menu_configuration THEN
+          jsonb_agg(slot_built.default_slot ORDER BY ps.slot_name)
+        ELSE '[]'::jsonb
+        END AS picks_default_json
+      FROM per_slot ps
+      CROSS JOIN LATERAL (
+        SELECT
+          ps.slot_name,
+          -- options array, ordered (score DESC, meal_id ASC) — same as
+          -- the parallel arrays in per_slot. ORDINALITY preserves that
+          -- order across the meals JOIN.
+          COALESCE((
+            SELECT jsonb_agg(
+              jsonb_build_object(
+                'meal_id',         m.id,
+                'meal_name',       m.name,
+                'is_default',      opt.is_default,
+                'score',           opt.score,
+                'hits',            opt.hits_json,
+                'kcal',            m.kcal,
+                'protein_g',       m.protein_g,
+                'fat_g',           m.fat_g,
+                'carbs_g',         m.carbs_g,
+                'fiber_g',         m.fiber_g,
+                'sugar_g',         m.sugar_g,
+                'ingredients_raw', m.ingredients_raw,
+                'allergens',       COALESCE(m.allergens, ARRAY[]::TEXT[]),
+                'reviews_score',   m.reviews_score
+              )
+              ORDER BY opt.ord
+            )
+            FROM unnest(
+              ps.option_meal_ids,
+              ps.option_scores,
+              ps.option_is_defaults,
+              ps.option_hits_json
+            ) WITH ORDINALITY AS opt(meal_id, score, is_default, hits_json, ord)
+            JOIN meals m ON m.id = opt.meal_id
+          ), '[]'::jsonb) AS options_json,
+          -- best meal payload (single PK lookup)
+          (
+            SELECT jsonb_build_object(
+              'meal_id',         m.id,
+              'meal_name',       m.name,
+              'is_default',      ps.best_is_default,
+              'score',           ps.best_score,
+              'hits',            ps.best_hits_json,
+              'kcal',            m.kcal,
+              'protein_g',       m.protein_g,
+              'fat_g',           m.fat_g,
+              'carbs_g',         m.carbs_g,
+              'fiber_g',         m.fiber_g,
+              'sugar_g',         m.sugar_g,
+              'ingredients_raw', m.ingredients_raw,
+              'allergens',       COALESCE(m.allergens, ARRAY[]::TEXT[])
+            )
+            FROM meals m WHERE m.id = ps.best_meal_id
+          ) AS best_meal_payload,
+          -- default meal payload (only used when is_menu_configuration)
+          (
+            SELECT jsonb_build_object(
+              'meal_id',         m.id,
+              'meal_name',       m.name,
+              'is_default',      ps.default_is_default,
+              'score',           ps.default_score,
+              'hits',            ps.default_hits_json,
+              'kcal',            m.kcal,
+              'protein_g',       m.protein_g,
+              'fat_g',           m.fat_g,
+              'carbs_g',         m.carbs_g,
+              'fiber_g',         m.fiber_g,
+              'sugar_g',         m.sugar_g,
+              'ingredients_raw', m.ingredients_raw,
+              'allergens',       COALESCE(m.allergens, ARRAY[]::TEXT[])
+            )
+            FROM meals m WHERE m.id = ps.default_meal_id
+          ) AS default_meal_payload
+      ) parts
+      CROSS JOIN LATERAL (
+        SELECT
+          jsonb_build_object(
+            'slot_name', parts.slot_name,
+            'meal',      parts.best_meal_payload,
+            'options',   parts.options_json
+          ) AS best_slot,
+          jsonb_build_object(
+            'slot_name', parts.slot_name,
+            'meal',      parts.default_meal_payload,
+            'options',   parts.options_json
+          ) AS default_slot
+      ) slot_built
+      WHERE ps.company_id       = r.company_id
+        AND ps.diet_calories_id = r.diet_calories_id
+        AND ps.tier_id IS NOT DISTINCT FROM r.tier_id
+    ) pj
+    ORDER BY ${sortSqlR},
+             r.score_best DESC NULLS LAST,
+             r.score_default DESC NULLS LAST,
+             r.price_per_day ASC NULLS LAST,
+             r.diet_calories_id ASC
   `;
 
   const rows = await query<RankedRow>(sql, params);
@@ -1331,6 +1580,8 @@ export const getRankedOffersForDay = async (
           ? null
           : Number.parseFloat(r.price_per_day_before_promo),
       promos,
+      review_score:
+        r.review_score === null ? null : Number.parseFloat(r.review_score),
       tier: r.tier_name === null ? null : { name: r.tier_name },
       verdict,
     };
@@ -1400,6 +1651,16 @@ export const getWeekView = async (
     orderDays?: number;
     weights?: { readonly prefer?: number; readonly avoid?: number };
     excludeCompanyIds?: readonly string[];
+    /** Restrict to these catering slugs. Used by the per-row picker to fetch
+     *  a single catering's offer for a day on demand. */
+    includeCompanyIds?: readonly string[];
+    /** Per-day top-N cap. `0` (or omit) = no limit — pulls every ranked offer
+     *  for the day. Used by the home-page two-phase loader: phase A passes 1
+     *  for the fast top-1 table, phase B passes 10 for the scatter pool. */
+    limit?: number | null;
+    /** Sort metric forwarded to getRankedOffersForDay. Controls the per-day
+     *  ORDER BY so `limit=1` returns the actual winner for that sort. */
+    sort?: SortId;
   }>
 ): Promise<WeekViewDay[]> => {
   interface DayResult {
@@ -1411,7 +1672,14 @@ export const getWeekView = async (
     { length: args.dates.length },
     () => empty
   );
-  // 0 = no limit. Required for honest top-5-by-any-axis scatter.
+  // Route prefer/avoid once and share the result across every per-day call.
+  // Otherwise each parallel call re-resolves the same keyword_embeddings rows
+  // and re-walks the taxonomy cache — pure duplicate work.
+  const routedIntents = await routePreferences({
+    avoid: args.avoid,
+    prefer: args.prefer,
+  });
+  const limit = args.limit ?? 0;
   await Promise.all(
     args.dates.map(async (d, idx) => {
       const r = await getRankedOffersForDay({
@@ -1419,11 +1687,14 @@ export const getWeekView = async (
         cityId: args.cityId,
         date: d,
         excludeCompanyIds: args.excludeCompanyIds,
+        includeCompanyIds: args.includeCompanyIds,
         kcalMax: args.kcalMax,
         kcalMin: args.kcalMin,
-        limit: 0,
+        limit,
         orderDays: args.orderDays,
         prefer: args.prefer,
+        routedIntents,
+        sort: args.sort,
         weights: args.weights,
       });
       dayResults[idx] = r;
@@ -1595,6 +1866,12 @@ export const getWeeklyPlan = async (
     offers: readonly RankedDayOffer[];
     considered_count: number;
   }[] = [];
+  // Route prefer/avoid once across all per-day calls — see commentary in
+  // getWeekView for why.
+  const routedIntents = await routePreferences({
+    avoid: args.avoid,
+    prefer: args.prefer,
+  });
   await Promise.all(
     args.dates.map(async (d, idx) => {
       const r = await getRankedOffersForDay({
@@ -1605,6 +1882,7 @@ export const getWeeklyPlan = async (
         kcalMin: args.kcalMin,
         limit: perDayLimit,
         prefer: args.prefer,
+        routedIntents,
         weights: args.weights,
       });
       dayResults[idx] = r;

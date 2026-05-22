@@ -10,7 +10,8 @@ export type MetricId =
   | "fat"
   | "carbs"
   | "fiber"
-  | "sugar";
+  | "sugar"
+  | "review";
 
 export interface Metric {
   readonly id: MetricId;
@@ -105,6 +106,18 @@ export const METRICS: readonly Metric[] = [
     id: "sugar",
     label: "cukry",
     unit: "g",
+  },
+  {
+    accessor: (o) => o.review_score ?? 0,
+    format: (v) =>
+      new Intl.NumberFormat("pl-PL", {
+        maximumFractionDigits: 2,
+        minimumFractionDigits: 1,
+      }).format(v),
+    higherIsBetter: true,
+    id: "review",
+    label: "ocena",
+    unit: "★",
   },
 ];
 
