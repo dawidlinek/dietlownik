@@ -14,7 +14,7 @@ import type { BrowserContext, Page } from "patchright";
 
 /** Body fingerprints of CF's "Just a moment..." JS interstitial. */
 export const CF_CHALLENGE_RE =
-  /Just a moment|cf-browser-verification|__cf_chl_/i;
+  /Just a moment|cf-browser-verification|__cf_chl_/iu;
 
 export const isCloudflareChallenge = (
   status: number,
@@ -95,7 +95,10 @@ export const launchCfBrowser = (
     headless: opts.headless,
     userAgent: opts.headless ? FORCED_UA : undefined,
     viewport: null,
-    ...(CHROMIUM_EXECUTABLE_PATH ? { executablePath: CHROMIUM_EXECUTABLE_PATH } : {}),
+    ...(CHROMIUM_EXECUTABLE_PATH !== undefined &&
+    CHROMIUM_EXECUTABLE_PATH !== ""
+      ? { executablePath: CHROMIUM_EXECUTABLE_PATH }
+      : {}),
   });
 };
 
@@ -115,7 +118,7 @@ export const waitForChallengeCleared = async (
         const t = `${document.title || ""} ${(
           document.body?.textContent || ""
         ).slice(0, 200)}`;
-        return /Just a moment|Verify you are human|Checking if the site connection is secure/i.test(
+        return /Just a moment|Verify you are human|Checking if the site connection is secure/iu.test(
           t
         );
       });

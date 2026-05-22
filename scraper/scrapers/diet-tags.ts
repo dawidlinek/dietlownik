@@ -9,12 +9,12 @@ export const scrapeDietTags = async (): Promise<void> => {
 
   for (const tag of tags) {
     await q(
-      `INSERT INTO "diet_tags" (tag_code, label, description, image_url)
-       VALUES ($1,$2,$3,$4)
+      `INSERT INTO diet_tags (tag_code, label, description)
+       VALUES ($1,$2,$3)
        ON CONFLICT (tag_code) DO UPDATE SET
-         label     = EXCLUDED.label,
-         image_url = EXCLUDED.image_url`,
-      [tag.dietTagId, tag.name ?? null, null, tag.imageUrl ?? null]
+         label       = EXCLUDED.label,
+         description = EXCLUDED.description`,
+      [tag.dietTagId, tag.name ?? null, null]
     );
   }
 

@@ -20,6 +20,38 @@ coverage/
 # scraper Cloudflare session (cookie + user-agent, refreshed by hand)
 .cf-session.json
 
+# embedding-benchmark caches and outputs
+bench/vectors/
+bench/report*.md
+bench/logs/
+eval-*.log
+scrape-*.log
+
+# Per-batch labeling scratch files emitted by external labeler agents into
+# the repo root (because /tmp doesn't always resolve sanely on Windows).
+# Anything matching these patterns is intermediate; the real artifacts live
+# in the Postgres bench_labels table.
+bench-*-fetch.json
+bench-*-result.json
+tmp-bench-*.json
+tmp-fetch-*.json
+tmp-*.json
+fetch_all.js
+fetch_all_jobs.ts
+fetch-jobs.js
+aggregate-fetch.js
+analyze_jobs.js
+label_runner.js
+get_jobs_info.ts
+inspect_meals.ts
+check_*.ts
+reset_jobs.ts
+bench/reset_jobs.ts
+pending*.txt
+next*.txt
+test-pending.txt
+.tmp-*
+
 # typescript / next
 *.tsbuildinfo
 next-env.d.ts
@@ -39,6 +71,9 @@ yarn-error.log*
 # packet captures (may contain auth tokens)
 *.har
 
+# ad-hoc DB inspection / debug scripts (one-shot, not part of the build)
+scripts/
+
 # claude-code runtime state (skills/agents config is committed; runtime is not)
 .claude/scheduled_tasks.lock
 .claude/worktrees/
@@ -51,3 +86,6 @@ yarn-error.log*
 .agents/skills/migrate-oxlint/
 # patchright/playwright runtime artifacts
 .playwright-cli/
+
+# local design exploration sketches (favicon/logo studies — not part of the build)
+logos/

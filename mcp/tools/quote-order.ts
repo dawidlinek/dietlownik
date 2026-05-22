@@ -7,7 +7,7 @@ import type { PriceResponse } from "@/scraper/types";
 const inputSchema = z.object({
   city: z.string().min(1).describe("City name (Polish)."),
   dates: z
-    .array(z.string().regex(/^\d{4}-\d{2}-\d{2}$/))
+    .array(z.string().regex(/^\d{4}-\d{2}-\d{2}$/u))
     .min(1)
     .max(30)
     .describe(

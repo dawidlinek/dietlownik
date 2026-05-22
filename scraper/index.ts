@@ -1,6 +1,8 @@
 import cron from "node-cron";
 
+import { dumpApiMetrics } from "./api";
 import { pool } from "./db";
+import { recordScrapeError, withRun } from "./scrape-run";
 import { scrapeCatalog } from "./scrapers/catalog";
 import { scrapeCity } from "./scrapers/city";
 import { listCompanies } from "./scrapers/companies";
@@ -37,14 +39,16 @@ const runMenusForCompany = async (
     await m.scrapeMenus(companyId, cityId);
   } catch (error) {
     console.warn(`[run] menus skipped (${errMsg(error)})`);
+    await recordScrapeError(null, "menus", { companyId, error });
   }
 };
 
 const processCompany = async (
   companyId: string,
-  cityId: number
+  cityId: number,
+  extras: DeepReadonly<CompanySearchItem> | null
 ): Promise<void> => {
-  await scrapeCatalog(companyId, cityId);
+  await scrapeCatalog(companyId, cityId, extras);
   const work: Promise<unknown>[] = [];
   if (!SKIP_PRICES) {
     work.push(scrapePrices(companyId, cityId));
@@ -52,6 +56,7 @@ const processCompany = async (
   if (!SKIP_MENUS) {
     work.push(runMenusForCompany(companyId, cityId));
   }
+  // reviews dropped from the new schema scope.
   await Promise.all(work);
 };
 
@@ -90,7 +95,8 @@ const run = async (): Promise<void> => {
     `\n=== dietlownik scraper — city=${CITY}${hasCompany ? ` company=${COMPANY}` : ""} ===\n`
   );
 
-  try {
+  const scope = `${CITY}${hasCompany ? `/${COMPANY}` : ""}`;
+  await withRun("scrape", scope, async () => {
     const city = await scrapeCity(CITY);
 
     if (!SKIP_TAGS) {
@@ -122,7 +128,12 @@ const run = async (): Promise<void> => {
           console.warn("[run] company missing companyId, skipping");
           return;
         }
-        await processCompany(companyId, city.cityId);
+        try {
+          await processCompany(companyId, city.cityId, c);
+        } catch (error) {
+          await recordScrapeError(null, "catalog", { companyId, error });
+          throw error;
+        }
       }
     );
 
@@ -132,14 +143,26 @@ const run = async (): Promise<void> => {
         await scrapePromotions(city.cityId, companies);
       } catch (error) {
         console.warn(`[run] promotions skipped (${errMsg(error)})`);
+        await recordScrapeError(null, "promotions", { error });
       }
     }
 
     const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
     console.log(`\n=== done: ${ok} ok, ${fail} failed in ${elapsed}s ===\n`);
-  } finally {
-    await pool.end();
-  }
+    dumpApiMetrics();
+
+    // End-of-run hook: embed any meals queued during this scrape. Lazy-load
+    // the helper so cold start doesn't pull in @xenova/transformers when
+    // SKIP_MENUS=1 produces nothing to embed. Non-fatal.
+    try {
+      const { flushEmbeddings } = await import("./embed-queue.js");
+      await flushEmbeddings();
+    } catch (error) {
+      console.warn(`[run] embed flush failed: ${errMsg(error)}`);
+    }
+
+    return { fail, ok, value: undefined };
+  });
 };
 
 const shutdown = (): void => {
@@ -163,8 +186,40 @@ if (REPEAT) {
   process.on("SIGTERM", shutdown);
   process.on("SIGINT", shutdown);
 } else {
+  // Dump API metrics on Ctrl-C / SIGTERM so we get a summary even when we
+  // stop a long scrape early.
+  const earlyShutdown = (sig: string): void => {
+    console.log(`\n[run] ${sig} — dumping metrics and exiting`);
+    try {
+      dumpApiMetrics();
+    } catch {
+      // best-effort
+    }
+    process.exit(130);
+  };
+  process.on("SIGINT", () => {
+    earlyShutdown("SIGINT");
+  });
+  process.on("SIGTERM", () => {
+    earlyShutdown("SIGTERM");
+  });
+
+  const main = async (): Promise<void> => {
+    try {
+      await run();
+    } catch (error) {
+      console.error("[run] fatal:", error);
+      process.exitCode = 1;
+    } finally {
+      try {
+        await pool.end();
+      } catch (error) {
+        console.error(error);
+      }
+    }
+  };
   // oxlint-disable-next-line promise/prefer-await-to-callbacks, promise/prefer-await-to-then -- top-level entry point
-  run().catch((error: unknown) => {
+  main().catch((error: unknown) => {
     console.error("[run] fatal:", error);
     process.exit(1);
   });

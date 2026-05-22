@@ -113,7 +113,9 @@ describe("MCP route", () => {
       "get_menu",
       "login",
       "place_order",
+      "plan_week",
       "quote_order",
+      "rank_day",
     ]);
 
     // 4. tools/call find_diets — exercises full dispatch

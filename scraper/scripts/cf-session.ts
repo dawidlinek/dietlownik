@@ -60,7 +60,7 @@ export const tokenize = (input: string): string[] => {
       i += 1;
       continue;
     }
-    if (/\s/.test(ch)) {
+    if (/\s/u.test(ch)) {
       if (cur !== "") {
         out.push(cur);
         cur = "";

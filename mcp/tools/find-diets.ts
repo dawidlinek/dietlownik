@@ -119,38 +119,42 @@ SELECT
   do2.tier_diet_option_id,
   dc.diet_calories_id,
   dc.calories,
-  lp.per_day_cost_with_discounts AS price_per_day,
+  lp.price_per_day,
   cam.code AS promo_code,
   cam.discount_percent AS promo_discount,
   cam.ends_at AS promo_deadline
 FROM companies co
 JOIN diets d
   ON d.company_id = co.company_id
- AND d.valid_to IS NULL
+ AND d.is_active = TRUE
 JOIN tiers t
   ON t.company_id = co.company_id
  AND t.diet_id = d.diet_id
- AND t.valid_to IS NULL
+ AND t.is_active = TRUE
 JOIN diet_options do2
   ON do2.company_id = co.company_id
  AND do2.diet_id = d.diet_id
  AND do2.tier_id = t.tier_id
- AND do2.valid_to IS NULL
+ AND do2.is_active = TRUE
 JOIN diet_calories dc
   ON dc.company_id = co.company_id
  AND dc.diet_id = d.diet_id
  AND dc.tier_id = t.tier_id
  AND dc.diet_option_id = do2.diet_option_id
- AND dc.valid_to IS NULL
+ AND dc.is_active = TRUE
 JOIN company_cities cc
   ON cc.company_id = co.company_id
  AND cc.city_id = $1
 LEFT JOIN LATERAL (
-  SELECT per_day_cost_with_discounts
+  -- Effective per-day net of every discount; constrain on company_id since
+  -- diet_calories_id collides across caterings until the v9 migration ships.
+  SELECT (total_cost::numeric / NULLIF(order_days, 0)) AS price_per_day
   FROM prices
   WHERE diet_calories_id = dc.diet_calories_id
-    AND city_id = $1
-    AND order_days = 5
+    AND company_id       = co.company_id
+    AND city_id          = $1
+    AND order_days       = 5
+    AND total_cost IS NOT NULL
   ORDER BY captured_at DESC
   LIMIT 1
 ) lp ON TRUE
@@ -166,7 +170,7 @@ WHERE co.orders_enabled = TRUE
   AND ($2::text IS NULL OR d.diet_tag = $2)
   AND ($3::int IS NULL OR dc.calories >= $3)
   AND ($4::int IS NULL OR dc.calories <= $4)
-  AND ($5::numeric IS NULL OR lp.per_day_cost_with_discounts <= $5)
+  AND ($5::numeric IS NULL OR lp.price_per_day <= $5)
   AND ($6::numeric IS NULL OR co.avg_score >= $6)
   AND ($7::boolean = FALSE OR cam.code IS NOT NULL)
 `;

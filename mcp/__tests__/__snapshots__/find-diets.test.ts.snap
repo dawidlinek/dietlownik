@@ -1,0 +1,287 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`find_diets regression snapshot > exposes a stable MCP-wire contract (name + schema shape) 1`] = `
+{
+  "annotations": {
+    "openWorldHint": false,
+    "readOnlyHint": true,
+  },
+  "description": "Search the local scraper Postgres for catering diet offers in a city, filtered by diet tag, kcal range, max per-day price, min review score, or active promo. Use this as the entry point before \`get_menu\` / \`quote_order\` / \`place_order\`. Returns opaque \`offer_id\` tokens those tools accept — never parse or invent them.",
+  "inputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "properties": {
+      "city": {
+        "description": "City name in Polish (e.g. 'Wrocław', 'Warszawa', 'Kraków'). Resolved server-side; agent never passes a city id.",
+        "minLength": 1,
+        "type": "string",
+      },
+      "diet_tag": {
+        "description": "Diet category tag (e.g. 'STANDARD', 'KETO', 'VEGAN'). Omit to include all.",
+        "minLength": 1,
+        "type": "string",
+      },
+      "kcal_max": {
+        "exclusiveMinimum": 0,
+        "maximum": 9007199254740991,
+        "type": "integer",
+      },
+      "kcal_min": {
+        "exclusiveMinimum": 0,
+        "maximum": 9007199254740991,
+        "type": "integer",
+      },
+      "limit": {
+        "default": 20,
+        "maximum": 50,
+        "minimum": 1,
+        "type": "integer",
+      },
+      "max_price_per_day": {
+        "description": "PLN per day.",
+        "exclusiveMinimum": 0,
+        "type": "number",
+      },
+      "min_score": {
+        "description": "Minimum average review score (0-100).",
+        "maximum": 100,
+        "minimum": 0,
+        "type": "number",
+      },
+      "sort_by": {
+        "default": "price",
+        "enum": [
+          "price",
+          "score",
+        ],
+        "type": "string",
+      },
+      "with_promo_only": {
+        "description": "Restrict to offers with an active promo code.",
+        "type": "boolean",
+      },
+    },
+    "required": [
+      "city",
+      "limit",
+      "sort_by",
+    ],
+    "type": "object",
+  },
+  "name": "find_diets",
+  "outputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "properties": {
+      "city": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "number",
+          },
+          "name": {
+            "type": "string",
+          },
+        },
+        "required": [
+          "id",
+          "name",
+        ],
+        "type": "object",
+      },
+      "offers": {
+        "items": {
+          "additionalProperties": false,
+          "properties": {
+            "avg_score": {
+              "anyOf": [
+                {
+                  "type": "number",
+                },
+                {
+                  "type": "null",
+                },
+              ],
+            },
+            "awarded": {
+              "type": "boolean",
+            },
+            "calories": {
+              "anyOf": [
+                {
+                  "type": "number",
+                },
+                {
+                  "type": "null",
+                },
+              ],
+            },
+            "company": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string",
+                },
+                "name": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                    },
+                    {
+                      "type": "null",
+                    },
+                  ],
+                },
+              },
+              "required": [
+                "id",
+                "name",
+              ],
+              "type": "object",
+            },
+            "diet": {
+              "additionalProperties": false,
+              "properties": {
+                "name": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                    },
+                    {
+                      "type": "null",
+                    },
+                  ],
+                },
+                "tag": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                    },
+                    {
+                      "type": "null",
+                    },
+                  ],
+                },
+              },
+              "required": [
+                "name",
+                "tag",
+              ],
+              "type": "object",
+            },
+            "is_configurable": {
+              "description": "True if menu-configuration diet (allows per-day meal choice in get_menu).",
+              "type": "boolean",
+            },
+            "offer_id": {
+              "description": "Opaque token. Pass to get_menu / quote_order / place_order. Do not parse or hand-construct.",
+              "type": "string",
+            },
+            "price_per_day": {
+              "anyOf": [
+                {
+                  "type": "number",
+                },
+                {
+                  "type": "null",
+                },
+              ],
+              "description": "PLN. Computed for a 5-day order.",
+            },
+            "promo": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "type": "string",
+                    },
+                    "deadline": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                        },
+                        {
+                          "type": "null",
+                        },
+                      ],
+                    },
+                    "discount_percent": {
+                      "anyOf": [
+                        {
+                          "type": "number",
+                        },
+                        {
+                          "type": "null",
+                        },
+                      ],
+                    },
+                  },
+                  "required": [
+                    "code",
+                    "deadline",
+                    "discount_percent",
+                  ],
+                  "type": "object",
+                },
+                {
+                  "type": "null",
+                },
+              ],
+            },
+            "tier": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "name": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                        },
+                        {
+                          "type": "null",
+                        },
+                      ],
+                    },
+                  },
+                  "required": [
+                    "name",
+                  ],
+                  "type": "object",
+                },
+                {
+                  "type": "null",
+                },
+              ],
+            },
+          },
+          "required": [
+            "avg_score",
+            "awarded",
+            "calories",
+            "company",
+            "diet",
+            "is_configurable",
+            "offer_id",
+            "price_per_day",
+            "promo",
+            "tier",
+          ],
+          "type": "object",
+        },
+        "type": "array",
+      },
+      "total": {
+        "type": "number",
+      },
+    },
+    "required": [
+      "city",
+      "offers",
+      "total",
+    ],
+    "type": "object",
+  },
+}
+`;

@@ -17,6 +17,9 @@ interface Props {
   /** Day-length pills shown next to the range so the whole filter row is one strip. */
   readonly dayOptions: readonly number[];
   readonly activeDays: number;
+  /** Extra control rendered at the right of the strip (e.g. a date-range picker on /match). */
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- React.ReactNode union recursively includes mutable Iterable<ReactNode>; cannot be made deeply readonly
+  readonly extraSlot?: React.ReactNode;
 }
 
 const URL_DEBOUNCE_MS = 200;
@@ -86,6 +89,7 @@ const NumberCell = ({
   />
 );
 
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- extraSlot is React.ReactNode which transitively includes mutable Iterable<ReactNode>; cannot be deeply readonly
 export const KcalRangeFilter = ({
   activeDays,
   activeMax,
@@ -93,6 +97,7 @@ export const KcalRangeFilter = ({
   dataMax,
   dataMin,
   dayOptions,
+  extraSlot,
   presets,
 }: Readonly<Props>) => {
   const router = useRouter();
@@ -220,28 +225,31 @@ export const KcalRangeFilter = ({
           })}
         </div>
 
-        {/* Days */}
-        <div className="flex items-center gap-1">
-          <span className="text-[11px] uppercase tracking-[0.08em] text-[var(--color-ink-3)] mr-1">
-            Dni
-          </span>
-          {dayOptions.map((d) => (
-            <Pill
-              active={d === activeDays}
-              key={d}
-              onClick={() => {
-                setUrl({ days: d });
-              }}
-              title={
-                d === 1
-                  ? "Cena bez rabatu długościowego"
-                  : `${d} dni — z rabatem`
-              }
-            >
-              {d}
-            </Pill>
-          ))}
-        </div>
+        {/* Days — hidden when dayOptions is empty (calendar lives elsewhere). */}
+        {dayOptions.length > 0 && (
+          <div className="flex items-center gap-1">
+            <span className="text-[11px] uppercase tracking-[0.08em] text-[var(--color-ink-3)] mr-1">
+              Dni
+            </span>
+            {dayOptions.map((d) => (
+              <Pill
+                active={d === activeDays}
+                key={d}
+                onClick={() => {
+                  setUrl({ days: d });
+                }}
+                title={
+                  d === 1
+                    ? "Cena bez rabatu długościowego"
+                    : `${d} dni — z rabatem`
+                }
+              >
+                {d}
+              </Pill>
+            ))}
+          </div>
+        )}
+        {extraSlot}
       </div>
     </div>
   );

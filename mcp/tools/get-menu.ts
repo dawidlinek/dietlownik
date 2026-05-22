@@ -14,7 +14,7 @@ const inputSchema = z.object({
     .min(1)
     .describe("City name (Polish). Same one used in find_diets."),
   dates: z
-    .array(z.string().regex(/^\d{4}-\d{2}-\d{2}$/))
+    .array(z.string().regex(/^\d{4}-\d{2}-\d{2}$/u))
     .min(1)
     .max(14)
     .optional()

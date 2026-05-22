@@ -8,10 +8,10 @@
 //   3. /api/open/mobile/banners?cId=...                — campaign-typed marketing
 //   4. /api/open/content-management/recommended-diets  — featured-promo carousel
 //
-// Each observation goes into promo_observations (append-only time-series) and
-// upserts into campaigns (the SCD that says "this code is currently
-// known"). Validity from banners and promoDeadline from API both feed in so we
-// can answer "is X still active?" without touching the API.
+// In the new schema the `campaigns` table is mutable, no history: one row per
+// (company_id, code) UNIQUE. We upsert title / discount_percent / starts_at /
+// ends_at / is_active / last_seen_at on observation. There is no
+// promo_observations event log — that table was dropped.
 
 import { get, HttpError } from "../api";
 import { q } from "../db";
@@ -26,34 +26,39 @@ import type {
 
 interface PromoObservation {
   code: string;
-  /** constant | awarded-and-top | banner | recommended-diets */
-  source: string;
   company_id: string | null;
-  city_id: number | null;
-  discount_percents: number | null;
-  promo_text: string | null;
-  /** YYYY-MM-DD */
-  deadline: string | null;
-  separate: boolean | null;
-  /** ISO 8601 */
-  valid_from: string | null;
-  valid_to: string | null;
-  raw: unknown;
+  discount_percent: number | null;
+  title: string | null;
+  // YYYY-MM-DD
+  starts_at: string | null;
+  // YYYY-MM-DD
+  ends_at: string | null;
 }
 
-const isBanner = (raw: unknown): raw is Banner => {
-  if (raw === null || typeof raw !== "object") {
-    return false;
+// Convert ISO 8601 (banner valid_from / valid_to) to YYYY-MM-DD; pass through
+// already-date strings.
+const isoToDate = (s: string | null | undefined): string | null => {
+  if (s === null || s === undefined || s === "") {
+    return null;
   }
-  return "code" in raw && "validTo" in raw;
+  // Already in YYYY-MM-DD?
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    return s;
+  }
+  const ts = Date.parse(s);
+  if (Number.isNaN(ts)) {
+    return null;
+  }
+  const d = new Date(ts);
+  const year = d.getUTCFullYear();
+  const month = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 };
 
 const fromActivePromo = (
-  source: string,
   company_id: string | null,
-  city_id: number | null,
-  info: DeepReadonly<ActivePromotionInfo> | null | undefined,
-  raw: unknown
+  info: DeepReadonly<ActivePromotionInfo> | null | undefined
 ): PromoObservation | null => {
   if (info == null) {
     return null;
@@ -63,88 +68,34 @@ const fromActivePromo = (
     return null;
   }
   return {
-    city_id,
     code,
     company_id,
-    deadline: info.promoDeadline ?? null,
-    discount_percents: info.discountPercents ?? null,
-    promo_text: info.promoText ?? null,
-    raw,
-    separate: info.separate ?? null,
-    source,
-    valid_from: null,
-    valid_to: null,
+    discount_percent: info.discountPercents ?? null,
+    ends_at: info.promoDeadline ?? null,
+    starts_at: null,
+    title: info.promoText ?? null,
   };
 };
 
-const fromBanner = (
-  banner: DeepReadonly<Banner>,
-  city_id: number
-): PromoObservation | null => {
+const fromBanner = (banner: DeepReadonly<Banner>): PromoObservation | null => {
   if (banner.code === "" || banner.code === null || banner.code === undefined) {
     return null;
   }
   return {
-    city_id,
     code: banner.code,
     company_id: null,
-    deadline: null,
-    discount_percents: null,
-    promo_text: banner.name ?? null,
-    raw: banner,
-    separate: null,
-    source: "banner",
-    valid_from: banner.validFrom ?? null,
-    valid_to: banner.validTo ?? null,
+    discount_percent: null,
+    ends_at: isoToDate(banner.validTo),
+    starts_at: isoToDate(banner.validFrom),
+    title: banner.name ?? null,
   };
 };
 
-const insertObservation = async (
-  o: DeepReadonly<PromoObservation>
-): Promise<void> => {
-  // promo_observations.company_id has an FK to companies(company_id).
-  // awarded-and-top can run ahead of catalog during a partial scrape,
-  // pointing at a company we haven't catalogued yet. Drop the link rather
-  // than blow up the batch — we still want the observation persisted.
-  let companyId = o.company_id;
-  if (companyId !== null && companyId !== "") {
-    const exists = await q<{ exists: boolean }>(
-      `SELECT TRUE AS exists FROM companies WHERE company_id = $1 LIMIT 1`,
-      [companyId]
-    );
-    if (exists.rowCount === 0) {
-      companyId = null;
-    }
-  }
-  await q(
-    `INSERT INTO promo_observations
-       (code, source, company_id, city_id, discount_percents, promo_text,
-        deadline, separate, valid_from, valid_to, raw)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-    [
-      o.code,
-      o.source,
-      companyId,
-      o.city_id,
-      o.discount_percents,
-      o.promo_text,
-      o.deadline,
-      o.separate,
-      o.valid_from,
-      o.valid_to,
-      JSON.stringify(o.raw ?? null),
-    ]
-  );
-};
-
-/**
- * Upsert into campaigns (the SCD). One row per (code, source, company_id|'').
- * `company_id` NULL means "global / cross-company". The composite unique
- * index in v4 lets us conflict-update.
- */
 const upsertCampaign = async (
   o: DeepReadonly<PromoObservation>
 ): Promise<void> => {
+  // FK-safe: drop the company link if the company hasn't been catalogued yet
+  // (awarded-and-top runs ahead of catalog during a partial scrape).
   let companyId = o.company_id;
   if (companyId !== null && companyId !== "") {
     const exists = await q<{ exists: boolean }>(
@@ -155,49 +106,46 @@ const upsertCampaign = async (
       companyId = null;
     }
   }
-  const bannerRaw = isBanner(o.raw) ? o.raw : null;
   await q(
     `INSERT INTO campaigns
-       (code, source, company_id, discount_percent, title, deadline,
-        valid_from, valid_to, separate, target, deep_link, banner_image_url,
-        is_active, first_seen_at, last_seen_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,TRUE,NOW(),NOW())
-     ON CONFLICT (code, source, COALESCE(company_id, '')) DO UPDATE SET
-       discount_percent = COALESCE(EXCLUDED.discount_percent, campaigns.discount_percent),
+       (company_id, code, title, discount_percent, starts_at, ends_at,
+        is_active, last_seen_at)
+     VALUES ($1,$2,$3,$4,$5,$6,TRUE,NOW())
+     ON CONFLICT (company_id, code) DO UPDATE SET
        title            = COALESCE(EXCLUDED.title, campaigns.title),
-       deadline         = COALESCE(EXCLUDED.deadline, campaigns.deadline),
-       valid_from       = COALESCE(EXCLUDED.valid_from, campaigns.valid_from),
-       valid_to         = COALESCE(EXCLUDED.valid_to, campaigns.valid_to),
-       separate         = COALESCE(EXCLUDED.separate, campaigns.separate),
-       target           = COALESCE(EXCLUDED.target, campaigns.target),
-       deep_link        = COALESCE(EXCLUDED.deep_link, campaigns.deep_link),
-       banner_image_url = COALESCE(EXCLUDED.banner_image_url, campaigns.banner_image_url),
+       discount_percent = COALESCE(EXCLUDED.discount_percent, campaigns.discount_percent),
+       starts_at        = COALESCE(EXCLUDED.starts_at, campaigns.starts_at),
+       ends_at          = COALESCE(EXCLUDED.ends_at, campaigns.ends_at),
        is_active        = TRUE,
-       last_seen_at     = NOW(),
-       updated_at       = NOW()`,
-    [
-      o.code,
-      o.source,
-      companyId,
-      o.discount_percents,
-      o.promo_text,
-      o.deadline,
-      o.valid_from,
-      o.valid_to,
-      o.separate,
-      // banner-specific fields (mostly null when source != banner)
-      bannerRaw?.target ?? null,
-      bannerRaw?.deepLink ?? null,
-      bannerRaw?.url ?? null,
-    ]
+       last_seen_at     = NOW()`,
+    [companyId, o.code, o.title, o.discount_percent, o.starts_at, o.ends_at]
   );
 };
 
 const persist = async (
   observations: readonly DeepReadonly<PromoObservation>[]
 ): Promise<void> => {
+  // Deduplicate by (company_id, code) to avoid pointless re-upserts within
+  // one run.
+  const dedup = new Map<string, PromoObservation>();
   for (const o of observations) {
-    await insertObservation(o);
+    const key = `${o.company_id ?? ""}|${o.code}`;
+    const existing = dedup.get(key);
+    if (existing === undefined) {
+      dedup.set(key, { ...o });
+    } else {
+      // Merge: keep the richest non-null field per slot.
+      dedup.set(key, {
+        code: existing.code,
+        company_id: existing.company_id,
+        discount_percent: existing.discount_percent ?? o.discount_percent,
+        ends_at: existing.ends_at ?? o.ends_at,
+        starts_at: existing.starts_at ?? o.starts_at,
+        title: existing.title ?? o.title,
+      });
+    }
+  }
+  for (const o of dedup.values()) {
     await upsertCampaign(o);
   }
 };
@@ -205,20 +153,13 @@ const persist = async (
 // ── source loaders ────────────────────────────────────────────────────────────
 
 const fromAwardedAndTop = (
-  cityId: number,
   companies: readonly DeepReadonly<CompanySearchItem>[]
 ): PromoObservation[] => {
   const out: PromoObservation[] = [];
   for (const c of companies) {
     const obs = fromActivePromo(
-      "awarded-and-top",
       c.companyId ?? c.name ?? null,
-      cityId,
-      c.activePromotionInfo,
-      {
-        activePromotionInfo: c.activePromotionInfo,
-        companyId: c.companyId ?? c.name,
-      }
+      c.activePromotionInfo
     );
     if (obs) {
       out.push(obs);
@@ -227,24 +168,10 @@ const fromAwardedAndTop = (
   return out;
 };
 
-const fromConstantHeaders = (
-  cityId: number,
-  companies: readonly DeepReadonly<CompanySearchItem>[]
-): PromoObservation[] => {
-  // We don't want to refetch /constant for every company — catalog already
-  // ran. Instead, surface promos from the awarded-and-top response as the
-  // primary signal. This loader exists so callers can pass already-fetched
-  // ConstantResponse objects when they happen to have them.
-  // Returns [] when no constant data is supplied via the optional helper below.
-  void cityId;
-  void companies;
-  return [];
-};
-
 /**
- * Optional — pass already-fetched constant responses (from the catalog pass)
- * to also pull promo info from companyHeader.activePromotionInfo. Most useful
- * when separate=true codes (e.g. MG30) aren't surfaced by awarded-and-top.
+ * Pass already-fetched constant responses (from the catalog pass) to also
+ * pull promo info from companyHeader.activePromotionInfo. Useful when
+ * separate=true codes (e.g. MG30) aren't surfaced by awarded-and-top.
  */
 export const recordPromosFromConstants = async (
   cityId: number,
@@ -253,10 +180,12 @@ export const recordPromosFromConstants = async (
     constant: DeepReadonly<ConstantResponse>;
   }>[]
 ): Promise<void> => {
+  // kept for call-site symmetry; not used by the new schema.
+  void cityId;
   const obs: PromoObservation[] = [];
   for (const { companyId, constant } of entries) {
     const info = constant.companyHeader.activePromotionInfo ?? null;
-    const o = fromActivePromo("constant", companyId, cityId, info, info);
+    const o = fromActivePromo(companyId, info);
     if (o) {
       obs.push(o);
     }
@@ -270,7 +199,7 @@ const fetchBanners = async (cityId: number): Promise<PromoObservation[]> => {
       `/api/open/mobile/banners?cId=${cityId}`
     );
     return (banners ?? [])
-      .map((b: DeepReadonly<Banner>) => fromBanner(b, cityId))
+      .map((b: DeepReadonly<Banner>) => fromBanner(b))
       .filter(
         (b: Readonly<PromoObservation> | null): b is PromoObservation =>
           b !== null
@@ -294,13 +223,7 @@ const fetchRecommended = async (
     const out: PromoObservation[] = [];
     for (const r of recs ?? []) {
       const cid = r.companyData.companyId ?? null;
-      const o = fromActivePromo(
-        "recommended-diets",
-        cid,
-        cityId,
-        r.activePromotion ?? null,
-        r
-      );
+      const o = fromActivePromo(cid, r.activePromotion ?? null);
       if (o) {
         out.push(o);
       }
@@ -308,7 +231,6 @@ const fetchRecommended = async (
     return out;
   } catch (error) {
     if (error instanceof HttpError) {
-      // Server has been observed returning 500 here intermittently — log+skip.
       console.warn(`[promotions] /recommended-diets failed: ${error.status}`);
       return [];
     }
@@ -327,27 +249,24 @@ export const scrapePromotions = async (
     `[promotions] city=${cityId} from ${companies.length} companies + banners + recommended`
   );
 
-  const awarded = fromAwardedAndTop(cityId, companies);
+  const awarded = fromAwardedAndTop(companies);
   const [banners, recommended] = await Promise.all([
     fetchBanners(cityId),
     fetchRecommended(cityId),
   ]);
-  // constant-header pass needs already-fetched data; left as optional helper.
-  fromConstantHeaders(cityId, companies);
 
   const all = [...awarded, ...banners, ...recommended];
   await persist(all);
 
-  // Mark previously-active campaigns that we didn't see this run as inactive.
-  // Conservative: only flip codes whose deadline already passed OR which haven't
-  // been observed for >24h. Avoids churn on transient API hiccups.
+  // Mark previously-active campaigns whose ends_at already passed AND which
+  // we didn't observe this run. Conservative; avoids churn on transient API
+  // hiccups.
   await q(
     `UPDATE campaigns
-        SET is_active = FALSE,
-            updated_at = NOW()
+        SET is_active = FALSE
       WHERE is_active = TRUE
         AND last_seen_at < NOW() - INTERVAL '24 hours'
-        AND COALESCE(deadline, CURRENT_DATE) < CURRENT_DATE`
+        AND COALESCE(ends_at, CURRENT_DATE) < CURRENT_DATE`
   );
 
   const elapsed = ((Date.now() - t0) / 1000).toFixed(1);

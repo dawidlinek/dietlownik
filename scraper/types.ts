@@ -184,6 +184,19 @@ export interface MenuSettings {
   menuDaysAhead: number;
 }
 
+/**
+ * Per-catering switches dietly's own clients honor. When `visibleNutritionInDietly`
+ * or `visibleIngredientsInDietly` is false, dietly's UI hides those panels even
+ * though the menu API still returns a body for the dish. Some caterings even
+ * return a uniform placeholder body across every option in that case (the
+ * "leczo bug"), which is exactly what these flags are protecting users from.
+ */
+export interface FormSettings {
+  visibleInDietly?: boolean;
+  visibleNutritionInDietly?: boolean;
+  visibleIngredientsInDietly?: boolean;
+}
+
 export interface ConstantResponse {
   companyDiets: Diet[];
   companyHeader: CompanyHeader;
@@ -191,7 +204,7 @@ export interface ConstantResponse {
   companySideOrders?: unknown[];
   contactDetails?: unknown;
   deliveryCities?: unknown[];
-  formSettings?: unknown;
+  formSettings?: FormSettings;
   images?: unknown[];
   menuSettings: MenuSettings;
   programs?: unknown[];
@@ -239,7 +252,7 @@ export interface CityResponse {
   companySettings: CompanySettings;
   awarded?: boolean;
   citySearchResult: CitySearchResult;
-  lowestPrice: LowestPrice;
+  lowestPrice: LowestPrice | null;
 }
 
 // ── calculate-price ───────────────────────────────────────────────────────────
@@ -400,6 +413,40 @@ export interface RecommendedDiet {
   pricingData?: { minDietPrice: number | null; priceCategory: string | null };
   activePromotion?: ActivePromotionInfo | null;
   deliveryInfo?: { text: string | null; date: string | null };
+}
+
+// ── /feedback ────────────────────────────────────────────────────────────────
+
+export interface FeedbackResult {
+  /** Per-review primary key — composite string like "robinfood_7305". */
+  feedbackId: string;
+  /** "YYYY-MM-DD" — when the review was posted. */
+  date?: string | null;
+  lastDeliveryDate?: string | null;
+  /** Composite per-review score on the dietly UI (0..5 or 0..100, source-dependent). */
+  avgScore?: number | null;
+  scoreTaste?: number | null;
+  scoreAesthetics?: number | null;
+  scoreIngredientsQuality?: number | null;
+  scorePackaging?: number | null;
+  scoreVariety?: number | null;
+  scoreDelivery?: number | null;
+  orderDuration?: number | null;
+  verified?: boolean | null;
+  text?: string | null;
+  responseText?: string | null;
+  author?: string | null;
+  authorName?: string | null;
+  username?: string | null;
+  [key: string]: unknown;
+}
+
+export interface FeedbackResponse {
+  results: FeedbackResult[];
+  totalElements?: number | null;
+  totalPages?: number | null;
+  currentPage?: number | null;
+  aggregation?: unknown;
 }
 
 // ── Internal DB row types ─────────────────────────────────────────────────────

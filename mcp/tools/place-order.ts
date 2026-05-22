@@ -7,7 +7,7 @@ import { parseOfferId } from "@/mcp/offer";
 import { defineTool } from "@/mcp/tool";
 import type { DeepReadonly } from "@/mcp/types";
 
-const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+const dateRegex = /^\d{4}-\d{2}-\d{2}$/u;
 
 const inputSchema = z.object({
   address_index: z
