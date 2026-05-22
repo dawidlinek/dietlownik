@@ -86,3 +86,6 @@ scripts/
 .agents/skills/migrate-oxlint/
 # patchright/playwright runtime artifacts
 .playwright-cli/
+
+# local design exploration sketches (favicon/logo studies — not part of the build)
+logos/

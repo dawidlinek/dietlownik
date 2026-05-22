@@ -6,8 +6,10 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 
 describe("find_diets regression snapshot", () => {
-  // No DB or network — pure JSON-Schema projection.
-  vi.setConfig({ testTimeout: 10_000 });
+  // No DB or network — pure JSON-Schema projection. Timeout is generous
+  // because the full vitest run pays a one-time cold-import cost (≈100s on
+  // Windows) before any test executes; the test itself runs in ~1s.
+  vi.setConfig({ testTimeout: 60_000 });
 
   it("exposes a stable MCP-wire contract (name + schema shape)", async () => {
     // Wave 4 contract: we add `rank_day` and `plan_week` alongside `find_diets`

@@ -7,6 +7,13 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+  cateringInitials,
+  cateringPlaceholderColor,
+  hasRenderableLogo,
+  isLogoFailed,
+  markLogoFailed,
+} from "@/lib/catering-initials";
 import { cn } from "@/lib/utils";
 
 export interface CateringChoice {
@@ -14,6 +21,53 @@ export interface CateringChoice {
   readonly name: string;
   readonly logo_url: string | null;
 }
+
+/** 24px placeholder circle stamped with the catering's initials. The
+ *  background is a soft hashed tint derived from the name — same name
+ *  always renders the same color, so a given catering looks visually
+ *  consistent across the picker list and the scatter marker. */
+const LogoPlaceholder = ({ name }: Readonly<{ name: string }>) => {
+  const { bg, fg } = cateringPlaceholderColor(name);
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        "w-6 h-6 rounded-full shrink-0 flex items-center justify-center",
+        "text-[9px] font-medium tracking-[0.04em]"
+      )}
+      style={{ backgroundColor: bg, color: fg }}
+    >
+      {cateringInitials(name)}
+    </span>
+  );
+};
+
+/** Picks between the catering's <img> logo and the initials placeholder.
+ *  When the URL is malformed or has previously failed to load, render the
+ *  placeholder straight away; when the URL looks plausible we try the
+ *  image and demote it to a placeholder on `onError`. */
+const LogoOrPlaceholder = ({
+  logoUrl,
+  name,
+}: Readonly<{ logoUrl: string | null; name: string }>) => {
+  const [, forceUpdate] = React.useReducer((n: number) => n + 1, 0);
+  const tryImage = hasRenderableLogo(logoUrl) && !isLogoFailed(logoUrl);
+  if (!tryImage) {
+    return <LogoPlaceholder name={name} />;
+  }
+  return (
+    // oxlint-disable-next-line @next/next/no-img-element -- ml-assets.com isn't whitelisted in next.config and these are external logos
+    <img
+      alt=""
+      className="w-6 h-6 rounded-full object-contain bg-white shrink-0"
+      onError={() => {
+        markLogoFailed(logoUrl);
+        forceUpdate();
+      }}
+      src={logoUrl}
+    />
+  );
+};
 
 interface ExcludeChipProps {
   readonly name: string;
@@ -127,16 +181,8 @@ const Picker = ({
                     </span>
                   )}
                 </span>
-                {c.logo_url === null ? (
-                  <span className="w-6 h-6 rounded-full bg-[var(--color-bone)] shrink-0" />
-                ) : (
-                  // oxlint-disable-next-line @next/next/no-img-element -- ml-assets.com isn't whitelisted in next.config and these are external logos
-                  <img
-                    alt=""
-                    className="w-6 h-6 rounded-full object-contain bg-white shrink-0"
-                    src={c.logo_url}
-                  />
-                )}
+                <LogoOrPlaceholder logoUrl={c.logo_url} name={c.name} />
+
                 <span className="flex-1 truncate">{c.name}</span>
               </button>
             );

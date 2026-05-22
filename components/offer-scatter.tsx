@@ -18,6 +18,13 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+  cateringInitials,
+  cateringPlaceholderColor,
+  hasRenderableLogo,
+  isLogoFailed,
+  markLogoFailed,
+} from "@/lib/catering-initials";
 import { formatPriceNumber } from "@/lib/format";
 import type { Offer } from "@/lib/match-types";
 import type { Metric, MetricId } from "@/lib/scatter-metrics";
@@ -224,39 +231,51 @@ const renderTooltip = ({ active, payload }: Readonly<TooltipShape>) => {
 
 // ── Logo marker shape ──────────────────────────────────────────────────────
 // When a company has a logo_url we render the image clipped to a circle.
-// Otherwise we fall back to a hashed-color circle stamped with initials.
+// Otherwise — or when the image fails to load at runtime (404 / CORS /
+// blank response) — we fall back to a hashed-color circle stamped with
+// initials. Failed URLs are remembered in the shared module-level set
+// (`markLogoFailed`) so the same dot doesn't keep retrying.
 
-const hueFor = (name: string): number => {
-  let h = 0;
-  for (let i = 0; i < name.length; i += 1) {
-    h = (h * 31 + (name.codePointAt(i) ?? 0)) % 360;
-  }
-  return h;
-};
+interface InitialsBubbleProps {
+  readonly cx: number;
+  readonly cy: number;
+  readonly r: number;
+  readonly companyName: string;
+}
 
-const fallbackColor = (name: string): { bg: string; fg: string } => {
-  const hue = hueFor(name);
-  return {
-    bg: `oklch(78% 0.06 ${hue})`,
-    fg: `oklch(28% 0.04 ${hue})`,
-  };
-};
-
-const initialsFor = (name: string): string => {
-  const cleaned = name.replaceAll(/[^\p{L}\d\s&]/gu, " ").trim();
-  if (cleaned === "") {
-    return "?";
-  }
-  const words = cleaned
-    .split(/\s+/)
-    .filter((w) => w.length > 0 && w !== "&" && w !== "-");
-  if (words.length === 0) {
-    return cleaned.slice(0, 2).toUpperCase();
-  }
-  if (words.length === 1) {
-    return words[0].slice(0, 2).toUpperCase();
-  }
-  return (words[0][0] + words[1][0]).toUpperCase();
+const InitialsBubble = ({
+  companyName,
+  cx,
+  cy,
+  r,
+}: Readonly<InitialsBubbleProps>) => {
+  const { bg, fg } = cateringPlaceholderColor(companyName);
+  const initials = cateringInitials(companyName);
+  const fontSize = initials.length > 1 ? r * 0.78 : r * 1;
+  return (
+    <>
+      <circle
+        cx={cx}
+        cy={cy}
+        fill={bg}
+        r={r}
+        stroke="var(--color-cream)"
+        strokeWidth={1}
+      />
+      <text
+        dominantBaseline="central"
+        fill={fg}
+        fontSize={fontSize}
+        fontWeight={600}
+        style={{ pointerEvents: "none", userSelect: "none" }}
+        textAnchor="middle"
+        x={cx}
+        y={cy + 0.5}
+      >
+        {initials}
+      </text>
+    </>
+  );
 };
 
 interface LogoMarkerProps {
@@ -276,10 +295,23 @@ const LogoMarker = ({
   ringStroke,
   ringWidth = 0,
 }: Readonly<LogoMarkerProps>) => {
+  // Hooks before early return — `failedTick` re-renders this marker when an
+  // image load fails, so the next render shows the initials fallback.
+  const [, forceUpdate] = React.useReducer((n: number) => n + 1, 0);
   if (cx === undefined || cy === undefined || !payload) {
     return null;
   }
-  const clipId = `logo-clip-${payload.offer_id}`;
+  const url = payload.logo_url;
+  const tryImage = hasRenderableLogo(url) && !isLogoFailed(url);
+  // Offer IDs encode `v1:company:dc[:tdo]` — colons inside an SVG element
+  // id make `url(#...)` references unreliable across renderers (the image
+  // fetches fine but gets clipped to nothing because the clipPath ID
+  // doesn't resolve). Sanitize to id-safe chars before stamping into the
+  // DOM.
+  const clipId = `logo-clip-${payload.offer_id.replaceAll(
+    /[^a-zA-Z0-9_-]/g,
+    "_"
+  )}`;
   const ringR = r + ringWidth - 0.5;
   return (
     <g style={{ pointerEvents: "all" }}>
@@ -293,37 +325,7 @@ const LogoMarker = ({
           strokeWidth={ringWidth}
         />
       )}
-      {payload.logo_url === null ? (
-        (() => {
-          const { bg, fg } = fallbackColor(payload.company_name);
-          const initials = initialsFor(payload.company_name);
-          const fontSize = initials.length > 1 ? r * 0.78 : r * 1;
-          return (
-            <>
-              <circle
-                cx={cx}
-                cy={cy}
-                fill={bg}
-                r={r}
-                stroke="var(--color-cream)"
-                strokeWidth={1}
-              />
-              <text
-                dominantBaseline="central"
-                fill={fg}
-                fontSize={fontSize}
-                fontWeight={600}
-                style={{ pointerEvents: "none", userSelect: "none" }}
-                textAnchor="middle"
-                x={cx}
-                y={cy + 0.5}
-              >
-                {initials}
-              </text>
-            </>
-          );
-        })()
-      ) : (
+      {tryImage ? (
         <>
           <defs>
             <clipPath id={clipId}>
@@ -341,13 +343,24 @@ const LogoMarker = ({
           <image
             clipPath={`url(#${clipId})`}
             height={r * 2}
-            href={payload.logo_url}
+            href={url}
+            onError={() => {
+              markLogoFailed(url);
+              forceUpdate();
+            }}
             preserveAspectRatio="xMidYMid slice"
             width={r * 2}
             x={cx - r}
             y={cy - r}
           />
         </>
+      ) : (
+        <InitialsBubble
+          companyName={payload.company_name}
+          cx={cx}
+          cy={cy}
+          r={r}
+        />
       )}
     </g>
   );
