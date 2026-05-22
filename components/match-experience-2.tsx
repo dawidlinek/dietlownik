@@ -35,6 +35,21 @@ export interface MatchExperience2Props {
 const KCAL_STORAGE_KEY = "match.kcal";
 const REFETCH_DEBOUNCE_MS = 280;
 
+/**
+ * Maps a per-zł ratio sort to the raw-metric sort it derives from. When a
+ * user has a per-zł sort active, Phase B fans out into three branches —
+ * cheapest + highest raw + best ratio — and this lookup gives us the
+ * "highest raw" branch. `kcal-per-zl` has no raw "kcal-desc" cousin in
+ * SortId, so it stays out of the table and falls through to the 2-branch
+ * sort+price load.
+ */
+const PER_ZL_TO_RAW: Partial<Record<SortId, SortId>> = {
+  "fiber-per-zl": "fiber-desc",
+  "protein-per-zl": "protein-desc",
+  "review-per-zl": "review-desc",
+  "score-per-zl": "score-desc",
+};
+
 interface KcalRange {
   readonly min: number;
   readonly max: number;
@@ -464,11 +479,20 @@ export const MatchExperience2 = ({
   ]);
 
   // Fired by the list when the user expands a day. Idempotent: cached or
-  // in-flight dates are no-ops. To keep the scatter honest across whatever
-  // axis the user has picked we issue two parallel limit=8 fetches — one
-  // ordered by the current sort, one ordered by price — and merge the
-  // results. The price branch is skipped when the current sort is already
-  // price-asc (it would just duplicate work).
+  // in-flight dates are no-ops.
+  //
+  // Pool composition depends on the current sort:
+  //   * per-zł ratio (e.g. protein-per-zl) → 3 parallel limit=5 fetches:
+  //       1) best ratio        (the sort itself)
+  //       2) highest raw value (e.g. protein-desc — `PER_ZL_TO_RAW`)
+  //       3) cheapest          (price-asc)
+  //     Surfaces all three "value" perspectives at once.
+  //   * everything else → 2 parallel limit=8 fetches: the user's sort + price.
+  //     (price-asc skips the second branch — already covered.)
+  //
+  // Branches are issued primary-intent-first, then merged with a first-
+  // occurrence-wins dedupe — so when the same offer surfaces from two
+  // branches, the primary's attribution (and ordering) survives.
   const requestPool = React.useCallback(
     (date: string) => {
       if (date in poolByDate || loadingPoolDates.has(date)) {
@@ -479,10 +503,11 @@ export const MatchExperience2 = ({
       // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- React setter receives the previous Set value
       setLoadingPoolDates((prev) => new Set([...prev, date]));
       const fetchPoolWith = async (
-        sortOverride?: SortId
+        sortOverride: SortId | undefined,
+        limit: number
       ): Promise<readonly Offer[]> => {
         const res = await fetch(
-          buildMatchUrl([date], 8, undefined, sortOverride),
+          buildMatchUrl([date], limit, undefined, sortOverride),
           { signal: ctrl.signal }
         );
         // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- shape narrowed at use sites
@@ -493,30 +518,41 @@ export const MatchExperience2 = ({
         const dayResult = (json.days ?? []).find((d) => d.date === date);
         return dayResult?.all_offers ?? [];
       };
+      const rawForRatio = PER_ZL_TO_RAW[sortId];
       void (async () => {
         try {
-          const needsPriceBranch = sortId !== "price-asc";
-          const [bySort, byPrice] = await Promise.all([
-            fetchPoolWith(),
-            needsPriceBranch
-              ? fetchPoolWith("price-asc")
-              : Promise.resolve([] as readonly Offer[]),
-          ]);
-          // Dedupe by offer_id; sort-branch wins for shared offers so the
-          // order reflects the user's chosen ranking.
-          const byId = new Map<string, Offer>();
-          for (const o of bySort) {
-            byId.set(o.offer_id, o);
+          // Branches are ordered so the user's primary intent (sort for the
+          // 2-branch path, ratio for the 3-branch path) is FIRST — the
+          // first-occurrence-wins merge below preserves those offers
+          // against ties from the secondary branches.
+          let branches: readonly (readonly Offer[])[];
+          if (rawForRatio === undefined) {
+            // 2-branch: user's sort + price. price-asc skips its own branch.
+            const priceBranch =
+              sortId === "price-asc"
+                ? Promise.resolve([] as readonly Offer[])
+                : fetchPoolWith("price-asc", 8);
+            branches = await Promise.all([
+              fetchPoolWith(undefined, 8),
+              priceBranch,
+            ]);
+          } else {
+            // 3-branch: best ratio + highest raw + cheapest.
+            branches = await Promise.all([
+              fetchPoolWith(sortId, 5),
+              fetchPoolWith(rawForRatio, 5),
+              fetchPoolWith("price-asc", 5),
+            ]);
           }
-          for (const o of byPrice) {
-            if (!byId.has(o.offer_id)) {
-              byId.set(o.offer_id, o);
+          const byId = new Map<string, Offer>();
+          for (const branch of branches) {
+            for (const o of branch) {
+              if (!byId.has(o.offer_id)) {
+                byId.set(o.offer_id, o);
+              }
             }
           }
-          setPoolByDate((prev) => ({
-            ...prev,
-            [date]: [...byId.values()],
-          }));
+          setPoolByDate((prev) => ({ ...prev, [date]: [...byId.values()] }));
         } catch (error: unknown) {
           if (error instanceof Error && error.name === "AbortError") {
             return;
