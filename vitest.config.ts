@@ -13,5 +13,8 @@ export default defineConfig({
     environment: "node",
     globals: false,
     include: ["{lib,scraper,mcp}/__tests__/**/*.test.ts"],
+    // Loads `.env` so DATABASE_URL-gated suites actually run. See
+    // vitest.setup.ts for why this is not optional.
+    setupFiles: ["./vitest.setup.ts"],
   },
 });

@@ -6,20 +6,25 @@ exports[`find_diets regression snapshot > exposes a stable MCP-wire contract (na
     "openWorldHint": false,
     "readOnlyHint": true,
   },
-  "description": "Search the local scraper Postgres for catering diet offers in a city, filtered by diet tag, kcal range, max per-day price, min review score, or active promo. Use this as the entry point before \`get_menu\` / \`quote_order\` / \`place_order\`. Returns opaque \`offer_id\` tokens those tools accept — never parse or invent them.",
+  "description": "Browse the diet catalog in a city — by diet type (KETO, VEGAN, …), kcal, price and catering rating — without looking at any day's menu. Use it for 'what vegan diets are there under 70 zł'; use \`plan\` to choose by what is actually on the menu. Returns the same \`offer_id\`s.",
   "inputSchema": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "additionalProperties": false,
     "properties": {
       "city": {
-        "description": "City name in Polish (e.g. 'Wrocław', 'Warszawa', 'Kraków'). Resolved server-side; agent never passes a city id.",
+        "default": "Wrocław",
         "minLength": 1,
         "type": "string",
       },
       "diet_tag": {
-        "description": "Diet category tag (e.g. 'STANDARD', 'KETO', 'VEGAN'). Omit to include all.",
+        "description": "dietly's diet type, case-insensitive: STANDARD, SPORT, LOW IG, WEIGHT LOSS, KETO, VEGETARIAN, VEGAN, VEGE AND FISH, GLUTEN LACTOSE FREE, LOW CARB, DASH, … (get_context lists them).",
         "minLength": 1,
         "type": "string",
+      },
+      "include_shared_packages": {
+        "default": false,
+        "description": "Include 'dla dwojga' / 'duo' packages (priced for two).",
+        "type": "boolean",
       },
       "kcal_max": {
         "exclusiveMinimum": 0,
@@ -38,13 +43,13 @@ exports[`find_diets regression snapshot > exposes a stable MCP-wire contract (na
         "type": "integer",
       },
       "max_price_per_day": {
-        "description": "PLN per day.",
+        "description": "PLN per day, promo applied.",
         "exclusiveMinimum": 0,
         "type": "number",
       },
-      "min_score": {
-        "description": "Minimum average review score (0-100).",
-        "maximum": 100,
+      "min_rating": {
+        "description": "Catering rating 0–5; caterings with no reviews are dropped.",
+        "maximum": 5,
         "minimum": 0,
         "type": "number",
       },
@@ -52,19 +57,21 @@ exports[`find_diets regression snapshot > exposes a stable MCP-wire contract (na
         "default": "price",
         "enum": [
           "price",
-          "score",
+          "rating",
         ],
         "type": "string",
       },
       "with_promo_only": {
-        "description": "Restrict to offers with an active promo code.",
+        "default": false,
         "type": "boolean",
       },
     },
     "required": [
       "city",
+      "include_shared_packages",
       "limit",
       "sort_by",
+      "with_promo_only",
     ],
     "type": "object",
   },
@@ -74,110 +81,61 @@ exports[`find_diets regression snapshot > exposes a stable MCP-wire contract (na
     "additionalProperties": false,
     "properties": {
       "city": {
-        "additionalProperties": false,
-        "properties": {
-          "id": {
-            "type": "number",
-          },
-          "name": {
-            "type": "string",
-          },
-        },
-        "required": [
-          "id",
-          "name",
-        ],
-        "type": "object",
+        "type": "string",
       },
       "offers": {
         "items": {
           "additionalProperties": false,
           "properties": {
-            "avg_score": {
-              "anyOf": [
-                {
-                  "type": "number",
-                },
-                {
-                  "type": "null",
-                },
-              ],
-            },
-            "awarded": {
-              "type": "boolean",
-            },
-            "calories": {
-              "anyOf": [
-                {
-                  "type": "number",
-                },
-                {
-                  "type": "null",
-                },
-              ],
-            },
-            "company": {
+            "catering": {
               "additionalProperties": false,
               "properties": {
                 "id": {
                   "type": "string",
                 },
                 "name": {
+                  "type": "string",
+                },
+                "rating": {
                   "anyOf": [
                     {
-                      "type": "string",
+                      "type": "number",
                     },
                     {
                       "type": "null",
                     },
                   ],
+                  "description": "0–5.",
+                },
+                "reviews": {
+                  "type": "number",
                 },
               },
               "required": [
                 "id",
                 "name",
+                "rating",
+                "reviews",
               ],
               "type": "object",
             },
             "diet": {
-              "additionalProperties": false,
-              "properties": {
-                "name": {
-                  "anyOf": [
-                    {
-                      "type": "string",
-                    },
-                    {
-                      "type": "null",
-                    },
-                  ],
-                },
-                "tag": {
-                  "anyOf": [
-                    {
-                      "type": "string",
-                    },
-                    {
-                      "type": "null",
-                    },
-                  ],
-                },
-              },
-              "required": [
-                "name",
-                "tag",
-              ],
-              "type": "object",
-            },
-            "is_configurable": {
-              "description": "True if menu-configuration diet (allows per-day meal choice in get_menu).",
-              "type": "boolean",
-            },
-            "offer_id": {
-              "description": "Opaque token. Pass to get_menu / quote_order / place_order. Do not parse or hand-construct.",
               "type": "string",
             },
-            "price_per_day": {
+            "diet_tag": {
+              "anyOf": [
+                {
+                  "type": "string",
+                },
+                {
+                  "type": "null",
+                },
+              ],
+            },
+            "is_configurable": {
+              "type": "boolean",
+            },
+            "kcal": {
               "anyOf": [
                 {
                   "type": "number",
@@ -186,69 +144,85 @@ exports[`find_diets regression snapshot > exposes a stable MCP-wire contract (na
                   "type": "null",
                 },
               ],
-              "description": "PLN. Computed for a 5-day order.",
             },
-            "promo": {
-              "anyOf": [
-                {
-                  "additionalProperties": false,
-                  "properties": {
-                    "code": {
-                      "type": "string",
+            "offer_id": {
+              "type": "string",
+            },
+            "price": {
+              "additionalProperties": false,
+              "properties": {
+                "list": {
+                  "anyOf": [
+                    {
+                      "type": "number",
                     },
-                    "deadline": {
-                      "anyOf": [
-                        {
+                    {
+                      "type": "null",
+                    },
+                  ],
+                  "description": "Per-day price before promo codes.",
+                },
+                "per_day": {
+                  "description": "Per-day price after the promo code below — the number rankings and totals use.",
+                  "type": "number",
+                },
+                "promo": {
+                  "anyOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "code": {
                           "type": "string",
                         },
-                        {
-                          "type": "null",
-                        },
-                      ],
-                    },
-                    "discount_percent": {
-                      "anyOf": [
-                        {
+                        "discount_percent": {
                           "type": "number",
                         },
-                        {
-                          "type": "null",
+                        "ends_at": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                            },
+                            {
+                              "type": "null",
+                            },
+                          ],
                         },
+                      },
+                      "required": [
+                        "code",
+                        "discount_percent",
+                        "ends_at",
                       ],
+                      "type": "object",
                     },
-                  },
-                  "required": [
-                    "code",
-                    "deadline",
-                    "discount_percent",
+                    {
+                      "type": "null",
+                    },
                   ],
-                  "type": "object",
+                  "description": "The code this price assumes. Quote/basket apply it; if dietly rejects it the list price applies.",
+                },
+              },
+              "required": [
+                "list",
+                "per_day",
+                "promo",
+              ],
+              "type": "object",
+            },
+            "tier": {
+              "anyOf": [
+                {
+                  "type": "string",
                 },
                 {
                   "type": "null",
                 },
               ],
             },
-            "tier": {
+            "variant": {
               "anyOf": [
                 {
-                  "additionalProperties": false,
-                  "properties": {
-                    "name": {
-                      "anyOf": [
-                        {
-                          "type": "string",
-                        },
-                        {
-                          "type": "null",
-                        },
-                      ],
-                    },
-                  },
-                  "required": [
-                    "name",
-                  ],
-                  "type": "object",
+                  "type": "string",
                 },
                 {
                   "type": "null",
@@ -257,16 +231,15 @@ exports[`find_diets regression snapshot > exposes a stable MCP-wire contract (na
             },
           },
           "required": [
-            "avg_score",
-            "awarded",
-            "calories",
-            "company",
+            "catering",
             "diet",
+            "diet_tag",
             "is_configurable",
+            "kcal",
             "offer_id",
-            "price_per_day",
-            "promo",
+            "price",
             "tier",
+            "variant",
           ],
           "type": "object",
         },

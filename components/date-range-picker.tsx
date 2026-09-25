@@ -66,6 +66,8 @@ export interface DateRangePickerProps {
   /** Subset currently selected. */
   readonly selectedDates: readonly string[];
   readonly onChange: (next: readonly string[]) => void;
+  /** Custom trigger element; defaults to the labelled "Daty" button. */
+  readonly trigger?: React.ReactElement;
 }
 
 const summarizeRange = (selected: readonly string[], total: number): string => {
@@ -78,10 +80,12 @@ const summarizeRange = (selected: readonly string[], total: number): string => {
   return `${selected.length} z ${total} dni · ${formatLongDate(selected[0])} → ${formatLongDate(selected.at(-1) ?? "")}`;
 };
 
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- `trigger` is a ReactElement, whose props type cannot be made deeply readonly
 export const DateRangePicker = ({
   availableDates,
   onChange,
   selectedDates,
+  trigger,
 }: Readonly<DateRangePickerProps>) => {
   const selectedSet = new Set(selectedDates);
 
@@ -109,26 +113,28 @@ export const DateRangePicker = ({
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <button
-          className={cn(
-            "group inline-flex items-center gap-2 px-2 py-1 text-[14px] text-[var(--color-ink)] rounded-sm",
-            "hover:bg-[var(--color-oat)] transition-colors"
-          )}
-          type="button"
-        >
-          <span className="text-[11px] uppercase tracking-[0.08em] text-[var(--color-ink-3)]">
-            Daty
-          </span>
-          <span className="font-medium tnum text-[13px]">
-            {summarizeRange(selectedDates, availableDates.length)}
-          </span>
-          <span
-            aria-hidden
-            className="text-[var(--color-ink-3)] text-[12px] leading-none"
+        {trigger ?? (
+          <button
+            className={cn(
+              "group inline-flex items-center gap-2 px-2 py-1 text-[14px] text-[var(--color-ink)] rounded-sm",
+              "hover:bg-[var(--color-oat)] transition-colors"
+            )}
+            type="button"
           >
-            ↓
-          </span>
-        </button>
+            <span className="text-[11px] uppercase tracking-[0.08em] text-[var(--color-ink-3)]">
+              Daty
+            </span>
+            <span className="font-medium tnum text-[13px]">
+              {summarizeRange(selectedDates, availableDates.length)}
+            </span>
+            <span
+              aria-hidden
+              className="text-[var(--color-ink-3)] text-[12px] leading-none"
+            >
+              ↓
+            </span>
+          </button>
+        )}
       </PopoverTrigger>
       <PopoverContent align="start" className="w-[360px] p-3">
         <div className="flex items-center justify-between mb-2">

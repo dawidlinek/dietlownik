@@ -1,6 +1,6 @@
 // Daily-menu scraper.
 //
-// For each (company, city) we walk the *canonical* leaf set of the catalog —
+// For each company we walk the *canonical* leaf set of the catalog —
 // one diet_calories row per (tier_id, diet_option_id) group, picking the
 // lowest kcal entry. Different kcal levels of the same option share the same
 // dish lineup (only portion sizes differ — verified), so this dedupes ~7×
@@ -9,16 +9,21 @@
 // For each (target, date) we hit
 //   GET /company-card/{companyId}/menu/{dietCaloriesId}/city/{cityId}/date/{D}
 // (optionally ?tierId=...) and persist into:
-//   - meals                       (canonical dish per (company, name)).
-//   - meals_history               (append-only fingerprint drift events).
-//   - meal_ingredients            (current structured rows, replaced on drift).
-//   - meal_ingredients_snapshots  (append-only JSONB list on drift).
-//   - daily_menu                  (append-only event log).
+//   - meals             dish identity per (company, name).
+//   - meal_variants     the dish's content as served (label, thermo,
+//                       allergens, ingredients), content-addressed: a
+//                       content seen before reuses its row.
+//   - meal_ingredients  structured ingredients, written once per new variant.
+//   - menu_items        one span per menu option; identical re-observations
+//                       extend it, anything else closes it (see "History
+//                       model" in db/schema.sql). Portion macros live here.
+//                       National: no city in the key (v15). The URL still
+//                       names a city because the API requires one; menus
+//                       were identical across every city compared, so which
+//                       one doesn't change what is stored.
 //
-// At end of run, all meal_ids that were inserted or fingerprint-drifted get
-// queued for embedding via scraper/embed-queue.ts; index.ts flushes them.
-
-import { createHash } from "node:crypto";
+// At end of run, every newly inserted variant gets embedded via
+// scraper/embed-queue.ts; index.ts flushes them.
 
 import {
   get,
@@ -28,12 +33,14 @@ import {
   nextNDates,
   HttpError,
 } from "../api";
-import { q } from "../db";
-import { enqueueMealForEmbedding } from "../embed-queue";
+import { q, withTx } from "../db";
+import { enqueueVariantForEmbedding } from "../embed-queue";
+import { SPAN_GAP_SQL } from "../spans";
 import type {
   DeepReadonly,
   MealDetails,
   MealOption,
+  MealSlot,
   MenuResponse,
 } from "../types";
 
@@ -142,11 +149,20 @@ const loadMenuTargets = async (companyId: string): Promise<MenuTarget[]> => {
 
 // ── ingredient parsing + normalization ───────────────────────────────────────
 
-interface IngredientRow {
+export interface IngredientRow {
   position: number;
   name_raw: string;
   name_normalized: string;
   is_major: boolean;
+  /** dietly's dietaryExclusionIds for this ingredient (its "wyklucz" vocabulary) */
+  exclusion_ids: number[];
+}
+
+/** One allergen as served: dietly's id plus both wordings. */
+export interface AllergenDetail {
+  id: number | null;
+  company_name: string;
+  dietly_name: string;
 }
 
 // Polish-to-ASCII fold for normalized lookups. Done in JS to keep DB indexes
@@ -170,7 +186,7 @@ const normalizeIngredient = (raw: string): string => {
     out += POLISH_FOLD[ch] ?? ch;
   }
   // Collapse whitespace and trim.
-  return out.replaceAll(/\s+/g, " ").trim();
+  return out.replaceAll(/\s+/gu, " ").trim();
 };
 
 const parseStructuredIngredients = (
@@ -185,6 +201,7 @@ const parseStructuredIngredients = (
       continue;
     }
     out.push({
+      exclusion_ids: (item.exclusion ?? []).map((e) => e.dietaryExclusionId),
       is_major: item.major,
       name_normalized: normalizeIngredient(nameRaw),
       name_raw: nameRaw,
@@ -197,7 +214,7 @@ const parseStructuredIngredients = (
 
 // ── meal field extraction ─────────────────────────────────────────────────────
 
-interface MealFields {
+export interface MealFields {
   api_meal_slot_id: number;
   name: string | null;
   label: string | null;
@@ -214,9 +231,11 @@ interface MealFields {
   reviews_score: number | null;
   reviews_number: number | null;
   allergens: string[];
+  allergens_detail: AllergenDetail[];
   ingredients_raw: string | null;
   ingredients: IngredientRow[];
-  fingerprint: string;
+  /** [dietaryExclusionId, name] pairs, for the dietary_exclusions dictionary */
+  exclusions: readonly (readonly [number, string])[];
 }
 
 const extractAllergens = (
@@ -233,6 +252,33 @@ const extractAllergens = (
   return [...seen].toSorted();
 };
 
+const extractAllergensDetail = (
+  details: DeepReadonly<MealDetails> | undefined
+): AllergenDetail[] =>
+  (details?.allergensWithExcluded ?? []).map((a) => ({
+    company_name: a.companyAllergenName,
+    dietly_name: a.dietlyAllergenName,
+    id: a.dietaryExclusionId ?? null,
+  }));
+
+/** dietly's exclusion vocabulary seen in one option, as [id, name] pairs. */
+const exclusionsOf = (
+  details: DeepReadonly<MealDetails> | undefined
+): [number, string][] => {
+  const out = new Map<number, string>();
+  for (const i of details?.ingredients ?? []) {
+    for (const e of i.exclusion ?? []) {
+      out.set(e.dietaryExclusionId, e.name);
+    }
+  }
+  for (const a of details?.allergensWithExcluded ?? []) {
+    if (a.dietaryExclusionId !== null && !out.has(a.dietaryExclusionId)) {
+      out.set(a.dietaryExclusionId, a.dietlyAllergenName);
+    }
+  }
+  return [...out];
+};
+
 const extractIngredientsRaw = (
   details: DeepReadonly<MealDetails> | undefined
 ): string | null => {
@@ -245,47 +291,6 @@ const extractIngredientsRaw = (
     }
   }
   return parts.length > 0 ? parts.join("; ") : null;
-};
-
-/**
- * Fingerprint over the meal's mutable attributes. Drift on any of these
- * triggers a meals_history row, a re-embed, and a meal_ingredients refresh.
- * Allergens are pre-sorted in extractAllergens; ingredients_raw mirrors the
- * API's verbatim list order.
- */
-const fingerprintOfMeal = (
-  fields: Readonly<{
-    name: string | null;
-    label: string | null;
-    thermo: string | null;
-    kcal: number | null;
-    protein_g: number | null;
-    fat_g: number | null;
-    carbs_g: number | null;
-    fiber_g: number | null;
-    sugar_g: number | null;
-    saturated_fat_g: number | null;
-    salt_g: number | null;
-    allergens: readonly string[];
-    ingredients_raw: string | null;
-  }>
-): string => {
-  const payload = JSON.stringify([
-    fields.name ?? "",
-    fields.label ?? "",
-    fields.thermo ?? "",
-    fields.kcal,
-    fields.protein_g,
-    fields.fat_g,
-    fields.carbs_g,
-    fields.fiber_g,
-    fields.sugar_g,
-    fields.saturated_fat_g,
-    fields.salt_g,
-    [...fields.allergens].toSorted(),
-    fields.ingredients_raw ?? "",
-  ]);
-  return createHash("sha256").update(payload).digest("hex");
 };
 
 interface ParsedMacros {
@@ -352,34 +357,25 @@ const mealFieldsFromOption = (
     ? extractIngredientsRaw(details)
     : null;
   const allergens = vis.ingredients_visible ? extractAllergens(details) : [];
+  const allergensDetail = vis.ingredients_visible
+    ? extractAllergensDetail(details)
+    : [];
+  const exclusions = vis.ingredients_visible ? exclusionsOf(details) : [];
+  // dietly sends "" for a missing photo; store that as unknown.
+  const image = details?.imageUrl ?? "";
   const ingredients = vis.ingredients_visible
     ? parseStructuredIngredients(details)
     : [];
 
-  const fingerprint = fingerprintOfMeal({
-    allergens,
-    carbs_g: macros.carbs_g,
-    fat_g: macros.fat_g,
-    fiber_g,
-    ingredients_raw,
-    kcal: macros.kcal,
-    label,
-    name,
-    protein_g: macros.protein_g,
-    salt_g,
-    saturated_fat_g,
-    sugar_g,
-    thermo,
-  });
-
   return {
     allergens,
+    allergens_detail: allergensDetail,
     api_meal_slot_id: option.dietCaloriesMealId,
     carbs_g: macros.carbs_g,
+    exclusions,
     fat_g: macros.fat_g,
     fiber_g,
-    fingerprint,
-    image_url: details?.imageUrl ?? null,
+    image_url: image === "" ? null : image,
     ingredients,
     ingredients_raw,
     kcal: macros.kcal,
@@ -397,234 +393,281 @@ const mealFieldsFromOption = (
 
 // ── DB writes ─────────────────────────────────────────────────────────────────
 
-/**
- * Replace the meal's current ingredient rows and append a JSONB snapshot
- * carrying the meal's fingerprint at the time of capture. Called on initial
- * insert AND on every fingerprint drift.
- */
-const writeIngredients = async (
-  mealId: number,
-  fingerprint: string,
-  ingredients: readonly Readonly<IngredientRow>[]
-): Promise<void> => {
-  await q(`DELETE FROM meal_ingredients WHERE meal_id = $1`, [mealId]);
-  if (ingredients.length > 0) {
-    const FIELDS = 5;
-    const placeholders: string[] = [];
-    const params: unknown[] = [];
-    for (let i = 0; i < ingredients.length; i += 1) {
-      const base = i * FIELDS;
-      placeholders.push(
-        `($${base + 1},$${base + 2},$${base + 3},$${base + 4},$${base + 5})`
-      );
-      const ing = ingredients[i];
-      params.push(
-        mealId,
-        ing.position,
-        ing.name_raw,
-        ing.name_normalized,
-        ing.is_major
-      );
-    }
-    await q(
-      `INSERT INTO meal_ingredients
-         (meal_id, position, name_raw, name_normalized, is_major)
-       VALUES ${placeholders.join(",")}`,
-      params
-    );
-  }
-  await q(
-    `INSERT INTO meal_ingredients_snapshots
-       (meal_id, fingerprint, ingredients)
-     VALUES ($1,$2,$3::jsonb)`,
-    [mealId, fingerprint, JSON.stringify(ingredients)]
+/** Upsert the dish identity, keyed by (company_id, name). */
+export const upsertMeal = async (
+  companyId: string,
+  name: string,
+  imageUrl: string | null
+): Promise<number | null> => {
+  const res = await q<{ id: string }>(
+    `INSERT INTO meals (company_id, name, image_url)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (company_id, name) DO UPDATE SET
+       last_seen_at = NOW(),
+       image_url    = COALESCE(EXCLUDED.image_url, meals.image_url)
+     RETURNING id`,
+    [companyId, name, imageUrl]
   );
+  const [row] = res.rows;
+  return row === undefined ? null : Number(row.id);
 };
 
 /**
- * Upsert one dish, keyed by (company_id, name).
+ * Upsert the served content as a variant of `mealId`. The hash is computed
+ * by meal_content_sha() in the database so it matches the v11 backfill.
  *
- * Returns the row's stable `meal_id` plus a `touched` flag (true on insert OR
- * fingerprint drift). On touch the caller also rewrites meal_ingredients and
- * queues the meal for re-embedding.
+ * Content seen before (the common case) is one UPDATE. A new variant is
+ * written in one transaction together with its ingredient list — names go
+ * through the ingredient_names dictionary, exclusion ids through
+ * dietary_exclusions — so a variant never exists without its ingredients.
  */
-const upsertMeal = async (
-  companyId: string,
+export const upsertVariant = async (
+  mealId: number,
   m: DeepReadonly<MealFields>
-): Promise<{ meal_id: number | null; touched: boolean; drifted: boolean }> => {
-  const trimmed = m.name?.trim() ?? "";
-  if (trimmed === "") {
-    return { drifted: false, meal_id: null, touched: false };
-  }
-  const name = trimmed;
-
-  const res = await q<{
-    id: number;
-    old_fingerprint: string | null;
-    was_insert: boolean;
-  }>(
-    `WITH prev AS (
-       SELECT id, fingerprint AS old_fp
-       FROM meals
-       WHERE company_id = $1 AND name = $2
-     )
-     INSERT INTO meals (
-       company_id, name, label, thermo,
-       kcal, protein_g, fat_g, carbs_g, fiber_g, sugar_g,
-       saturated_fat_g, salt_g, image_url,
-       reviews_score, reviews_number, allergens, ingredients_raw,
-       fingerprint, first_seen_at, last_seen_at, updated_at
-     ) VALUES (
-       $1, $2, $3, $4,
-       $5, $6, $7, $8, $9, $10,
-       $11, $12, $13,
-       $14, $15, $16, $17,
-       $18, NOW(), NOW(), NOW()
-     )
-     ON CONFLICT (company_id, name) DO UPDATE SET
-       label           = EXCLUDED.label,
-       thermo          = EXCLUDED.thermo,
-       kcal            = EXCLUDED.kcal,
-       protein_g       = EXCLUDED.protein_g,
-       fat_g           = EXCLUDED.fat_g,
-       carbs_g         = EXCLUDED.carbs_g,
-       fiber_g         = EXCLUDED.fiber_g,
-       sugar_g         = EXCLUDED.sugar_g,
-       saturated_fat_g = EXCLUDED.saturated_fat_g,
-       salt_g          = EXCLUDED.salt_g,
-       image_url       = EXCLUDED.image_url,
-       reviews_score   = EXCLUDED.reviews_score,
-       reviews_number  = EXCLUDED.reviews_number,
-       allergens       = EXCLUDED.allergens,
-       ingredients_raw = EXCLUDED.ingredients_raw,
-       fingerprint     = EXCLUDED.fingerprint,
-       last_seen_at    = NOW(),
-       updated_at      = CASE
-         WHEN meals.fingerprint IS DISTINCT FROM EXCLUDED.fingerprint THEN NOW()
-         ELSE meals.updated_at
-       END
-     RETURNING id,
-               (SELECT old_fp FROM prev) AS old_fingerprint,
-               (xmax = 0) AS was_insert`,
-    [
-      companyId,
-      name,
-      m.label,
-      m.thermo,
-      m.kcal,
-      m.protein_g,
-      m.fat_g,
-      m.carbs_g,
-      m.fiber_g,
-      m.sugar_g,
-      m.saturated_fat_g,
-      m.salt_g,
-      m.image_url,
-      m.reviews_score,
-      m.reviews_number,
-      m.allergens,
-      m.ingredients_raw,
-      m.fingerprint,
-    ]
+): Promise<{ variant_id: number; inserted: boolean } | null> => {
+  const ingredientsJson = JSON.stringify(m.ingredients);
+  const shaArgs = [m.label, m.thermo, m.allergens, ingredientsJson];
+  const seen = await q<{ id: string }>(
+    `UPDATE meal_variants SET last_seen_at = NOW()
+      WHERE meal_id = $1
+        AND content_sha = meal_content_sha($2::text, $3::text, $4::text[], $5::jsonb)
+      RETURNING id`,
+    [mealId, ...shaArgs]
   );
-
-  const [row] = res.rows;
-  if (row === undefined) {
-    return { drifted: false, meal_id: null, touched: false };
+  const [existing] = seen.rows;
+  if (existing !== undefined) {
+    return { inserted: false, variant_id: Number(existing.id) };
   }
-
-  const wasInsert = row.was_insert;
-  const oldFp = row.old_fingerprint ?? null;
-  const drifted = !wasInsert && oldFp !== null && oldFp !== m.fingerprint;
-
-  if (drifted) {
-    await q(
-      `INSERT INTO meals_history (
-         meal_id, fingerprint, kcal, protein_g, fat_g, carbs_g,
-         fiber_g, sugar_g, saturated_fat_g, salt_g,
-         reviews_score, reviews_number
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+  return withTx(async (tq) => {
+    const res = await tq<{ id: string; inserted: boolean }>(
+      `INSERT INTO meal_variants
+         (meal_id, content_sha, label, thermo, allergens, ingredients_raw,
+          allergens_detail)
+       VALUES ($1, meal_content_sha($2::text, $3::text, $4::text[], $5::jsonb),
+               $2, $3, $4::text[], $6, $7::jsonb)
+       ON CONFLICT (meal_id, content_sha) DO UPDATE SET last_seen_at = NOW()
+       RETURNING id, (xmax = 0) AS inserted`,
       [
-        row.id,
-        m.fingerprint,
-        m.kcal,
-        m.protein_g,
-        m.fat_g,
-        m.carbs_g,
-        m.fiber_g,
-        m.sugar_g,
-        m.saturated_fat_g,
-        m.salt_g,
-        m.reviews_score,
-        m.reviews_number,
+        mealId,
+        ...shaArgs,
+        m.ingredients_raw,
+        JSON.stringify(m.allergens_detail),
       ]
     );
-  }
-
-  const touched = wasInsert || drifted;
-  return { drifted, meal_id: row.id, touched };
+    const [row] = res.rows;
+    if (row === undefined) {
+      return null;
+    }
+    const variantId = Number(row.id);
+    if (!row.inserted) {
+      return { inserted: false, variant_id: variantId };
+    }
+    if (m.exclusions.length > 0) {
+      await tq(
+        `INSERT INTO dietary_exclusions (exclusion_id, name)
+         SELECT * FROM unnest($1::int[], $2::text[])
+         ON CONFLICT (exclusion_id) DO NOTHING`,
+        [m.exclusions.map(([id]) => id), m.exclusions.map(([, name]) => name)]
+      );
+    }
+    if (m.ingredients.length > 0) {
+      await tq(
+        `INSERT INTO ingredient_names (name_raw, name_normalized)
+         SELECT e->>'name_raw', e->>'name_normalized'
+         FROM jsonb_array_elements($1::jsonb) e
+         ON CONFLICT (name_raw) DO NOTHING`,
+        [ingredientsJson]
+      );
+      await tq(
+        `INSERT INTO variant_ingredients
+           (variant_id, position, name_id, is_major, exclusion_ids)
+         SELECT $1, (e->>'position')::int, n.id, (e->>'is_major')::boolean,
+                ARRAY(SELECT jsonb_array_elements_text(e->'exclusion_ids'))::int[]
+         FROM jsonb_array_elements($2::jsonb) e
+         JOIN ingredient_names n ON n.name_raw = e->>'name_raw'`,
+        [variantId, ingredientsJson]
+      );
+    }
+    return { inserted: true, variant_id: variantId };
+  });
 };
 
-interface DailyMenuRow {
-  company_id: string;
-  city_id: number;
-  diet_calories_id: number;
-  tier_id: number | null;
-  menu_date: string;
-  slot_name: string | null;
-  meal_id: number | null;
+/** One option as observed in one menu fetch. */
+export interface MenuObservation {
   api_meal_slot_id: number;
+  slot_name: string;
+  meal_id: number;
+  variant_id: number | null;
   is_default: boolean;
+  kcal: number | null;
+  protein_g: number | null;
+  fat_g: number | null;
+  carbs_g: number | null;
+  fiber_g: number | null;
+  sugar_g: number | null;
+  saturated_fat_g: number | null;
+  salt_g: number | null;
+  reviews_score: number | null;
+  reviews_number: number | null;
+  image_url: string | null;
 }
 
+// Value columns of a menu option and the SQL type each is stored as, in
+// unnest() order after the key column api_meal_slot_id ($5).
+const OPTION_COLUMNS = [
+  ["slot_name", "varchar(80)"],
+  ["meal_id", "bigint"],
+  ["variant_id", "bigint"],
+  ["is_default", "boolean"],
+  ["kcal", "numeric(7,2)"],
+  ["protein_g", "numeric(7,2)"],
+  ["fat_g", "numeric(7,2)"],
+  ["carbs_g", "numeric(7,2)"],
+  ["fiber_g", "numeric(7,2)"],
+  ["sugar_g", "numeric(7,2)"],
+  ["saturated_fat_g", "numeric(7,2)"],
+  ["salt_g", "numeric(7,2)"],
+  ["reviews_score", "numeric(5,2)"],
+  ["reviews_number", "int"],
+  ["image_url", "text"],
+] as const satisfies readonly (readonly [keyof MenuObservation, string])[];
+
+const OPTION_NAMES = OPTION_COLUMNS.map(([name]) => name).join(", ");
+// unnest() over one array per column. Arrays are bound as their base type;
+// each value is cast to the column type where it is compared or stored, so
+// a comparison sees exactly what an INSERT would keep.
+const OBS_CTE = `obs AS (
+  SELECT * FROM unnest($5::bigint[], ${OPTION_COLUMNS.map(
+    ([, type], i) => `$${i + 6}::${type.replace(/\(.*\)/u, "")}[]`
+  ).join(", ")}) AS o(api_meal_slot_id, ${OPTION_NAMES})
+)`;
+const OBS_VALUES = OPTION_COLUMNS.map(
+  ([name, type]) => `o.${name}::${type}`
+).join(", ");
+
+const SCOPE_MATCH = `mi.company_id = $1
+  AND mi.diet_calories_id = $2 AND mi.tier_id = $3 AND mi.menu_date = $4
+  AND mi.closed_at IS NULL`;
+
+/** One fetched menu: (company, diet_calories_id, tier_id, date). */
+export type MenuScope = readonly [string, number, number, string];
+
 /**
- * Bulk-insert daily_menu rows in a single multi-VALUES statement.
- * 9 fields × N rows = 9N parameters. With ~25 rows per menu fetch that's ~225
- * parameters per call — well under PG's 65k limit.
+ * Record one successful menu fetch as spans, atomically:
+ *   1. open spans re-observed with identical values within SPAN_GAP are
+ *      extended;
+ *   2. every other open span of this menu is closed — its values changed,
+ *      it went stale, or the option is gone from the menu;
+ *   3. options not extended in (1) open new spans.
+ * Serialised per menu with an advisory lock. An empty observation list is a
+ * no-op: it says nothing about what was removed.
  */
-const bulkInsertDailyMenu = async (
-  rows: readonly Readonly<DailyMenuRow>[]
+export const recordMenu = async (
+  scope: MenuScope,
+  observations: readonly Readonly<MenuObservation>[]
 ): Promise<void> => {
-  if (rows.length === 0) {
+  if (observations.length === 0) {
     return;
   }
-  const FIELDS = 9;
-  const placeholders: string[] = [];
-  const params: unknown[] = [];
-  for (let i = 0; i < rows.length; i += 1) {
-    const base = i * FIELDS;
-    placeholders.push(
-      `($${base + 1},$${base + 2},$${base + 3},$${base + 4},$${base + 5},$${base + 6},$${base + 7},$${base + 8},$${base + 9})`
+  const params: unknown[] = [
+    ...scope,
+    observations.map((o) => o.api_meal_slot_id),
+    ...OPTION_COLUMNS.map(([name]) => observations.map((o) => o[name])),
+  ];
+  await withTx(async (tq) => {
+    await tq("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [
+      `menu:${scope.join(":")}`,
+    ]);
+    const kept = await tq<{ api_meal_slot_id: string }>(
+      `WITH ${OBS_CTE}
+       UPDATE menu_items mi
+          SET last_seen_at = NOW(), observations = mi.observations + 1
+         FROM obs o
+        WHERE ${SCOPE_MATCH}
+          AND mi.api_meal_slot_id = o.api_meal_slot_id
+          AND mi.last_seen_at >= NOW() - ${SPAN_GAP_SQL}
+          AND ROW(${OPTION_COLUMNS.map(([name]) => `mi.${name}`).join(", ")})
+              IS NOT DISTINCT FROM ROW(${OBS_VALUES})
+       RETURNING mi.api_meal_slot_id`,
+      params
     );
-    const r = rows[i];
-    params.push(
-      r.company_id,
-      r.city_id,
-      r.diet_calories_id,
-      r.tier_id,
-      r.menu_date,
-      r.slot_name,
-      r.meal_id,
-      r.api_meal_slot_id,
-      r.is_default
+    const keptIds = kept.rows.map((r: Readonly<{ api_meal_slot_id: string }>) =>
+      Number(r.api_meal_slot_id)
     );
-  }
-  await q(
-    `INSERT INTO daily_menu
-       (company_id, city_id, diet_calories_id, tier_id, menu_date, slot_name, meal_id, api_meal_slot_id, is_default)
-     VALUES ${placeholders.join(",")}`,
-    params
-  );
+    await tq(
+      `UPDATE menu_items mi SET closed_at = NOW()
+        WHERE ${SCOPE_MATCH}
+          AND mi.api_meal_slot_id <> ALL ($5::bigint[])`,
+      [...scope, keptIds]
+    );
+    await tq(
+      `WITH ${OBS_CTE}
+       INSERT INTO menu_items
+         (company_id, diet_calories_id, tier_id, menu_date,
+          api_meal_slot_id, ${OPTION_NAMES})
+       SELECT $1, $2, $3, $4::date, o.api_meal_slot_id, ${OBS_VALUES}
+         FROM obs o
+        WHERE o.api_meal_slot_id <> ALL ($${OPTION_COLUMNS.length + 6}::bigint[])`,
+      [...params, keptIds]
+    );
+  });
 };
 
 // ── per-fetch processor ───────────────────────────────────────────────────────
 
 interface FetchResult {
-  mealsTouched: number;
-  dailyMenuRows: number;
+  variantsNew: number;
+  options: number;
   fetched: boolean;
   errored?: boolean;
 }
+
+/**
+ * Upsert one option's dish and variant and build its observation. Returns
+ * null for options without a usable dish name.
+ */
+const observeOption = async (
+  companyId: string,
+  slot: DeepReadonly<MealSlot>,
+  option: DeepReadonly<MealOption>,
+  vis: Readonly<BodyVisibility>
+): Promise<{ observation: MenuObservation; newVariant: boolean } | null> => {
+  const fields = mealFieldsFromOption(option, vis);
+  const name = fields.name?.trim() ?? "";
+  if (name === "") {
+    return null;
+  }
+  const mealId = await upsertMeal(companyId, name, fields.image_url);
+  if (mealId === null) {
+    return null;
+  }
+  const variant = await upsertVariant(mealId, fields);
+  const newVariant = variant?.inserted === true;
+  if (newVariant) {
+    enqueueVariantForEmbedding(variant.variant_id);
+  }
+  return {
+    newVariant,
+    observation: {
+      api_meal_slot_id: option.dietCaloriesMealId,
+      carbs_g: fields.carbs_g,
+      fat_g: fields.fat_g,
+      fiber_g: fields.fiber_g,
+      image_url: fields.image_url,
+      is_default: slot.baseDietCaloriesMealId === option.dietCaloriesMealId,
+      kcal: fields.kcal,
+      meal_id: mealId,
+      protein_g: fields.protein_g,
+      reviews_number: fields.reviews_number,
+      reviews_score: fields.reviews_score,
+      salt_g: fields.salt_g,
+      saturated_fat_g: fields.saturated_fat_g,
+      slot_name: slot.name ?? "",
+      sugar_g: fields.sugar_g,
+      variant_id: variant?.variant_id ?? null,
+    },
+  };
+};
 
 const processOneMenu = async (
   companyId: string,
@@ -650,54 +693,52 @@ const processOneMenu = async (
       console.warn(
         `[menus] ${companyId} ${target.diet_calories_id} @ ${date}: ${error.status}`
       );
-      return { dailyMenuRows: 0, fetched: false, mealsTouched: 0 };
+      return { fetched: false, options: 0, variantsNew: 0 };
     }
     throw error;
   }
 
   // oxlint-disable-next-line eqeqeq -- intentional == for null/undefined; cf-fetch may yield undefined on transport error
   if (response == null || !Array.isArray(response.meals)) {
-    return { dailyMenuRows: 0, fetched: true, mealsTouched: 0 };
+    return { fetched: true, options: 0, variantsNew: 0 };
   }
 
-  const dailyRows: DailyMenuRow[] = [];
-  let mealsTouched = 0;
+  const observations = new Map<number, MenuObservation>();
+  let variantsNew = 0;
 
   for (const slot of response.meals) {
     if (!Array.isArray(slot.options)) {
       continue;
     }
     for (const option of slot.options) {
+      // dietCaloriesMealId is unique within a menu response; keep the
+      // first if the API ever repeats one.
       // oxlint-disable-next-line eqeqeq -- intentional == for null/undefined
-      if (option.dietCaloriesMealId == null) {
+      if (
+        option.dietCaloriesMealId == null ||
+        observations.has(option.dietCaloriesMealId)
+      ) {
         continue;
       }
-      const fields = mealFieldsFromOption(option, vis);
-      const { meal_id, touched } = await upsertMeal(companyId, fields);
-      if (touched && meal_id !== null) {
-        mealsTouched += 1;
-        // Refresh structured ingredients + append snapshot whenever the meal
-        // is new or drifted. The drifted case must run for both fp changes
-        // and was-insert because new meals start with no rows.
-        await writeIngredients(meal_id, fields.fingerprint, fields.ingredients);
-        enqueueMealForEmbedding(meal_id);
+      const observed = await observeOption(companyId, slot, option, vis);
+      if (observed === null) {
+        continue;
       }
-      dailyRows.push({
-        api_meal_slot_id: option.dietCaloriesMealId,
-        city_id: cityId,
-        company_id: companyId,
-        diet_calories_id: target.diet_calories_id,
-        is_default: slot.baseDietCaloriesMealId === option.dietCaloriesMealId,
-        meal_id,
-        menu_date: date,
-        slot_name: slot.name ?? null,
-        tier_id: target.tier_id,
-      });
+      if (observed.newVariant) {
+        variantsNew += 1;
+      }
+      observations.set(option.dietCaloriesMealId, observed.observation);
     }
   }
 
-  await bulkInsertDailyMenu(dailyRows);
-  return { dailyMenuRows: dailyRows.length, fetched: true, mealsTouched };
+  // An empty menu carries no information about what was removed — dietly
+  // returns one for dates it hasn't published yet — so recordMenu ignores it.
+  await recordMenu(
+    [companyId, target.diet_calories_id, target.tier_id ?? 0, date],
+    [...observations.values()]
+  );
+
+  return { fetched: true, options: observations.size, variantsNew };
 };
 
 // ── concurrency cap ──────────────────────────────────────────────────────────
@@ -731,7 +772,7 @@ const runWithCap = async <T, R>(
 export const scrapeMenus = async (
   companyId: string,
   cityId: number
-): Promise<void> => {
+): Promise<{ errors: number }> => {
   const t0 = Date.now();
 
   const cfg = await loadCompanyConfig(companyId);
@@ -739,11 +780,11 @@ export const scrapeMenus = async (
     console.warn(
       `[menus] ${companyId}: no companies row, skipping (run catalog first)`
     );
-    return;
+    return { errors: 0 };
   }
   if (!cfg.menu_enabled) {
     console.log(`[menus] ${companyId}: menu disabled, skipping`);
-    return;
+    return { errors: 0 };
   }
 
   const envCap =
@@ -761,7 +802,7 @@ export const scrapeMenus = async (
     console.warn(
       `[menus] ${companyId}: no live diet_calories targets, skipping`
     );
-    return;
+    return { errors: 0 };
   }
 
   const totalCalls = targets.length * dates.length;
@@ -785,8 +826,8 @@ export const scrapeMenus = async (
     }
   }
 
-  let totalMeals = 0;
-  let totalDailyMenu = 0;
+  let totalVariants = 0;
+  let totalOptions = 0;
   let totalFetched = 0;
   let totalErrors = 0;
 
@@ -804,18 +845,18 @@ export const scrapeMenus = async (
           `[menus] ${companyId} dc=${target.diet_calories_id} tier=${target.tier_id ?? "-"} @ ${date}: ${errMessage(error)}`
         );
         return {
-          dailyMenuRows: 0,
           errored: true,
           fetched: false,
-          mealsTouched: 0,
+          options: 0,
+          variantsNew: 0,
         };
       }
     }
   );
 
   for (const r of results) {
-    totalMeals += r.mealsTouched;
-    totalDailyMenu += r.dailyMenuRows;
+    totalVariants += r.variantsNew;
+    totalOptions += r.options;
     if (r.fetched) {
       totalFetched += 1;
     }
@@ -827,6 +868,7 @@ export const scrapeMenus = async (
   const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
   const errSuffix = totalErrors > 0 ? `, ${totalErrors} errors` : "";
   console.log(
-    `[menus] ✓ ${companyId}: ${totalMeals} meals upserted, ${totalDailyMenu} daily_menu rows, ${totalFetched}/${totalCalls} calls fetched${errSuffix} (${elapsed}s)`
+    `[menus] ✓ ${companyId}: ${totalOptions} options recorded, ${totalVariants} new variants, ${totalFetched}/${totalCalls} calls fetched${errSuffix} (${elapsed}s)`
   );
+  return { errors: totalErrors };
 };

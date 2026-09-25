@@ -141,6 +141,25 @@ const getCtx = (): Promise<CtxBundle> => {
   return ctxPromise;
 };
 
+/**
+ * Close the shared Chrome if one was launched. One-shot runs call this when
+ * they finish: the persistent context otherwise keeps the event loop alive
+ * and the process never exits. A later request relaunches it.
+ */
+export const closeCfBrowser = async (): Promise<void> => {
+  const pending = ctxPromise;
+  ctxPromise = null;
+  if (pending === null) {
+    return;
+  }
+  try {
+    const { ctx } = await pending;
+    await ctx.close();
+  } catch {
+    // best-effort cleanup
+  }
+};
+
 // Serialize page-based challenge solves so we don't open N tabs at once
 // (which would itself look bot-like to CF).
 let challengeSolveLock: Promise<void> = Promise.resolve();
@@ -294,6 +313,15 @@ export const cfFetch = async (
     result = await rawFetch(page, url, init, timeoutMs);
   }
 
+  // Status 0 = the in-page fetch itself failed (network error, page
+  // crashed, aborted). `new Response()` rejects status 0 with a RangeError
+  // that the retry loop in api.ts doesn't recognise, so the request used to
+  // fail on the spot (5 of 74k requests in the first national run, one of
+  // them a whole catalog). Surface it as the network error it is: api.ts
+  // retries "fetch failed" with backoff.
+  if (result.status === 0) {
+    throw new TypeError(`fetch failed: in-page transport error for ${url}`);
+  }
   return new Response(result.body, {
     headers: result.headers,
     status: result.status,

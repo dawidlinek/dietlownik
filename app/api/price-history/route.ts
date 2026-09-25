@@ -11,13 +11,18 @@ export const GET = async (request: Request) => {
   const dietCaloriesId = Number(searchParams.get("diet_calories_id"));
   const cityId = Number(searchParams.get("city_id"));
   const days = Number(searchParams.get("days"));
+  // Needed for menu-configuration diets, whose tiers share one
+  // diet_calories_id; optional otherwise.
+  const tierParam = searchParams.get("tier_id");
+  const tierId = tierParam === null ? null : Number(tierParam);
 
   if (
     companyId === null ||
     companyId === "" ||
     !Number.isFinite(dietCaloriesId) ||
     !Number.isFinite(cityId) ||
-    !Number.isFinite(days)
+    !Number.isFinite(days) ||
+    (tierId !== null && !Number.isInteger(tierId))
   ) {
     return NextResponse.json({ error: "bad params" }, { status: 400 });
   }
@@ -28,6 +33,7 @@ export const GET = async (request: Request) => {
       companyId,
       days,
       dietCaloriesId,
+      tierId,
     });
     return NextResponse.json({ history });
   } catch (error) {

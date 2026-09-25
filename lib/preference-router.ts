@@ -23,6 +23,9 @@ export interface AllergenIntent {
   readonly channel: Channel;
   readonly keyword: string;
   readonly allergen: string;
+  /** Every lowercase spelling of this allergen found in
+   *  `meal_variants.allergens`, canonical name first. */
+  readonly spellings: readonly string[];
 }
 
 export interface CategoryIntent {
@@ -121,26 +124,64 @@ const normalize = (s: string): string =>
     .trim();
 
 // ── 1. Allergen lexicon ──────────────────────────────────────────────────────
-// Keys are normalized (ASCII-folded lowercase); values are the Polish allergen
-// name stored verbatim on `meals.allergens` (which is TEXT[] of Polish-native
-// strings — see db/schema.sql line 254). Multiple keys can map to the same
-// allergen output (e.g. 'mleko' / 'nabial' both → 'mleko').
+// Keys are normalized (ASCII-folded lowercase), nominative and genitive — the
+// genitive is what follows "bez" ("bez glutenu", "bez jaj"). Values are the
+// canonical Polish allergen name, shown in hit reasons.
 const ALLERGEN_LEXICON: Readonly<Record<string, string>> = {
   gluten: "gluten",
+  glutenu: "gluten",
   gorczyca: "gorczyca",
+  gorczycy: "gorczyca",
+  jaj: "jaja",
   jaja: "jaja",
+  jajek: "jaja",
+  jajka: "jaja",
+  laktoza: "mleko",
+  laktozy: "mleko",
+  lubin: "łubin",
+  lubinu: "łubin",
   lupin: "łubin",
+  mieczaki: "mięczaki",
+  mieczakow: "mięczaki",
   miekczaki: "mięczaki",
+  mleka: "mleko",
   mleko: "mleko",
   nabial: "mleko",
+  nabialu: "mleko",
+  orzechow: "orzechy",
   orzechy: "orzechy",
   orzechy_arachidowe: "orzeszki ziemne",
+  "orzeszki ziemne": "orzeszki ziemne",
+  "orzeszkow ziemnych": "orzeszki ziemne",
+  ryb: "ryby",
   ryby: "ryby",
   seler: "seler",
+  selera: "seler",
   sezam: "sezam",
+  sezamu: "sezam",
+  siarczynow: "siarczyny",
   siarczyny: "siarczyny",
   skorupiaki: "skorupiaki",
+  skorupiakow: "skorupiaki",
+  soi: "soja",
   soja: "soja",
+};
+
+// How caterings actually write each allergen in `meal_variants.allergens`
+// (compared lowercased). The data is not the EU list verbatim: eggs are
+// "jajka" in every one of ~108k variants, sulphites arrive as "dwutlenek
+// siarki", and some caterings list the gluten grains instead of "gluten".
+// Matching only the canonical name made `jaja` and `siarczyny` hit nothing.
+const ALLERGEN_SPELLINGS: Readonly<Record<string, readonly string[]>> = {
+  gluten: ["gluten", "pszenica", "żyto", "jęczmień", "owies"],
+  jaja: ["jaja", "jajka"],
+  orzechy: ["orzechy", "migdały"],
+  "orzeszki ziemne": [
+    "orzeszki ziemne",
+    "orzeszki ziemne (arachidowe)",
+    "orzeszki arachidowe",
+  ],
+  siarczyny: ["siarczyny", "dwutlenek siarki", "dwutlenek siarki, siarczyny"],
 };
 
 // ── 2. Macro grammar ─────────────────────────────────────────────────────────
@@ -195,7 +236,13 @@ const tryMatchAllergen = (
   if (hit === undefined) {
     return null;
   }
-  return { allergen: hit, channel, keyword, source: "allergen" };
+  return {
+    allergen: hit,
+    channel,
+    keyword,
+    source: "allergen",
+    spellings: ALLERGEN_SPELLINGS[hit] ?? [hit],
+  };
 };
 
 interface NumericToken {
@@ -381,13 +428,28 @@ export const resetTaxonomyCache = (): void => {
   taxonomyCache = null;
 };
 
+// Taxonomy PKs are single tokens joined by underscores ('owoce_morza'), but
+// nobody types an underscore — they type 'owoce morza'. Without this the
+// lookup misses, the keyword falls through to lexical + semantic, and both do
+// badly: the lexical stem 'owoce morz' matched 19 ingredient rows against the
+// 726 meals the category's patterns cover, and the semantic channel returned
+// avocado salads. Try the spaced spelling, then the underscored one.
+const categoryKeys = (norm: string): readonly string[] =>
+  norm.includes(" ") ? [norm, norm.replaceAll(/\s+/gu, "_")] : [norm];
+
 const tryMatchCategory = async (
   norm: string,
   keyword: string,
   channel: Channel
 ): Promise<CategoryIntent | null> => {
   const tax = await getTaxonomy();
-  const rawCategory = tax.byNorm.get(norm);
+  let rawCategory: string | undefined;
+  for (const key of categoryKeys(norm)) {
+    rawCategory = tax.byNorm.get(key);
+    if (rawCategory !== undefined) {
+      break;
+    }
+  }
   if (rawCategory === undefined) {
     return null;
   }
@@ -418,12 +480,24 @@ const empty = (): Routed => ({
   macro: null,
 });
 
+const flip = (channel: Channel): Channel =>
+  channel === "prefer" ? "avoid" : "prefer";
+
+// "bez glutenu", "bez mięsa": a negation in front of anything the macro
+// grammar did not claim ("bez cukru" stays a low-sugar macro). Without this
+// the phrase fell through to the ingredient channel as a positive match —
+// prefer "bez glutenu" rewarded dishes with wheat flour (sim 0.64).
+const NEGATION_RE = /^(?:bez|no|without)\s+(\S.*)$/u;
+
 const routeOne = async (
   raw: string,
-  channel: Channel
+  channel: Channel,
+  /** Set when routing the remainder of a negated phrase: the verbatim input
+   *  the user typed, kept on every intent so hits read "bez glutenu". */
+  asKeyword?: string
 ): Promise<Routed | null> => {
   // Drop empty / whitespace-only silently.
-  const keyword = raw;
+  const keyword = asKeyword ?? raw;
   const trimmed = raw.trim();
   if (trimmed.length === 0) {
     return null;
@@ -440,6 +514,13 @@ const routeOne = async (
   const macro = tryMatchMacro(norm, keyword, channel);
   if (macro !== null) {
     return { ...empty(), macro };
+  }
+
+  // 2b. Negation: route what follows "bez" on the opposite list.
+  const negated = NEGATION_RE.exec(norm);
+  const rawRest = raw.trim().replace(/^\S+\s+/u, "");
+  if (negated !== null && rawRest.length > 0) {
+    return routeOne(rawRest, flip(channel), keyword);
   }
 
   // 3. Taxonomy category PK lookup.

@@ -40,10 +40,42 @@ describe.skipIf(HEAVY_SKIP)("routePreferences", () => {
       channel: "prefer",
       keyword: "gluten",
       source: "allergen",
+      spellings: ["gluten", "pszenica", "żyto", "jęczmień", "owies"],
     });
     expect(result.category).toHaveLength(0);
     expect(result.macro).toHaveLength(0);
     expect(result.embedding).toHaveLength(0);
+  });
+
+  it("matches eggs under the spelling the data uses ('jajka')", async () => {
+    const { routePreferences } = await import("../preference-router.js");
+    const result = await routePreferences({ avoid: ["jaja"], prefer: [] });
+    expect(result.allergen[0].spellings).toContain("jajka");
+  });
+
+  it("routes 'bez X' onto the opposite list", async () => {
+    const { routePreferences } = await import("../preference-router.js");
+    const result = await routePreferences({
+      avoid: ["bez jaj"],
+      prefer: ["bez glutenu", "bez cukru"],
+    });
+    expect(result.allergen).toEqual([
+      expect.objectContaining({
+        allergen: "gluten",
+        channel: "avoid",
+        keyword: "bez glutenu",
+      }),
+      expect.objectContaining({
+        allergen: "jaja",
+        channel: "prefer",
+        keyword: "bez jaj",
+      }),
+    ]);
+    // "bez cukru" is claimed by the macro grammar before negation runs.
+    expect(result.macro).toEqual([
+      expect.objectContaining({ channel: "prefer", field: "sugar_g" }),
+    ]);
+    expect(result.ingredient).toHaveLength(0);
   });
 
   it("routes a macro phrase ('dużo białka') to the macro bucket", async () => {
@@ -88,6 +120,28 @@ describe.skipIf(HEAVY_SKIP)("routePreferences", () => {
   );
 
   it.skipIf(NO_DB)(
+    "matches a multi-word taxonomy category on its spaced spelling",
+    async () => {
+      const { routePreferences } = await import("../preference-router.js");
+      // The PK is 'owoce_morza'; nobody types the underscore. Before the
+      // alias this fell through to lexical + semantic, where the stem
+      // 'owoce morz' reached 19 ingredient rows against the 726 meals the
+      // category's patterns cover, and the vector search returned avocado.
+      const result = await routePreferences({
+        avoid: ["owoce morza"],
+        prefer: [],
+      });
+      expect(result.category).toHaveLength(1);
+      const [cat] = result.category;
+      expect(cat.category).toBe("owoce_morza");
+      expect(cat.keyword).toBe("owoce morza");
+      expect(cat.patterns).toContain("krewetk");
+      expect(result.ingredient).toHaveLength(0);
+      expect(result.embedding).toHaveLength(0);
+    }
+  );
+
+  it.skipIf(NO_DB)(
     "routes unmatched keywords to embedding with per-channel tagging",
     async () => {
       const { routePreferences } = await import("../preference-router.js");
@@ -111,12 +165,19 @@ describe.skipIf(HEAVY_SKIP)("routePreferences", () => {
       if (preferHit === undefined || avoidHit === undefined) {
         return;
       }
+      // Dimension comes from the live embedder, not a literal. This assertion
+      // was pinned to 1024 (bge-m3) and silently wrong from the moment
+      // production moved to e5-small/384 in `12ff3af` — invisible because the
+      // whole suite skips without DATABASE_URL.
+      const { getEmbedder } = await import("../embeddings.js");
+      const { dim } = await getEmbedder();
+
       expect(preferHit.keyword).toBe("kurczak");
       expect(preferHit.vector).toBeInstanceOf(Float32Array);
-      expect(preferHit.vector.length).toBe(1024);
+      expect(preferHit.vector.length).toBe(dim);
       expect(avoidHit.keyword).toBe("pomidor");
       expect(avoidHit.vector).toBeInstanceOf(Float32Array);
-      expect(avoidHit.vector.length).toBe(1024);
+      expect(avoidHit.vector.length).toBe(dim);
     }
   );
 

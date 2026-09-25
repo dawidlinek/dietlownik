@@ -10,9 +10,21 @@ const HEAVY_SKIP =
 
 const WROCLAW_ID = 986_283;
 
-// Pull a date the scraper actually populated. Wave 2 captured a 2026-05-16..22
-// window; we use a mid-week date that survives the rolling 7-day refresh.
-const POPULATED_DATE = "2026-05-17";
+// Dates are resolved from the data, never hardcoded — a pinned fixture date
+// ages out of the retained window and turns passing tests into
+// `expected 0 to be greater than 0` failures that look like regressions.
+// Populated by the file-level `beforeAll` below.
+let POPULATED_DATE = "";
+let POPULATED_DATES: readonly string[] = [];
+
+beforeAll(async () => {
+  if (HEAVY_SKIP) {
+    return;
+  }
+  const { resolvePopulatedDates } = await import("./helpers/populated-date");
+  POPULATED_DATES = await resolvePopulatedDates(WROCLAW_ID, 3);
+  POPULATED_DATE = POPULATED_DATES[0] ?? "";
+});
 
 describe.skipIf(HEAVY_SKIP)("getRankedOffersForDay — channel mechanics", () => {
   vi.setConfig({ testTimeout: 240_000 });
@@ -315,7 +327,11 @@ describe.skipIf(HEAVY_SKIP)("getRankedOffersForDay — channel mechanics", () =>
       cityId: WROCLAW_ID,
       date: POPULATED_DATE,
       limit: 20,
-      prefer: ["kurczak"],
+      // NOT 'kurczak' — the embedding channel is a fallback now, and the
+      // lexical channel owns any keyword that is a literal ingredient or
+      // dish word. An English phrase reaches no Polish ingredient name via
+      // word_similarity, so it is a stable way to exercise the vector path.
+      prefer: ["comfort food"],
     });
     const embHits = result.offers
       .flatMap((o) => o.picks)
@@ -360,45 +376,53 @@ describe.skipIf(HEAVY_SKIP)("getRankedOffersForDay — channel mechanics", () =>
     }
   });
 
-  // ── order_days affects the priced row picked ────────────────────────
-  it("returns a different priced row when order_days is varied", async () => {
+  // ── order_days is a soft preference, never a filter ────────────────────
+  //
+  // This project orders DAY BY DAY and mixes suppliers to win each day on its
+  // own merits (e.g. best protein/zł), so the scraper captures only the 1-day
+  // no-discount baseline (ORDER_DAY_TIERS=[1] in scraper/scrapers/prices.ts).
+  //
+  // The previous test here asserted the opposite — that varying orderDays
+  // yields different per-day prices — which can only hold under the legacy
+  // [1,5,10,20] sweep. It failed permanently once the 1-tier default landed.
+  // What actually matters is that order-days never filters an offer out of
+  // the results: a hard `order_days = N` predicate silently nulled every
+  // price (and that bug is still live in some call sites' history).
+  it("prices every offer regardless of orderDays under a single-tier corpus", async () => {
     const { getRankedOffersForDay } = await import("../queries.js");
-    const five = await getRankedOffersForDay({
+    const base = {
       avoid: [],
       cityId: WROCLAW_ID,
       date: POPULATED_DATE,
       limit: 50,
-      orderDays: 5,
       prefer: [],
-    });
-    const twenty = await getRankedOffersForDay({
-      avoid: [],
-      cityId: WROCLAW_ID,
-      date: POPULATED_DATE,
-      limit: 50,
-      orderDays: 20,
-      prefer: [],
-    });
-    // For at least one offer that exists in both, prices should differ
-    // (order-length discount typically lowers per-day cost at higher days).
-    const byOffer5 = new Map(
-      five.offers.map((o) => [o.offer_id, o.price_per_day])
-    );
-    let differingPairs = 0;
-    for (const o of twenty.offers) {
-      const p5 = byOffer5.get(o.offer_id);
-      if (
-        p5 !== undefined &&
-        p5 !== null &&
-        o.price_per_day !== null &&
-        Math.abs(p5 - o.price_per_day) > 0.001
-      ) {
-        differingPairs += 1;
+    };
+    // Spelled out rather than mapped: an arrow returning a promise trips
+    // `promise-function-async`, and the `await` that satisfies it is stripped
+    // by the formatter and then flagged by `return-await`.
+    const runs = await Promise.all([
+      getRankedOffersForDay({ ...base, orderDays: 1 }),
+      getRankedOffersForDay({ ...base, orderDays: 5 }),
+      getRankedOffersForDay({ ...base, orderDays: 20 }),
+    ]);
+
+    for (const run of runs) {
+      expect(run.offers.length).toBeGreaterThan(0);
+      // No orderDays value may starve an offer of its price.
+      const priced = run.offers.filter((o) => o.price_per_day !== null);
+      expect(priced.length).toBe(run.offers.length);
+      for (const offer of priced) {
+        expect(offer.price_per_day).toBeGreaterThan(0);
       }
     }
-    // We don't require ALL offers to differ — some companies don't offer 20-day
-    // discounts — but at least one should.
-    expect(differingPairs).toBeGreaterThan(0);
+
+    // The same offers come back whichever duration is requested — the
+    // preference may reorder ties, but it must never change the population.
+    const idSets = runs.map((r) => new Set(r.offers.map((o) => o.offer_id)));
+    const [first] = idSets;
+    for (const ids of idSets.slice(1)) {
+      expect(ids.size).toBe(first.size);
+    }
   });
 });
 
@@ -408,7 +432,7 @@ describe.skipIf(HEAVY_SKIP)("getWeeklyPlan — argmax + summary", () => {
   it("argmaxes per-day independently and matches rank_day standalone", async () => {
     const { getRankedOffersForDay, getWeeklyPlan } =
       await import("../queries.js");
-    const dates = ["2026-05-17", "2026-05-18"] as const;
+    const dates = POPULATED_DATES.slice(0, 2);
     const plan = await getWeeklyPlan({
       altLimit: 0,
       avoid: ["pomidor"],
@@ -438,7 +462,7 @@ describe.skipIf(HEAVY_SKIP)("getWeeklyPlan — argmax + summary", () => {
 
   it("counts distinct caterings correctly", async () => {
     const { getWeeklyPlan } = await import("../queries.js");
-    const dates = ["2026-05-17", "2026-05-18", "2026-05-19"] as const;
+    const dates = POPULATED_DATES.slice(0, 3);
     const plan = await getWeeklyPlan({
       altLimit: 0,
       avoid: [],
@@ -456,7 +480,7 @@ describe.skipIf(HEAVY_SKIP)("getWeeklyPlan — argmax + summary", () => {
 
   it("estimates total price as the sum of per-day picks", async () => {
     const { getWeeklyPlan } = await import("../queries.js");
-    const dates = ["2026-05-17", "2026-05-18"] as const;
+    const dates = POPULATED_DATES.slice(0, 2);
     const plan = await getWeeklyPlan({
       altLimit: 0,
       avoid: [],
@@ -473,7 +497,7 @@ describe.skipIf(HEAVY_SKIP)("getWeeklyPlan — argmax + summary", () => {
 
   it("computes avg_score_best as the mean of present tops", async () => {
     const { getWeeklyPlan } = await import("../queries.js");
-    const dates = ["2026-05-17", "2026-05-18"] as const;
+    const dates = POPULATED_DATES.slice(0, 2);
     const plan = await getWeeklyPlan({
       altLimit: 0,
       avoid: ["pomidor"],

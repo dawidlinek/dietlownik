@@ -11,9 +11,11 @@ const MOCK_CITIES = [DEFAULT_CITY] as const;
 const Page = () => (
   <>
     <Header
-      activeCityId={DEFAULT_CITY.city_id}
-      activeCityName={DEFAULT_CITY.name}
-      cities={MOCK_CITIES}
+      city={{
+        activeCityId: DEFAULT_CITY.city_id,
+        activeCityName: DEFAULT_CITY.name,
+        cities: MOCK_CITIES,
+      }}
     />
 
     <MatchExperience

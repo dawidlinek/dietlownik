@@ -579,21 +579,9 @@ const performAttempt = async <T>(
     }
     const durMs = Date.now() - startedAt;
     recordDuration(durMs);
-    // status 0 = transport-level error already logged by cf-fetch; skip silently.
-    if (res.status === 0) {
-      metrics.transportErrors += 1;
-      logAttempt({
-        attempt,
-        durMs,
-        method,
-        outcome: "transport-error",
-        path,
-        status: 0,
-        transport,
-      });
-      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- transport error: no value to return
-      return { done: true, value: undefined as T };
-    }
+    // No status-0 branch: a failed in-page fetch throws a "fetch failed"
+    // TypeError from cfFetch and is retried below like any network error.
+    // (Returning `undefined` here used to read as an empty menu downstream.)
     if (!res.ok) {
       let text = "";
       try {
@@ -863,6 +851,31 @@ export const parseGrams = (val?: string | number | null): number | null => {
   return m ? Number.parseFloat(m[1].replace(",", ".")) : null;
 };
 
+const warsawDateFormat = new Intl.DateTimeFormat("en-CA", {
+  day: "2-digit",
+  month: "2-digit",
+  timeZone: "Europe/Warsaw",
+  year: "numeric",
+});
+
+/**
+ * Midnight UTC of the Europe/Warsaw calendar day `offsetDays` from today.
+ *
+ * Delivery dates are Polish calendar days, so "today" is Warsaw's date
+ * regardless of the process TZ. The result is a UTC-midnight Date so that
+ * `getUTCDay()` and `toISOString().slice(0, 10)` agree with each other —
+ * mixing local weekday with UTC formatting shifted every date by one
+ * between 00:00 and 02:00 Warsaw time.
+ */
+const warsawDay = (offsetDays: number): Date => {
+  const today = new Date(`${warsawDateFormat.format(new Date())}T00:00:00Z`);
+  today.setUTCDate(today.getUTCDate() + offsetDays);
+  return today;
+};
+
+const isoDate = (d: Readonly<Date>): string => d.toISOString().slice(0, 10);
+
+/** Warsaw calendar dates from `fromDaysOffset` (default tomorrow), skipping weekends unless included. */
 export const futureWeekdays = (
   count: number,
   {
@@ -876,29 +889,27 @@ export const futureWeekdays = (
   }> = {}
 ): string[] => {
   const dates: string[] = [];
-  const d = new Date();
-  d.setDate(d.getDate() + fromDaysOffset);
+  const d = warsawDay(fromDaysOffset);
   while (dates.length < count) {
     // 0 = Sun, 6 = Sat
-    const day = d.getDay();
+    const day = d.getUTCDay();
     const skip =
       (day === 0 && !includeSunday) || (day === 6 && !includeSaturday);
     if (!skip) {
-      dates.push(d.toISOString().slice(0, 10));
+      dates.push(isoDate(d));
     }
-    d.setDate(d.getDate() + 1);
+    d.setUTCDate(d.getUTCDate() + 1);
   }
   return dates;
 };
 
-/** Inclusive range of N future calendar dates (no weekend filtering). */
+/** Inclusive range of N Warsaw calendar dates (no weekend filtering). */
 export const nextNDates = (count: number, fromDaysOffset = 0): string[] => {
   const out: string[] = [];
-  const d = new Date();
-  d.setDate(d.getDate() + fromDaysOffset);
+  const d = warsawDay(fromDaysOffset);
   for (let i = 0; i < count; i += 1) {
-    out.push(d.toISOString().slice(0, 10));
-    d.setDate(d.getDate() + 1);
+    out.push(isoDate(d));
+    d.setUTCDate(d.getUTCDate() + 1);
   }
   return out;
 };

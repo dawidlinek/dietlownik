@@ -13,7 +13,7 @@ const outputSchema = z.object({
       address_index: z
         .number()
         .int()
-        .describe("Pass to place_order's `address_index` (0 = default)."),
+        .describe("Position in the account's address list."),
       label: z.string().describe("Human-readable summary of street + city."),
     })
   ),
@@ -21,7 +21,7 @@ const outputSchema = z.object({
   default_address_index: z
     .number()
     .int()
-    .describe("Index used when place_order's address_index is omitted."),
+    .describe("The account's default delivery address."),
   email: z.string(),
   hint: z.string(),
 });
@@ -75,10 +75,11 @@ const labelOf = (a: Readonly<AddressShape>): string => {
 export const login = defineTool({
   annotations: { idempotentHint: true, openWorldHint: true },
   description:
-    "Log into Dietly with email + password. Caches the session for the rest " +
-    "of this MCP conversation so other tools (place_order, etc.) can omit the " +
-    "email argument. Returns the user's delivery addresses with stable " +
-    "`address_index` slots. Call once per conversation.",
+    "Log into the user's dietly account so `send_to_basket` can fill its " +
+    "basket. The session lives in this MCP connection's memory only — the " +
+    "password is not stored — and ends after 30 idle minutes or a server " +
+    "restart. Returns the account's delivery addresses. Only call it with " +
+    "credentials the user gave you for this purpose.",
   // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- ctx (ToolContext) embeds the DietlyClient class instance; tool only invokes its public methods
   execute: async (input, ctx) => {
     await ctx.client.login(input.email, input.password);
@@ -124,7 +125,7 @@ export const login = defineTool({
       hint:
         addresses.length === 0
           ? "No addresses on this account — set one in the Dietly app before placing orders."
-          : `Use find_diets to discover offers, then quote_order for pricing or place_order to buy. address_index defaults to ${default_address_index}.`,
+          : "Logged in. send_to_basket can now fill this account's dietly basket.",
     };
   },
   inputSchema,

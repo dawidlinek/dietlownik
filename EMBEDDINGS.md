@@ -2,23 +2,37 @@
 
 A walk-through of the embedding pipeline: from scrape to live dashboard
 ranking. Includes the bench-driven model choice (e5-small over bge-m3) and
-the calibrated production threshold (0.80).
+the production threshold (now a per-keyword relative cutoff — see
+"Threshold" below; the absolute 0.80 is historical).
 
 ---
 
 ## What the embedding channel does
 
-The `/match` dashboard ranks day-of-offer meals against user preferences
+The home dashboard (`/`) ranks day-of-offer meals against user preferences
 (`prefer: kurczak, lekkie  avoid: ryby, surowe pomidory`). Each preference
-keyword flows through a four-channel **router** in `lib/preference-router.ts`:
+keyword flows through a **router** in `lib/preference-router.ts`. The first
+three channels are exact-match and mutually exclusive — first hit wins:
 
 1. **allergen** — keyword matches a known allergen synonym (`gluten`, `mleko`)
 2. **macro** — keyword parses to a macro rule (`dużo białka` → `protein_g high`)
 3. **category** — keyword matches an `ingredient_taxonomy` entry
-4. **embedding** — fallback: turn the keyword into a vector, find similar meal embeddings
 
-The first three are exact-match channels. The embedding channel is the
-soft-match fallback that catches everything else (`zdrowe`, `ostre`, `na
+Anything that matches none of them falls through and emits **two** intents at
+once:
+
+4. **ingredient** — lexical `word_similarity() >= 0.6` against both the
+   served variant's `meal_ingredients.name_normalized` and
+   `meals.name_normalized`, with Polish stemming (`lib/polish-stem.ts`). The
+   `gin_trgm_ops` indexes in `db/schema.sql` (on `meals` and, since v13,
+   `ingredient_names` — `meal_ingredients` is a view over it) serve its `<%`
+   operator
+5. **embedding** — semantic: turn the keyword into a vector, compare it with
+   the served variant's vector in `variant_embeddings`
+
+Both are cheap to ask for, and the SQL uses whichever fires — `pomidor` wants
+the lexical match, `ostre` wants the semantic one. The embedding channel is the
+soft-match arm that catches everything else (`zdrowe`, `ostre`, `na
 łuszczycy`, `kuczak`, `surowe pomidory`, ...). It's the workhorse for
 real user queries, because most of what people type doesn't fit a neat
 taxonomy.
@@ -32,9 +46,9 @@ This document is about that fourth channel.
 ```
        (1)            (2)             (3)              (4)              (5)
   ┌──────────┐  ┌─────────────┐ ┌─────────────┐ ┌──────────────┐ ┌────────────────┐
-  │  scrape  │→ │  meals row  │→│  embedding  │→│ HNSW pgvector│→│ scoring query  │
-  │ dietly.pl│  │ + macros    │ │  text       │ │   index      │ │ + threshold τ  │
-  └──────────┘  │ + allergens │ │   ↓ model   │ │              │ │   ↓            │
+  │  scrape  │→ │ meal variant│→│  embedding  │→│  variant_    │→│ scoring query  │
+  │ dietly.pl│  │ + label     │ │  text       │ │  embeddings  │ │ + threshold τ  │
+  └──────────┘  │ + allergens │ │   ↓ model   │ │ (no ANN idx) │ │   ↓            │
                 │ + ingr_raw  │ │  vector(N)  │ │              │ │ /match ranking │
                 └─────────────┘ └─────────────┘ └──────────────┘ └────────────────┘
 ```
@@ -43,16 +57,21 @@ This document is about that fourth channel.
 
 Reverse-engineered dietly.pl mobile API. Per company, we capture meals
 with `name + label + ingredients_raw + allergens + kcal/protein/fat/...`.
-The scraper is incremental — meal rows are upserted by `(company_id, name)`
-and get a `fingerprint` that's the SHA of the canonical content.
+The dish is `meals (company_id, name)`; its content (label, thermo,
+allergens, ingredients) is a `meal_variants` row, content-addressed by
+`meal_content_sha()`. Portion macros live on `menu_items`, not the variant.
 
-When the fingerprint changes, the meal is considered modified — the next
-embed run re-embeds it.
+Variants are immutable: changed content is a new variant, and the scraper
+queues each newly inserted one for embedding (`scraper/embed-queue.ts`).
+The end-of-run flush embeds the queue plus any variant on a current or
+upcoming menu that still has no vector, so ranking never waits on a
+separate `embed` run.
 
 ### 2. Embed (`scraper/scripts/embed-meals.ts`)
 
-For every meal without a current embedding (or with a stale fingerprint),
-we build a passage:
+For every variant without a vector (or with one from an older
+`PASSAGE_VERSION`), we build a passage with `buildPassage`
+(`scraper/meal-passage.ts`):
 
 ```text
 Kurczak teriyaki z ryżem
@@ -62,24 +81,25 @@ Alergeny: sezam, soja, gluten
 ```
 
 Pass it through `getEmbedder()` (`lib/embeddings.ts`), get a vector,
-store it in `meal_embeddings` keyed by `(meal_id, embedded_fp)`. The
-`current_meal_embeddings` view returns the latest embedding per meal.
+store it in `variant_embeddings` — one row per variant, keyed by
+`variant_id`, with the `passage_version` that produced it. Bump
+`PASSAGE_VERSION` whenever `buildPassage`'s output changes; `embed` then
+redoes every older vector. Changing the text without bumping it silently
+mixes two passage formats in one table.
 
-This runs as a one-shot (`npm run embed`) after each scrape — takes a
-few minutes for ~15k meals.
+`npm run embed` is an incremental, interruptible backfill, **most recently
+served variants first** (by latest `menu_items.menu_date`). With the scrape
+flush covering current and upcoming menus, it is only needed for past
+dates: after the v11 upgrade ~170k historical variants still have no vector
+(the ~173k current ones were carried over). Until a variant has one, the
+embedding channel is silent for it.
 
-### 3. Index
+### 3. Index — deliberately none
 
-`meal_embeddings.embedding` has an HNSW index for cosine ops:
-
-```sql
-CREATE INDEX ON meal_embeddings USING hnsw (embedding vector_cosine_ops);
-```
-
-The current scoring query _doesn't_ use HNSW top-k retrieval (it does a
-sequential scan inside the `(city, day, kcal)` candidate set, which is
-~3000 meals — small enough). The index is there for future use if we
-add `ORDER BY <=> $vec LIMIT N` queries.
+`variant_embeddings` has no ANN (HNSW) index. The scoring query computes
+exact cosine over one day's candidate variants — a few thousand at most —
+and never does `ORDER BY <=> $vec LIMIT N` retrieval. The old HNSW index on
+`meal_embeddings` was used 10 times in its life; v11 dropped it.
 
 ### 4. Query at request time (`lib/queries.ts: getRankedOffersForDay`)
 
@@ -88,8 +108,9 @@ channel:
 
 - `embedKeyword(text)` returns the vector (cached in `keyword_embeddings`
   table so repeat keywords don't re-embed)
-- The scoring CTE joins `offer_slots_kcal × current_meal_embeddings ×
-embedding_intents`
+- The scoring CTE joins `offer_slots_kcal × variant_embeddings ×
+embedding_intents` on `menu_items.variant_id` — the variant each option
+  actually served
 - For each (meal, keyword) pair, compute `1 - (embedding <=> vec)` = cosine
 - Threshold: drop pairs below τ
 - Rescale the remaining `[τ, 1.00]` range to `[0, 1.00]` for a per-channel
@@ -191,7 +212,42 @@ the threshold calibration breaks.
 
 ---
 
-## Threshold (τ = 0.80) — how it was calibrated
+## Threshold — SUPERSEDED by a per-keyword relative cutoff
+
+> **The absolute τ = 0.80 described below is no longer what production
+> runs.** The sweep in this section is still an honest record of how
+> e5-small behaves against the _labeled bench set_, but that set is built
+> from single-token ingredient keywords, and the threshold it produces does
+> not generalise to the keywords users actually type.
+>
+> Measured against the live corpus, the fraction of meals clearing 0.80
+> swings with the shape of the query:
+>
+> | keyword               | % of corpus ≥ 0.80 |
+> | --------------------- | -----------------: |
+> | `grill`               |               2.4% |
+> | `ostre`               |               2.6% |
+> | `koktajl`             |              11.7% |
+> | `kurczak`             |              29.9% |
+> | `owoce morza`         |              68.9% |
+> | `śniadanie na słodko` |          **98.2%** |
+>
+> At the top of that range the "hit" carries no ranking information — it is
+> a near-uniform offset applied to almost every meal. At the bottom the few
+> survivors are noise: for `ostre`, e5-small's mean cosine to genuinely
+> spicy meals (0.7673, n=10,913) is _lower_ than to desserts (0.7839), so
+> the meals clearing the bar are desserts.
+>
+> `lib/queries.ts` now keeps the top `1 - EMBEDDING_PERCENTILE` slice of the
+> day's candidate meals **per keyword**, floored at `EMBEDDING_FLOOR`, and
+> normalises the penalty onto `[0, 1]` within the retained band. Those two
+> constants are reasoned starting points, not sweep output — `bench:threshold`
+> needs re-running against the relative formulation.
+>
+> The embedding channel is also now a _fallback_: it is dropped entirely for
+> any keyword the lexical channel matched.
+
+## Threshold (τ = 0.80) — how it was calibrated (historical)
 
 `scraper/scripts/bench-threshold.ts` sweeps τ ∈ {0.50, 0.51, …, 0.95}
 against the labeled set and computes precision/recall/F1 at each step.
@@ -232,25 +288,33 @@ is a known property of the e5 family — it compresses similarities
 upward, which is great for thresholding (a clear "match/no-match"
 signal) but means production τ must be tuned high.
 
-### Rescale divisor
+### Rescale divisor (historical — see the note at the top of this section)
 
-The production CTE does:
+This section documented a formula the code never ran. The shipped CTE was
+`0.5 + ((sim - 0.80) / 0.20) * 1.5`, mapping onto `[0.5, 2.0]` rather than
+the `[0, 1]` described here — so an embedding hit at the corpus maximum
+scored ~1.12 and could outweigh a literal ingredient match (≤ 1.0) or a hard
+allergen hit (1.0), while also breaking `PreferenceHit.penalty`'s documented
+`0..1` contract.
+
+The current CTE normalises within the retained band and caps at 1.0:
 
 ```sql
-GREATEST(0.0, ((sim - τ) / (1 - τ))) AS penalty
+LEAST(1.0, GREATEST(0.0, (sim - cutoff) / NULLIF(max_sim - cutoff, 0)))
 ```
 
-With τ=0.80, the divisor `(1 - 0.80) = 0.20`. A meal at sim=0.90 gets
-penalty (0.90 - 0.80) / 0.20 = **0.5**. A meal at sim=1.00 gets
-penalty **1.0**. A meal at sim=0.80 gets penalty **0.0**. Everything
-below 0.80 is filtered by the WHERE clause anyway.
+where `cutoff` is the per-keyword relative threshold, not a constant.
 
 ---
 
 ## How to run the bench yourself
 
-Once meals are scraped and `npm run embed` has filled
-`meal_embeddings`, the bench is self-contained.
+Once meals are scraped and `bun run embed` has filled
+`variant_embeddings`, the bench is self-contained.
+
+`bench_*` tables are not in `db/schema.sql` — `bench:migrate` creates them,
+which is why it leads the sequence below. Commands are shown as `npm run`;
+`bun run` is the canonical runner (see `CLAUDE.md`) and works identically.
 
 ```bash
 # One-time: tables
@@ -292,7 +356,10 @@ across all future model comparisons — labeling is amortized.
 
 ## Migration: bge-m3 → e5-small
 
-When you flip the switch:
+**Done** — shipped in `12ff3af`; `db/schema.sql` now declares `vector(384)`
+directly, so a fresh database needs none of this. The v8 migration script
+itself has since been deleted (it is in git history). Kept as the record of what
+changed, and as the checklist for any future model swap:
 
 1. **`lib/embeddings.ts`** — change `MODEL` from `Xenova/bge-m3` to
    `Xenova/multilingual-e5-small`, set `DIM = 384`, and add prefix
@@ -315,18 +382,24 @@ When you flip the switch:
 The bench results stay valid after migration — they were measured
 against the slice that the new production setup will use.
 
+Since v11 the production table is `variant_embeddings` (no view, no HNSW
+index), so for a future swap steps 2 and 4 mean: recreate
+`variant_embeddings.embedding` and `keyword_embeddings.embedding` at the new
+dimension, then truncate and re-embed.
+
 ---
 
 ## What to re-do, and when
 
-| Trigger                              | What to re-run                                                                                                         |
-| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
-| New meals scraped                    | `npm run embed` (incremental)                                                                                          |
-| Meal modified (new fingerprint)      | `npm run embed` picks up the change                                                                                    |
-| Schema change to embedding table     | Schema migration + truncate + re-embed                                                                                 |
-| Want to test a new candidate model   | Add to `bench/scraper/scripts/bench-candidates.ts`, `npm run bench:embed-all BENCH_MODELS=<new>`, `npm run bench:rank` |
-| Re-validate winner with fresh labels | New labeler → re-run `npm run bench:label` loop, then `bench:rank --BENCH_LABELER=<new>`                               |
-| Threshold seems off                  | `npm run bench:threshold` to confirm or adjust                                                                         |
+| Trigger                              | What to re-run                                                                                                   |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| New meals scraped                    | `npm run embed` (incremental)                                                                                    |
+| Meal content changed (new variant)   | `npm run embed` picks up the change                                                                              |
+| `buildPassage` output changed        | Bump `PASSAGE_VERSION` in `scraper/meal-passage.ts`, then `npm run embed`                                        |
+| Schema change to embedding table     | Schema migration + truncate + re-embed                                                                           |
+| Want to test a new candidate model   | Add to `scraper/scripts/bench-candidates.ts`, `npm run bench:embed-all BENCH_MODELS=<new>`, `npm run bench:rank` |
+| Re-validate winner with fresh labels | New labeler → re-run `npm run bench:label` loop, then `bench:rank --BENCH_LABELER=<new>`                         |
+| Threshold seems off                  | `npm run bench:threshold` to confirm or adjust                                                                   |
 
 The bench is designed so the _labels_ are the expensive part (LLM
 calls), and they live forever in `bench_labels`. Adding a new
@@ -342,11 +415,11 @@ lib/embeddings.ts                          ← runtime: getEmbedder, embedKeywor
 lib/queries.ts                             ← runtime: scoring CTE with threshold + rescale
 lib/preference-router.ts                   ← routes keywords to channels (embedding is fallback)
 
-db/schema.sql                              ← meal_embeddings vector(N), HNSW index
+db/schema.sql                              ← variant_embeddings vector(N), no ANN index
 db/migrate_v7_bench.sql                    ← bench_* tables
-db/migrate_v8_e5small.sql                  ← (TODO) vector(1024)→vector(384) migration
 
 scraper/scripts/embed-meals.ts             ← production embed (incremental)
+scraper/meal-passage.ts                    ← buildPassage + PASSAGE_VERSION
 scraper/scripts/bench-init.ts              ← seed bench_queries
 scraper/scripts/bench-sample.ts            ← build stratified meal pools per query
 scraper/scripts/bench-label.ts             ← CLI: fetch / commit / list-pending / status
@@ -384,7 +457,21 @@ lib/__tests__/queries-ranked-multiclause.test.ts   ← 37 property-based scoring
    labeled. Negation is inverted — meals NOT containing X should
    score high. Embeddings don't natively handle this; the channel
    probably needs a separate `exclude` routing path (see backlog).
-4. **Threshold per query family** could be tighter than a global
+4. **Diacritics change which channel fires, and therefore the results.**
+   Measured on a production snapshot: `łosoś` scores 3.34 and returns
+   UrbanFits offers exclusively, driven by 4 embedding hits (sim ≈ 0.83) plus
+   a lexical one. The stripped `losos` scores 2.00, gets _no_ embedding hits
+   — it falls under τ=0.80, being a misspelling rather than a word — and
+   returns BeeFit / Wybór KETO instead, matched purely lexically against the
+   diacritic-stripped `meals.name_normalized` ("losos wedzony", sim = 1.00).
+
+   The two share **zero** offers. Both find salmon, so the fall-through is
+   doing its job, but correctly-spelled Polish gets materially better
+   treatment than the stripped form. If that matters for real users, the fix
+   is to normalize keywords into the embedding channel the same way the
+   corpus is normalized, or to embed both forms and take the max.
+
+5. **Threshold per query family** could be tighter than a global
    constant. Subjective queries (`zdrowe`, `lekkie`) have very
    different distributions than tag queries (`niskie ig`). Single τ
    is fine for v1; per-family τ is a refinement.

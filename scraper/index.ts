@@ -1,15 +1,32 @@
 import cron from "node-cron";
 
 import { dumpApiMetrics } from "./api";
-import { pool } from "./db";
-import { recordScrapeError, withRun } from "./scrape-run";
+import { closeCfBrowser } from "./cf-fetch";
+import { pool, q } from "./db";
+import {
+  getCurrentRunId,
+  recordScrapeError,
+  recordStageResult,
+  withRun,
+} from "./scrape-run";
 import { scrapeCatalog } from "./scrapers/catalog";
-import { scrapeCity } from "./scrapers/city";
-import { listCompanies } from "./scrapers/companies";
+import { getTrackedCities, scrapeCity } from "./scrapers/city";
+import type { TrackedCity } from "./scrapers/city";
+import { refreshCity } from "./scrapers/city-refresh";
+import { fetchCityListing } from "./scrapers/companies";
 import { scrapeDietTags } from "./scrapers/diet-tags";
+import {
+  assignHomeCities,
+  assignPriceCities,
+  closeUnquotedPrices,
+  nationalTargets,
+  priceGroupTargets,
+} from "./scrapers/price-groups";
+import type { Target } from "./scrapers/price-groups";
 import { scrapePrices } from "./scrapers/prices";
 import type { CompanySearchItem, DeepReadonly } from "./types";
 
+// The anchor: always tracked, and every catering's preferred home city.
 const CITY = process.env.CITY ?? "Wrocław";
 // e.g. "robinfood" — skip company-list, scrape just this one
 const COMPANY = process.env.COMPANY?.trim();
@@ -22,6 +39,10 @@ const SKIP_MENUS = process.env.SKIP_MENUS === "1";
 const SKIP_PROMOS = process.env.SKIP_PROMOS === "1";
 const SKIP_PRICES = process.env.SKIP_PRICES === "1";
 const SKIP_TAGS = process.env.SKIP_TAGS === "1";
+const SKIP_CITY_REFRESH = process.env.SKIP_CITY_REFRESH === "1";
+const SKIP_PRICE_GROUPS = process.env.SKIP_PRICE_GROUPS === "1";
+// A tracked city is refreshed when its last refresh is older than this.
+const CITY_REFRESH_HOURS = Number(process.env.CITY_REFRESH_HOURS ?? 20);
 
 const REPEAT =
   process.env.SCRAPE_SCHEDULER === "1" || process.argv.includes("--repeat");
@@ -33,13 +54,31 @@ const runMenusForCompany = async (
   companyId: string,
   cityId: number
 ): Promise<void> => {
+  const startedAt = new Date();
   try {
     // Lazy-import so the file is optional during the migration window.
     const m = await import("./scrapers/menus.js");
-    await m.scrapeMenus(companyId, cityId);
+    const { errors } = await m.scrapeMenus(companyId, cityId);
+    await recordStageResult(companyId, "menus", startedAt, true, errors);
   } catch (error) {
     console.warn(`[run] menus skipped (${errMsg(error)})`);
-    await recordScrapeError(null, "menus", { companyId, error });
+    await recordScrapeError(getCurrentRunId(), "menus", { companyId, error });
+    await recordStageResult(companyId, "menus", startedAt, false);
+  }
+};
+
+const runPricesForCompany = async (
+  companyId: string,
+  cityId: number,
+  stage = "prices"
+): Promise<void> => {
+  const startedAt = new Date();
+  try {
+    const { fail } = await scrapePrices(companyId, cityId);
+    await recordStageResult(companyId, stage, startedAt, true, fail);
+  } catch (error) {
+    await recordStageResult(companyId, stage, startedAt, false);
+    throw error;
   }
 };
 
@@ -48,10 +87,17 @@ const processCompany = async (
   cityId: number,
   extras: DeepReadonly<CompanySearchItem> | null
 ): Promise<void> => {
-  await scrapeCatalog(companyId, cityId, extras);
+  const catalogStartedAt = new Date();
+  try {
+    await scrapeCatalog(companyId, cityId, extras);
+  } catch (error) {
+    await recordStageResult(companyId, "catalog", catalogStartedAt, false);
+    throw error;
+  }
+  await recordStageResult(companyId, "catalog", catalogStartedAt, true);
   const work: Promise<unknown>[] = [];
   if (!SKIP_PRICES) {
-    work.push(scrapePrices(companyId, cityId));
+    work.push(runPricesForCompany(companyId, cityId));
   }
   if (!SKIP_MENUS) {
     work.push(runMenusForCompany(companyId, cityId));
@@ -90,60 +136,172 @@ const runPool = async <T>(
 
 const hasCompany = COMPANY !== undefined && COMPANY !== "";
 
+/**
+ * Refresh every tracked city whose per-city facts are older than
+ * CITY_REFRESH_HOURS. Returns the listing entries seen, keyed
+ * "company@city", so each catering's catalog pass gets the entry of its own
+ * home city (search-only fields: order window, params, promo).
+ */
+const refreshDueCities = async (): Promise<Map<string, CompanySearchItem>> => {
+  const listed = new Map<string, CompanySearchItem>();
+  const cutoff = Date.now() - CITY_REFRESH_HOURS * 3_600_000;
+  const tracked = await getTrackedCities();
+  const due = tracked.filter(
+    (c: Readonly<TrackedCity>) =>
+      c.last_refreshed_ms === null || c.last_refreshed_ms < cutoff
+  );
+  console.log(`\n[run] city refresh: ${due.length} tracked cities due\n`);
+  for (const city of due) {
+    try {
+      const result = await refreshCity(city.city_id, city.name);
+      for (const item of result.items) {
+        listed.set(`${item.name}@${city.city_id}`, item);
+      }
+    } catch (error) {
+      console.warn(`[run] city ${city.name} refresh failed: ${errMsg(error)}`);
+      await recordScrapeError(getCurrentRunId(), "city-refresh", {
+        context: `city=${city.city_id}`,
+        error,
+      });
+    }
+  }
+  return listed;
+};
+
+/** A single-catering run: its home city, else the anchor. */
+const singleTarget = async (
+  companyId: string,
+  anchorCityId: number
+): Promise<Target> => {
+  const { rows } = await q<{ home_city_id: string | null }>(
+    `SELECT home_city_id FROM companies WHERE company_id = $1`,
+    [companyId]
+  );
+  const home = rows[0]?.home_city_id ?? null;
+  return { cityId: home === null ? anchorCityId : Number(home), companyId };
+};
+
+/**
+ * Listing entries for promotions: whatever this run listed, one per
+ * catering; a run that refreshed no city lists the anchor (one request).
+ */
+const promotionItems = async (
+  listed: readonly DeepReadonly<CompanySearchItem>[],
+  anchorCityId: number
+): Promise<DeepReadonly<CompanySearchItem>[]> => {
+  if (hasCompany || listed.length > 0) {
+    return [
+      ...new Map(
+        listed.map((item: DeepReadonly<CompanySearchItem>) => [item.name, item])
+      ).values(),
+    ];
+  }
+  const anchorListing = await fetchCityListing(anchorCityId);
+  return anchorListing.items;
+};
+
 const run = async (): Promise<void> => {
   console.log(
-    `\n=== dietlownik scraper — city=${CITY}${hasCompany ? ` company=${COMPANY}` : ""} ===\n`
+    `\n=== dietlownik scraper — national, anchor=${CITY}${hasCompany ? ` company=${COMPANY}` : ""} ===\n`
   );
 
-  const scope = `${CITY}${hasCompany ? `/${COMPANY}` : ""}`;
+  const scope = `national${hasCompany ? `/${COMPANY}` : ""}`;
   await withRun("scrape", scope, async () => {
-    const city = await scrapeCity(CITY);
+    const anchor = await scrapeCity(CITY);
+    await q(`UPDATE cities SET tracked = TRUE WHERE city_id = $1`, [
+      anchor.cityId,
+    ]);
 
     if (!SKIP_TAGS) {
       await scrapeDietTags();
     }
 
-    const companies: CompanySearchItem[] = hasCompany
-      ? [
-          {
-            companyId: COMPANY,
-            fullName: COMPANY ?? "",
-            name: COMPANY ?? "",
-          },
-        ]
-      : await listCompanies(city);
+    // 1. Per-city facts for the tracked cities: who delivers, fees, terms,
+    //    advertised prices. Skipped for single-catering runs.
+    const listed =
+      hasCompany || SKIP_CITY_REFRESH
+        ? new Map<string, CompanySearchItem>()
+        : await refreshDueCities();
+
+    // 2. National pass: each catering once, from its home city — catalog,
+    //    menus (stored city-less) and quotes.
+    const moved = await assignHomeCities(
+      anchor.cityId,
+      hasCompany ? [COMPANY ?? ""] : null
+    );
+    if (moved > 0) {
+      console.log(`[run] ${moved} caterings got a new home city`);
+    }
+    const targets = hasCompany
+      ? [await singleTarget(COMPANY ?? "", anchor.cityId)]
+      : await nationalTargets();
     const slice =
-      LIMIT !== undefined && LIMIT > 0 ? companies.slice(0, LIMIT) : companies;
+      LIMIT !== undefined && LIMIT > 0 ? targets.slice(0, LIMIT) : targets;
     console.log(
-      `\n[run] processing ${slice.length}/${companies.length} companies (concurrency=${COMPANY_CONCURRENCY})...\n`
+      `\n[run] national pass: ${slice.length}/${targets.length} caterings (concurrency=${COMPANY_CONCURRENCY})...\n`
     );
 
     const t0 = Date.now();
     const { ok, fail } = await runPool(
       slice,
       COMPANY_CONCURRENCY,
-      async (c: DeepReadonly<CompanySearchItem>) => {
-        const companyId = c.companyId ?? c.name;
-        if (companyId === undefined || companyId === "") {
-          console.warn("[run] company missing companyId, skipping");
-          return;
-        }
+      async (t: Readonly<Target>) => {
         try {
-          await processCompany(companyId, city.cityId, c);
+          await processCompany(
+            t.companyId,
+            t.cityId,
+            listed.get(`${t.companyId}@${t.cityId}`) ?? null
+          );
         } catch (error) {
-          await recordScrapeError(null, "catalog", { companyId, error });
+          await recordScrapeError(getCurrentRunId(), "catalog", {
+            companyId: t.companyId,
+            error,
+          });
           throw error;
         }
       }
     );
 
+    // 3. Price groups: which city's quotes each (catering, city) uses, and
+    //    quotes for every group representative that isn't a home city.
+    const scopeIds = hasCompany ? [COMPANY ?? ""] : null;
+    const repriced = await assignPriceCities(scopeIds);
+    if (!SKIP_PRICES && !SKIP_PRICE_GROUPS) {
+      const groups = await priceGroupTargets(scopeIds);
+      console.log(
+        `\n[run] price groups: ${groups.length} extra (catering, city) quote sets; ${repriced} memberships changed price city\n`
+      );
+      await runPool(
+        groups,
+        COMPANY_CONCURRENCY,
+        async (g: Readonly<Target>) => {
+          await runPricesForCompany(
+            g.companyId,
+            g.cityId,
+            `prices@${g.cityId}`
+          );
+        }
+      );
+    }
+    if (!SKIP_PRICES) {
+      const closed = await closeUnquotedPrices(scopeIds);
+      if (closed > 0) {
+        console.log(
+          `[run] closed ${closed} quote spans in cities no longer quoted`
+        );
+      }
+    }
+
     if (!SKIP_PROMOS) {
       try {
         const { scrapePromotions } = await import("./scrapers/promotions.js");
-        await scrapePromotions(city.cityId, companies);
+        await scrapePromotions(
+          anchor.cityId,
+          await promotionItems([...listed.values()], anchor.cityId)
+        );
       } catch (error) {
         console.warn(`[run] promotions skipped (${errMsg(error)})`);
-        await recordScrapeError(null, "promotions", { error });
+        await recordScrapeError(getCurrentRunId(), "promotions", { error });
       }
     }
 
@@ -216,6 +374,9 @@ if (REPEAT) {
       } catch (error) {
         console.error(error);
       }
+      // Headless Chrome keeps the event loop alive; close it so a one-shot
+      // run actually exits.
+      await closeCfBrowser();
     }
   };
   // oxlint-disable-next-line promise/prefer-await-to-callbacks, promise/prefer-await-to-then -- top-level entry point

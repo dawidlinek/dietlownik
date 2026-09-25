@@ -17,19 +17,22 @@ const TOOLS_BY_NAME: ReadonlyMap<string, AnyToolDefinition> = new Map(
 );
 
 const SERVER_INFO = {
-  name: "dietly-mcp-server",
-  version: "0.3.0",
+  name: "dietlownik",
+  version: "0.4.0",
 };
 
 const INSTRUCTIONS =
-  "Tools wrap dietly.pl meal-delivery (catering diet) ordering for one user. " +
-  "Typical flow:\n" +
-  "  1. `find_diets(city: 'Wrocław', max_price_per_day: 80)` → list of offers, each with an opaque `offer_id`.\n" +
-  "  2. `quote_order(offer_id, city, dates)` → exact PLN total + breakdown, no order placed.\n" +
-  "  3. `login(email, password)` → caches the session for the rest of this conversation; returns `addresses` with stable `address_index` slots.\n" +
-  "  4. `get_menu(offer_id, city, dates?)` → daily meals with `pick_id` per option (only needed when the offer is `is_configurable: true`).\n" +
-  "  5. `place_order(offer_id, city, dates, picks?, address_index?, test_order?, confirmed)` → IRREVERSIBLE; always show the user the summary from the first call before re-calling with `confirmed: true`.\n" +
-  "Pass `offer_id` and `pick_id` as opaque tokens — never parse, never fabricate. After `login`, the email arg on order tools is optional (defaults to the last login).";
+  "dietlownik plans catering diets (dietly.pl meal delivery) day by day, " +
+  "mixing caterings, and ranks them against free-form Polish preferences — " +
+  "the same engine as the dietlownik dashboard. Flow:\n" +
+  "  1. `get_context()` → orderable dates, kcal presets, caterings, sorts, keyword vocabulary, data freshness.\n" +
+  "  2. `plan(prefer, avoid, kcal_min, kcal_max, dates?, sort?)` → per-day winner with meals and why they scored, alternatives, plan totals (list → promo → final), and `selections`.\n" +
+  "     Check `keywords` in the reply: it says how each word was understood and flags weak (semantic-only) matches.\n" +
+  "  3. `get_offer(offer_id, date)` to inspect a day or swap a dish; `find_diets` to browse by diet type (KETO, VEGAN…).\n" +
+  "  4. `quote(selections)` → live dietly prices, promo acceptance. Nothing ordered.\n" +
+  "  5. `login` then `send_to_basket(selections, catering)` → the user's dietly basket; they pay on dietly.pl. One catering per basket.\n" +
+  "Prefer/avoid are soft scores, not filters: for an allergy, check `allergens` via get_offer. " +
+  "Treat `offer_id` as opaque. Keywords are Polish (kurczak, dużo białka, bez glutenu); translate the user's words.";
 
 /**
  * Build a fresh MCP `Server` wired to all registered tools. The SDK only

@@ -1,18 +1,24 @@
 // One-time cleanup: for every catering where dietly's UI hides nutrition or
 // ingredients (companies.nutrition_visible=false or ingredients_visible=false),
-// strip the corresponding fields from `meals` so the dashboard stops showing
-// poisoned data (e.g. the kcal=1063 leczo body across all UrbanFits dishes).
+// strip the corresponding data so the dashboard stops showing poisoned data
+// (e.g. the kcal=1063 leczo body across all UrbanFits dishes).
 //
-// What gets nulled:
+// What gets stripped:
 //   - nutrition_visible=false  → kcal / protein_g / fat_g / carbs_g / fiber_g
-//                                / sugar_g / saturated_fat_g / salt_g
-//   - ingredients_visible=false→ ingredients_raw, allergens, meal_ingredients,
-//                                meals_history fingerprint, meal_embeddings
-//                                (the body is no longer trustworthy to embed)
+//                                / sugar_g / saturated_fat_g / salt_g on every
+//                                menu_items row (portions live there, not on
+//                                the dish)
+//   - ingredients_visible=false→ every meal_variants row with content
+//                                (allergens or ingredients_raw). Its
+//                                meal_ingredients and variant_embeddings
+//                                cascade; menu_items.variant_id is set NULL.
+//
+// Embeddings are built from name + variant content, never macros, so the
+// nutrition strip leaves vectors alone.
 //
 // Run AFTER `npm run sync-form-settings` so the flags reflect dietly's truth.
 
-import { pool, q } from "../db";
+import { pool, q, withTx } from "../db";
 
 const main = async (): Promise<void> => {
   const targets = await q<{
@@ -44,8 +50,9 @@ const main = async (): Promise<void> => {
   }
 
   // Nutrition strip — runs in one statement against all opted-out companies.
+  // Rows already fully NULL are skipped so the count is what actually changed.
   const nutritionRes = await q(
-    `UPDATE meals
+    `UPDATE menu_items
         SET kcal            = NULL,
             protein_g       = NULL,
             fat_g           = NULL,
@@ -53,59 +60,60 @@ const main = async (): Promise<void> => {
             fiber_g         = NULL,
             sugar_g         = NULL,
             saturated_fat_g = NULL,
-            salt_g          = NULL,
-            updated_at      = NOW()
+            salt_g          = NULL
       WHERE company_id IN (
         SELECT company_id FROM companies WHERE nutrition_visible = FALSE
-      )`
+      )
+        AND (kcal IS NOT NULL OR protein_g IS NOT NULL OR fat_g IS NOT NULL
+             OR carbs_g IS NOT NULL OR fiber_g IS NOT NULL OR sugar_g IS NOT NULL
+             OR saturated_fat_g IS NOT NULL OR salt_g IS NOT NULL)`
   );
-  console.log(`\nnulled nutrition on ${nutritionRes.rowCount} meal rows`);
+  console.log(`\nnulled nutrition on ${nutritionRes.rowCount} menu_items rows`);
 
-  // Ingredients strip — meals + meal_ingredients + invalidate the fingerprint
-  // (so future scrapes treat this as fresh state and re-evaluate against the
-  // honored visibility flags rather than no-op'ing on an old fingerprint match).
-  const mealsRes = await q(
-    `UPDATE meals
-        SET ingredients_raw = NULL,
-            allergens       = ARRAY[]::TEXT[],
-            fingerprint     = NULL,
-            updated_at      = NOW()
-      WHERE company_id IN (
-        SELECT company_id FROM companies WHERE ingredients_visible = FALSE
-      )`
-  );
-  const ingrRes = await q(
-    `DELETE FROM meal_ingredients
-      WHERE meal_id IN (
-        SELECT m.id FROM meals m
-          JOIN companies c ON c.company_id = m.company_id
-         WHERE c.ingredients_visible = FALSE
-      )`
-  );
+  // Ingredients strip — delete the variants that carry a body. Counting the
+  // cascaded children first (same transaction) keeps the log as informative
+  // as the old per-table deletes.
+  const stripped = await withTx(async (tq) => {
+    await tq(
+      `CREATE TEMP TABLE hidden_variants ON COMMIT DROP AS
+       SELECT v.id
+         FROM meal_variants v
+         JOIN meals m ON m.id = v.meal_id
+         JOIN companies c ON c.company_id = m.company_id
+        WHERE c.ingredients_visible = FALSE
+          AND (cardinality(v.allergens) > 0 OR v.ingredients_raw IS NOT NULL)`
+    );
+    const counts = await tq<{ ingredients: string; embeddings: string }>(
+      `SELECT
+         (SELECT COUNT(*) FROM meal_ingredients
+           WHERE variant_id IN (SELECT id FROM hidden_variants))::text AS ingredients,
+         (SELECT COUNT(*) FROM variant_embeddings
+           WHERE variant_id IN (SELECT id FROM hidden_variants))::text AS embeddings`
+    );
+    const del = await tq(
+      `DELETE FROM meal_variants
+        WHERE id IN (SELECT id FROM hidden_variants)`
+    );
+    return {
+      embeddings: counts.rows[0]?.embeddings ?? "0",
+      ingredients: counts.rows[0]?.ingredients ?? "0",
+      variants: del.rowCount ?? 0,
+    };
+  });
   console.log(
-    `nulled ingredients on ${mealsRes.rowCount} meal rows, deleted ${ingrRes.rowCount} meal_ingredients rows`
+    `deleted ${stripped.variants} meal_variants rows with a hidden body (cascaded ${stripped.ingredients} meal_ingredients, ${stripped.embeddings} variant_embeddings)`
   );
 
-  // Embeddings for these meals are now built from a name-only signal; the
-  // current vector was computed against the poisoned body, so drop it. The
-  // embed-meals run picks them up next pass and re-embeds against the name
-  // alone (which is what dietly's own UI shows for opted-out caterings).
-  const embRes = await q(
-    `DELETE FROM meal_embeddings
-      WHERE meal_id IN (
-        SELECT m.id FROM meals m
-          JOIN companies c ON c.company_id = m.company_id
-         WHERE c.nutrition_visible = FALSE OR c.ingredients_visible = FALSE
-      )`
+  console.log(
+    `\n✓ cleanup done. The next menu scrape records name-only variants for these dishes; run \`npm run embed\` after it to embed them.`
   );
-  console.log(`dropped ${embRes.rowCount} stale meal_embeddings rows`);
-
-  console.log(`\n✓ cleanup done. Run \`npm run embed\` to refill embeddings.`);
   await pool.end();
 };
 
-void main().catch(async (e: unknown) => {
-  console.error(e);
+try {
+  await main();
+} catch (error) {
+  console.error(error);
   await pool.end();
   process.exitCode = 1;
-});
+}

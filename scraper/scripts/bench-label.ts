@@ -132,12 +132,24 @@ const fetchJob = async (jobIdRaw: string): Promise<void> => {
     readonly salt_g: string | null;
   }
 
+  // Content comes from the dish's latest variant. Macros are per portion
+  // now (menu_items), so show the most recently seen portion — an open span
+  // first, else the last closed one — which is what meals.kcal used to hold:
+  // whatever the last fetch wrote.
   const mealRows = await query<MealRow>(
-    `SELECT m.id::text, m.name, m.label, m.ingredients_raw, m.allergens,
-            m.kcal::text, m.protein_g::text, m.fat_g::text, m.carbs_g::text,
-            m.fiber_g::text, m.sugar_g::text, m.salt_g::text
+    `SELECT m.id::text, m.name, lv.label, lv.ingredients_raw, lv.allergens,
+            mi.kcal::text, mi.protein_g::text, mi.fat_g::text, mi.carbs_g::text,
+            mi.fiber_g::text, mi.sugar_g::text, mi.salt_g::text
        FROM bench_label_job_items i
        JOIN meals m ON m.id = i.meal_id
+       LEFT JOIN meal_latest_variant lv ON lv.meal_id = m.id
+       LEFT JOIN LATERAL (
+              SELECT kcal, protein_g, fat_g, carbs_g, fiber_g, sugar_g, salt_g
+                FROM menu_items
+               WHERE meal_id = m.id
+               ORDER BY (closed_at IS NULL) DESC, last_seen_at DESC, id DESC
+               LIMIT 1
+            ) mi ON TRUE
       WHERE i.job_id = $1
       ORDER BY i.meal_id`,
     [jobId]
@@ -213,8 +225,8 @@ const commitJob = async (
   // Tolerate occasional markdown fences from the LLM.
   const cleaned = jsonText
     .trim()
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/\s*```$/i, "");
+    .replace(/^```(?:json)?\s*/iu, "")
+    .replace(/\s*```$/iu, "");
 
   let parsed: CommitInput;
   try {

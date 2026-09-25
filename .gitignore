@@ -20,6 +20,9 @@ coverage/
 # scraper Cloudflare session (cookie + user-agent, refreshed by hand)
 .cf-session.json
 
+# city-divergence sampler reports (regenerate with `bun run check:cities`)
+reports/
+
 # embedding-benchmark caches and outputs
 bench/vectors/
 bench/report*.md
@@ -71,8 +74,10 @@ yarn-error.log*
 # packet captures (may contain auth tokens)
 *.har
 
-# ad-hoc DB inspection / debug scripts (one-shot, not part of the build)
-scripts/
+# ad-hoc DB inspection / debug scripts (one-shot, not part of the build).
+# Anchored: unanchored `scripts/` also swallowed scraper/scripts/, so every
+# new scraper script was silently untracked.
+/scripts/
 
 # claude-code runtime state (skills/agents config is committed; runtime is not)
 .claude/scheduled_tasks.lock

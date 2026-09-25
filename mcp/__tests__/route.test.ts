@@ -110,12 +110,12 @@ describe("MCP route", () => {
     const names = result.tools.map((t) => t.name).toSorted();
     expect(names).toEqual([
       "find_diets",
-      "get_menu",
+      "get_context",
+      "get_offer",
       "login",
-      "place_order",
-      "plan_week",
-      "quote_order",
-      "rank_day",
+      "plan",
+      "quote",
+      "send_to_basket",
     ]);
 
     // 4. tools/call find_diets — exercises full dispatch
@@ -134,16 +134,13 @@ describe("MCP route", () => {
     const callResult = callJson.result as {
       isError?: boolean;
       structuredContent?: {
-        city: { id: number; name: string };
+        city: string;
         offers: unknown[];
         total: number;
       };
     };
     expect(callResult.isError).toBeUndefined();
-    expect(callResult.structuredContent?.city).toEqual({
-      id: 986_283,
-      name: "Wrocław",
-    });
+    expect(callResult.structuredContent?.city).toBe("Wrocław");
     expect(callResult.structuredContent?.offers).toEqual([]);
     expect(callResult.structuredContent?.total).toBe(0);
 

@@ -3,21 +3,28 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import * as React from "react";
 
-import { DateRangePicker } from "@/components/date-range-picker";
 import { DayByDayListSingle } from "@/components/day-by-day-list-single";
-import { ExcludeFilter } from "@/components/exclude-filter";
+import { DietlyHandoffDialog } from "@/components/dietly-handoff";
 import type { CateringChoice } from "@/components/exclude-filter";
-import { KcalRangeFilter } from "@/components/kcal-range-filter";
-import { PreferenceFilter } from "@/components/preference-filter";
+import type { CityOption } from "@/components/header";
+import { PlanSummary } from "@/components/plan-summary";
+import { QuerySentence, summarizeDates } from "@/components/query-sentence";
+import type { FilterLists } from "@/components/query-sentence";
 import { SortBar } from "@/components/sort-bar";
 import type { Day, Offer } from "@/lib/match-types";
+import { toHandoffGroups } from "@/lib/plan";
+import type { ResolvedSelection } from "@/lib/plan";
+import { getMetric } from "@/lib/scatter-metrics";
 import type { MetricId } from "@/lib/scatter-metrics";
+import { ratioLeg } from "@/lib/scatter-top";
 import { sortToYMetricId } from "@/lib/sort-metrics";
 import type { SortId } from "@/lib/sort-metrics";
 import { usePersistedState } from "@/lib/use-persisted-state";
 
 export interface MatchExperience2Props {
+  readonly cities: readonly CityOption[];
   readonly cityId: number;
+  readonly cityName: string;
   readonly initialDays: readonly Day[];
   readonly availableDates: readonly string[];
   readonly availableCaterings: readonly CateringChoice[];
@@ -49,6 +56,13 @@ const PER_ZL_TO_RAW: Partial<Record<SortId, SortId>> = {
   "review-per-zl": "review-desc",
   "score-per-zl": "score-desc",
 };
+
+/** Offers fetched for the branch carrying the user's primary intent. */
+const PRIMARY_BRANCH_LIMIT = 8;
+/** Offers fetched per supporting branch — the scatter takes 3 from each. */
+const SUPPORT_BRANCH_LIMIT = 4;
+/** Hard ceiling on parallel pool queries; each one is a full ranked CTE. */
+const MAX_BRANCHES = 6;
 
 interface KcalRange {
   readonly min: number;
@@ -149,7 +163,9 @@ const useKcalLocalStoragePersistence = (): void => {
 export const MatchExperience2 = ({
   availableCaterings,
   availableDates,
+  cities,
   cityId,
+  cityName,
   dataMax,
   dataMin,
   initialAvoid,
@@ -187,6 +203,11 @@ export const MatchExperience2 = ({
   const prefer = searchParams.has("prefer") ? urlPrefer : initialPrefer;
   const avoid = searchParams.has("avoid") ? urlAvoid : initialAvoid;
   const exclude = searchParams.has("exclude") ? urlExclude : initialExclude;
+  // Caterings pinned via "lubię" — always loaded into an open day's pool.
+  const pin = React.useMemo(
+    () => parseList(searchParams.get("pin")),
+    [searchParams]
+  );
   const selectedDates = urlDates;
   const activeMin = parseIntOr(searchParams.get("kcal_min"), initialKcalMin);
   const activeMax = parseIntOr(searchParams.get("kcal_max"), initialKcalMax);
@@ -207,23 +228,19 @@ export const MatchExperience2 = ({
     [router, searchParams]
   );
 
-  const setPrefer = React.useCallback(
-    (next: readonly string[]) => {
-      writeUrl({ prefer: next.length === 0 ? null : next.join(",") });
+  const setLists = React.useCallback(
+    (patch: Partial<FilterLists>) => {
+      const updates: Record<string, string | null> = {};
+      for (const [k, v] of Object.entries(patch)) {
+        updates[k] = v.length === 0 ? null : v.join(",");
+      }
+      writeUrl(updates);
     },
     [writeUrl]
   );
-  const setAvoid = React.useCallback(
-    (next: readonly string[]) => {
-      writeUrl({ avoid: next.length === 0 ? null : next.join(",") });
-    },
-    [writeUrl]
-  );
-  const setExclude = React.useCallback(
-    (next: readonly string[]) => {
-      writeUrl({ exclude: next.length === 0 ? null : next.join(",") });
-    },
-    [writeUrl]
+  const lists = React.useMemo<FilterLists>(
+    () => ({ avoid, exclude, pin, prefer }),
+    [avoid, exclude, pin, prefer]
   );
   const setSelectedDates = React.useCallback(
     (next: readonly string[]) => {
@@ -309,6 +326,13 @@ export const MatchExperience2 = ({
   // Per-day pool fetch controllers. Filter changes abort everything in here
   // so stale full-pool results never overwrite Phase A's top-1 data.
   const poolControllersRef = React.useRef<Map<string, AbortController>>(
+    new Map()
+  );
+
+  // Branches already merged into `poolByDate[date]`. Lives in a ref because
+  // it only gates fetching — it never affects what renders. Cleared
+  // alongside `poolByDate` on every filter change.
+  const fetchedBranchesRef = React.useRef<Map<string, ReadonlySet<SortId>>>(
     new Map()
   );
 
@@ -423,6 +447,7 @@ export const MatchExperience2 = ({
     cateringControllersRef.current.clear();
     setLoadingPoolDates(new Set());
     setLoadingCaterings(new Set());
+    fetchedBranchesRef.current.clear();
     setPoolByDate({});
     // Show the skeleton synchronously — the user gets instant feedback that
     // their filter is being honored, even though the actual fetch is debounced.
@@ -478,24 +503,54 @@ export const MatchExperience2 = ({
     sortId,
   ]);
 
-  // Fired by the list when the user expands a day. Idempotent: cached or
-  // in-flight dates are no-ops.
+  // Sort branches the pool needs, primary intent first. The scatter picks
+  // its dots off this pool, so every criterion it ranks by needs a branch —
+  // otherwise "top 3 by błonnik" is top-3-of-whatever-the-price-sort-
+  // returned, which is only right when the axis happens to match the sort.
   //
-  // Pool composition depends on the current sort:
-  //   * per-zł ratio (e.g. protein-per-zl) → 3 parallel limit=5 fetches:
-  //       1) best ratio        (the sort itself)
-  //       2) highest raw value (e.g. protein-desc — `PER_ZL_TO_RAW`)
-  //       3) cheapest          (price-asc)
-  //     Surfaces all three "value" perspectives at once.
-  //   * everything else → 2 parallel limit=8 fetches: the user's sort + price.
-  //     (price-asc skips the second branch — already covered.)
+  //   1. the user's sort                    — what the row list ranks by
+  //   2. the X/Y value ratio                — the scatter's third leg
+  //   3. X, then Y                          — the scatter's first two legs
+  //   4. the sort's raw cousin              — `PER_ZL_TO_RAW`
+  //   5. price                              — the pinned cheapest dot
+  //
+  // Deduped and capped at `MAX_BRANCHES`. The common case collapses to
+  // three: sort=score-desc with the default price/score axes yields
+  // score-desc + score-per-zl + price-asc.
+  const poolBranches = React.useMemo((): readonly SortId[] => {
+    const xMetric = getMetric(xId);
+    const yMetric = getMetric(yId);
+    const out: SortId[] = [];
+    const push = (id: SortId | undefined) => {
+      if (id !== undefined && !out.includes(id)) {
+        out.push(id);
+      }
+    };
+    push(sortId);
+    push(ratioLeg(xMetric, yMetric)?.poolSortId);
+    push(xMetric.poolSortId);
+    push(yMetric.poolSortId);
+    push(PER_ZL_TO_RAW[sortId]);
+    push("price-asc");
+    return out.slice(0, MAX_BRANCHES);
+  }, [sortId, xId, yId]);
+
+  // Fired by the list when the user expands a day, and again when they swap
+  // a scatter axis while a day is open. Idempotent: branches already fetched
+  // for that date are skipped, and a date with nothing missing is a no-op.
   //
   // Branches are issued primary-intent-first, then merged with a first-
   // occurrence-wins dedupe — so when the same offer surfaces from two
-  // branches, the primary's attribution (and ordering) survives.
+  // branches, the primary's attribution (and ordering) survives. Offers
+  // already in the pool keep their place for the same reason.
   const requestPool = React.useCallback(
     (date: string) => {
-      if (date in poolByDate || loadingPoolDates.has(date)) {
+      if (loadingPoolDates.has(date)) {
+        return;
+      }
+      const done = fetchedBranchesRef.current.get(date) ?? new Set<SortId>();
+      const missing = poolBranches.filter((b) => !done.has(b));
+      if (missing.length === 0) {
         return;
       }
       const ctrl = new AbortController();
@@ -503,7 +558,7 @@ export const MatchExperience2 = ({
       // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- React setter receives the previous Set value
       setLoadingPoolDates((prev) => new Set([...prev, date]));
       const fetchPoolWith = async (
-        sortOverride: SortId | undefined,
+        sortOverride: SortId,
         limit: number
       ): Promise<readonly Offer[]> => {
         const res = await fetch(
@@ -518,41 +573,39 @@ export const MatchExperience2 = ({
         const dayResult = (json.days ?? []).find((d) => d.date === date);
         return dayResult?.all_offers ?? [];
       };
-      const rawForRatio = PER_ZL_TO_RAW[sortId];
       void (async () => {
         try {
-          // Branches are ordered so the user's primary intent (sort for the
-          // 2-branch path, ratio for the 3-branch path) is FIRST — the
-          // first-occurrence-wins merge below preserves those offers
-          // against ties from the secondary branches.
-          let branches: readonly (readonly Offer[])[];
-          if (rawForRatio === undefined) {
-            // 2-branch: user's sort + price. price-asc skips its own branch.
-            const priceBranch =
-              sortId === "price-asc"
-                ? Promise.resolve([] as readonly Offer[])
-                : fetchPoolWith("price-asc", 8);
-            branches = await Promise.all([
-              fetchPoolWith(undefined, 8),
-              priceBranch,
-            ]);
-          } else {
-            // 3-branch: best ratio + highest raw + cheapest.
-            branches = await Promise.all([
-              fetchPoolWith(sortId, 5),
-              fetchPoolWith(rawForRatio, 5),
-              fetchPoolWith("price-asc", 5),
-            ]);
-          }
-          const byId = new Map<string, Offer>();
-          for (const branch of branches) {
-            for (const o of branch) {
-              if (!byId.has(o.offer_id)) {
-                byId.set(o.offer_id, o);
+          const branches = await Promise.all(
+            missing.map(async (b, i) => {
+              // Only the user's own sort — always first in `poolBranches`,
+              // so only ever index 0 of a fresh fetch — needs breadth; the
+              // supporting branches exist to contribute three dots each.
+              const limit =
+                i === 0 && b === poolBranches[0]
+                  ? PRIMARY_BRANCH_LIMIT
+                  : SUPPORT_BRANCH_LIMIT;
+              const branch = await fetchPoolWith(b, limit);
+              return branch;
+            })
+          );
+          fetchedBranchesRef.current.set(
+            date,
+            new Set<SortId>([...done, ...missing])
+          );
+          setPoolByDate((prev) => {
+            const byId = new Map<string, Offer>();
+            for (const o of prev[date] ?? []) {
+              byId.set(o.offer_id, o);
+            }
+            for (const branch of branches) {
+              for (const o of branch) {
+                if (!byId.has(o.offer_id)) {
+                  byId.set(o.offer_id, o);
+                }
               }
             }
-          }
-          setPoolByDate((prev) => ({ ...prev, [date]: [...byId.values()] }));
+            return { ...prev, [date]: [...byId.values()] };
+          });
         } catch (error: unknown) {
           if (error instanceof Error && error.name === "AbortError") {
             return;
@@ -571,7 +624,7 @@ export const MatchExperience2 = ({
         }
       })();
     },
-    [buildMatchUrl, loadingPoolDates, poolByDate, sortId]
+    [buildMatchUrl, loadingPoolDates, poolBranches]
   );
 
   // Fired when the user clicks a catering chip in the expanded-row picker.
@@ -635,47 +688,105 @@ export const MatchExperience2 = ({
     [buildMatchUrl, loadingCaterings, poolByDate]
   );
 
+  // Pinned caterings ("lubię" → catering) join the open day's pool once the
+  // pool itself has landed, so the scatter's axes settle on the full set
+  // first. Each (date, catering) is tried once per filter state — a catering
+  // with no offer that day would otherwise be re-fetched on every pool change.
+  const [expandedDate, setExpandedDate] = React.useState<string | null>(null);
+  const pinAttemptsRef = React.useRef<Set<string>>(new Set());
+  const handleExpandDate = React.useCallback(
+    (date: string) => {
+      setExpandedDate(date);
+      requestPool(date);
+    },
+    [requestPool]
+  );
+  React.useEffect(() => {
+    if (expandedDate === null || poolByDate[expandedDate] === undefined) {
+      return;
+    }
+    for (const id of pin) {
+      const key = `${expandedDate}::${id}`;
+      if (!pinAttemptsRef.current.has(key)) {
+        pinAttemptsRef.current.add(key);
+        loadCateringForDate(expandedDate, id);
+      }
+    }
+  }, [expandedDate, loadCateringForDate, pin, poolByDate]);
+  React.useEffect(() => {
+    pinAttemptsRef.current.clear();
+  }, [activeMax, activeMin, avoid, exclude, prefer, selectedDates, sortId]);
+
+  // ── Plan (hero, right column) ────────────────────────────────────────────
+  const [resolved, setResolved] = React.useState<readonly ResolvedSelection[]>(
+    []
+  );
+  const [orderOpen, setOrderOpen] = React.useState(false);
+  const planDays = React.useMemo(() => {
+    const m = new Map<string, number>();
+    for (const r of resolved) {
+      m.set(r.offer.company_id, (m.get(r.offer.company_id) ?? 0) + 1);
+    }
+    return m;
+  }, [resolved]);
+  const handoffGroups = React.useMemo(
+    () => toHandoffGroups(resolved),
+    [resolved]
+  );
+  const planLoading = skeletonDates !== null;
+  const pinnedSet = React.useMemo(() => new Set(pin), [pin]);
+
   return (
     <>
-      <div>
-        <KcalRangeFilter
-          activeDays={1}
-          activeMax={activeMax}
-          activeMin={activeMin}
+      <section className="px-5 sm:px-8 lg:px-14 pt-8 lg:pt-11 pb-8 lg:pb-10 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_400px] gap-x-[88px] gap-y-8 items-start">
+        <QuerySentence
+          availableDates={availableDates}
+          caterings={availableCaterings}
+          cities={cities}
+          cityId={cityId}
+          cityName={cityName}
           dataMax={dataMax}
           dataMin={dataMin}
-          dayOptions={[]}
-          extraSlot={
-            <DateRangePicker
-              availableDates={availableDates}
-              onChange={setSelectedDates}
-              selectedDates={selectedDates}
-            />
-          }
+          kcalMax={activeMax}
+          kcalMin={activeMin}
+          lists={lists}
+          onDatesChange={setSelectedDates}
+          onListsChange={setLists}
+          planDays={planDays}
           presets={presets}
+          selectedDates={selectedDates}
         />
-        <div className="px-5 sm:px-8 lg:px-14 py-4 border-b border-[var(--color-bone)]">
-          <PreferenceFilter
-            avoid={avoid}
-            onAvoidChange={setAvoid}
-            onPreferChange={setPrefer}
-            prefer={prefer}
-          />
-          <div className="mt-2.5">
-            <ExcludeFilter
-              availableCaterings={availableCaterings}
-              excludedIds={exclude}
-              onChange={setExclude}
-            />
-          </div>
-        </div>
+        <PlanSummary
+          canOrder={handoffGroups.length > 0}
+          loading={planLoading}
+          onToggleOrder={() => {
+            setOrderOpen(true);
+          }}
+          orderOpen={orderOpen}
+          resolved={resolved}
+          spanLabel={summarizeDates(selectedDates, availableDates)}
+        />
+      </section>
+
+      {handoffGroups.length > 0 && (
+        <DietlyHandoffDialog
+          cityId={cityId}
+          groups={handoffGroups}
+          onClose={() => {
+            setOrderOpen(false);
+          }}
+          open={orderOpen && !planLoading}
+        />
+      )}
+
+      <div className="border-t border-[var(--color-bone)]">
         <SortBar
           activeId={sortId}
           hasPreferences={hasPreferences}
           onChange={handleSortChange}
         />
         {fetchError !== null && (
-          <div className="px-5 sm:px-8 lg:px-14 py-2 text-[12px] text-[var(--color-paprika)]">
+          <div className="px-5 sm:px-8 lg:px-14 py-2 text-[12px] text-[var(--color-clay)]">
             nie udało się załadować ofert: {fetchError}
           </div>
         )}
@@ -689,8 +800,10 @@ export const MatchExperience2 = ({
           loadingPoolDates={loadingPoolDates}
           onChangeX={setXId}
           onChangeY={setYId}
-          onExpandDate={requestPool}
+          onExpandDate={handleExpandDate}
           onLoadCatering={loadCateringForDate}
+          onResolvedChange={setResolved}
+          pinnedCompanyIds={pinnedSet}
           poolByDate={poolByDate}
           skeletonDates={skeletonDates}
           sortId={sortId}

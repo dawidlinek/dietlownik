@@ -22,13 +22,17 @@ describe.skipIf(HEAVY_SKIP)("getRankedOffersForDay + getWeeklyPlan", () => {
   // Wrocław is the only city populated by Wave 2 verification (robinfood).
   const WROCLAW_ID = 986_283;
 
-  // Pick a date the scraper has populated. The data window from Wave 2 spans
-  // 2026-05-16 through 2026-05-22; we use D+1 (2026-05-17) where ALL diet
-  // shapes (fixed AND menu-config) are present, since today's row might be
-  // missing some early slots.
-  const POPULATED_DATE = "2026-05-17";
+  // Dates are resolved from the data, never hardcoded — a pinned fixture date
+  // ages out of the retained window and turns passing tests into
+  // `expected 0 to be greater than 0` failures that look like regressions.
+  let POPULATED_DATE = "";
+  let POPULATED_DATES: readonly string[] = [];
 
   beforeAll(async () => {
+    const { resolvePopulatedDates } = await import("./helpers/populated-date");
+    POPULATED_DATES = await resolvePopulatedDates(WROCLAW_ID, 3);
+    POPULATED_DATE = POPULATED_DATES[0] ?? "";
+
     // Drop any cached taxonomy so the live DB is exercised once per file —
     // mirrors what `preference-router.test.ts` does.
     const mod = await import("../preference-router.js");
@@ -73,9 +77,11 @@ describe.skipIf(HEAVY_SKIP)("getRankedOffersForDay + getWeeklyPlan", () => {
     }
 
     // At least one offer must surface hits across our four routing sources.
-    // We expect at minimum: embedding (kurczak/pomidor/koktajl/ostre fall
-    // through to embedding), category ('psiankowate' → 'pomidor' pattern hits),
-    // macro ('dużo białka' → protein_g high), and allergen ('gluten').
+    // We expect: ingredient (kurczak/pomidor/koktajl/ostre are all literal
+    // words the lexical channel owns), category ('psiankowate' → 'pomidor'
+    // pattern hits), macro ('dużo białka' → protein_g high), and allergen
+    // ('gluten'). NOT embedding — it is a fallback and stays silent for any
+    // keyword the lexical channel matched.
     const sourcesSeen = new Set<string>();
     for (const offer of result.offers) {
       for (const pick of offer.picks) {
@@ -85,10 +91,12 @@ describe.skipIf(HEAVY_SKIP)("getRankedOffersForDay + getWeeklyPlan", () => {
       }
     }
     expect(sourcesSeen.size).toBeGreaterThan(0);
-    // At minimum we expect embedding (it covers fallback) and one structured
-    // source. Allergen requires a meal tagged 'gluten' in scope, which we
-    // verified in the inspection step.
-    expect(sourcesSeen.has("embedding")).toBe(true);
+    // Allergen requires a meal tagged 'gluten' in scope, which we verified in
+    // the inspection step, so assert on the two that these keywords guarantee.
+    expect(sourcesSeen.has("ingredient")).toBe(true);
+    expect(sourcesSeen.has("macro")).toBe(true);
+    // The fallback must NOT fire when lexical already answered.
+    expect(sourcesSeen.has("embedding")).toBe(false);
 
     // Sign discipline: prefer hits are positive contributions, avoid negative.
     for (const offer of result.offers) {
@@ -165,7 +173,7 @@ describe.skipIf(HEAVY_SKIP)("getRankedOffersForDay + getWeeklyPlan", () => {
 
   it("getWeeklyPlan returns one PlannedDay per requested date", async () => {
     const { getWeeklyPlan } = await import("../queries.js");
-    const dates = ["2026-05-17", "2026-05-18", "2026-05-19"] as const;
+    const dates = POPULATED_DATES.slice(0, 3);
     const plan = await getWeeklyPlan({
       altLimit: 3,
       avoid: ["pomidor"],

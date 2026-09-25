@@ -7,7 +7,8 @@ import { get } from "../api";
 import { pool, q } from "../db";
 import type { ConstantResponse } from "../types";
 
-const DEFAULT_CITY_ID = Number(process.env.CITY_ID ?? 986283); // Wrocław
+// Wrocław
+const DEFAULT_CITY_ID = Number(process.env.CITY_ID ?? 986_283);
 
 const errMsg = (e: unknown): string =>
   e instanceof Error ? e.message : String(e);
@@ -40,15 +41,18 @@ const main = async (): Promise<void> => {
         [companyId, nutrition, ingredients]
       );
       const off = !nutrition || !ingredients;
-      if (off) touchedOff += 1;
-      else touchedOn += 1;
+      if (off) {
+        touchedOff += 1;
+      } else {
+        touchedOn += 1;
+      }
       const mark = off ? "OFF" : "on ";
       console.log(
         `  [${mark}] ${companyId.padEnd(20)} nutrition=${nutrition}  ingredients=${ingredients}`
       );
-    } catch (e) {
+    } catch (error) {
       errored += 1;
-      console.warn(`  [err] ${companyId}: ${errMsg(e)}`);
+      console.warn(`  [err] ${companyId}: ${errMsg(error)}`);
     }
   }
 
@@ -58,8 +62,10 @@ const main = async (): Promise<void> => {
   await pool.end();
 };
 
-void main().catch(async (e: unknown) => {
-  console.error(e);
+try {
+  await main();
+} catch (error) {
+  console.error(error);
   await pool.end();
   process.exitCode = 1;
-});
+}

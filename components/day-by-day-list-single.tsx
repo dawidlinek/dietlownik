@@ -15,6 +15,7 @@ import {
 import { formatPriceNumber } from "@/lib/format";
 import { aggregateMacros } from "@/lib/match-types";
 import type { Day, Hit, MealOption, Offer, Pick } from "@/lib/match-types";
+import type { ResolvedSelection } from "@/lib/plan";
 import { getMetric } from "@/lib/scatter-metrics";
 import type { MetricId } from "@/lib/scatter-metrics";
 import { getSortOption, rankOffers } from "@/lib/sort-metrics";
@@ -301,6 +302,8 @@ interface SingleRowProps {
   readonly loadingCaterings: ReadonlySet<string>;
   /** Fired when the user clicks an unloaded catering chip. */
   readonly onLoadCatering: (companyId: string) => void;
+  /** Caterings pinned via "lubię" — always plotted on the scatter. */
+  readonly pinnedCompanyIds?: ReadonlySet<string>;
 }
 
 const ScoreChip = ({ score }: Readonly<{ score: number }>) => {
@@ -347,6 +350,7 @@ interface ScatterPanelProps {
   readonly loadingCateringIds: ReadonlySet<string>;
   /** Fired by the popover entry click; parent triggers the per-catering fetch. */
   readonly onLoadCatering: (companyId: string) => void;
+  readonly pinnedCompanyIds?: ReadonlySet<string>;
 }
 
 // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- props include a ReadonlySet (loadingCateringIds) which already conveys read-only intent
@@ -358,6 +362,7 @@ const ScatterPanel = ({
   onChangeY,
   onLoadCatering,
   onPick,
+  pinnedCompanyIds,
   poolLoading,
   selectedId,
   unloadedCaterings,
@@ -393,6 +398,7 @@ const ScatterPanel = ({
         onChangeY={onChangeY}
         onLoadCatering={onLoadCatering}
         onPick={onPick}
+        pinnedCompanyIds={pinnedCompanyIds}
         selectedId={selectedId}
         unloadedCaterings={unloadedCaterings}
         xMetric={getMetric(xId)}
@@ -419,6 +425,7 @@ const SingleRow = ({
   onChangeX,
   onChangeY,
   onLoadCatering,
+  pinnedCompanyIds,
   onPickFromScatter,
   onSwapMeal,
   onToggle,
@@ -625,6 +632,7 @@ const SingleRow = ({
                 onChangeY={onChangeY}
                 onLoadCatering={onLoadCatering}
                 onPick={onPickFromScatter}
+                pinnedCompanyIds={pinnedCompanyIds}
                 poolLoading={poolLoading}
                 selectedId={offer.offer_id}
                 unloadedCaterings={unloadedCaterings}
@@ -633,86 +641,6 @@ const SingleRow = ({
               />
             </div>
           </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// ── Selection summary (mirrors day-by-day-list.tsx) ─────────────────────────
-
-interface ResolvedSelection {
-  readonly date: string;
-  readonly weekday: string;
-  readonly company_name: string;
-  readonly price_per_day: number;
-}
-
-const OrderSummary = ({
-  resolved,
-}: Readonly<{ resolved: readonly ResolvedSelection[] }>) => {
-  const [ordered, setOrdered] = React.useState(false);
-  if (resolved.length === 0) {
-    return null;
-  }
-  const total = resolved.reduce((acc, r) => acc + r.price_per_day, 0);
-  const companies = [...new Set(resolved.map((r) => r.company_name))];
-  return (
-    <div className="sticky bottom-0 z-20 -mx-5 sm:-mx-8 lg:-mx-14 border-t-2 border-[var(--color-amber)] bg-[var(--color-cream)] shadow-[0_-12px_24px_-12px_oklch(22%_0.018_60_/_0.18)]">
-      <div className="px-5 sm:px-8 lg:px-14 py-4 flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
-        <div className="flex flex-col gap-0.5 min-w-0">
-          <div className="flex items-baseline gap-3">
-            <span className="text-[11px] uppercase tracking-[0.08em] text-[var(--color-ink-3)]">
-              podsumowanie
-            </span>
-            <span className="text-[13px] text-[var(--color-ink-2)] tnum">
-              {resolved.length} {resolved.length === 1 ? "dzień" : "dni"} ·{" "}
-              {companies.length}{" "}
-              {companies.length === 1 ? "catering" : "cateringi"}
-            </span>
-          </div>
-          <div className="text-[12px] text-[var(--color-ink-3)] truncate max-w-[60vw]">
-            {companies.join(" · ")}
-          </div>
-        </div>
-        <div className="flex items-baseline gap-4">
-          <div className="flex flex-col items-end">
-            <span className="font-display tnum text-[24px] leading-none text-[var(--color-ink)]">
-              {formatPriceNumber(total)} zł
-            </span>
-            <span className="text-[11px] text-[var(--color-ink-3)] mt-0.5">
-              łącznie · {formatPriceNumber(total / resolved.length)} zł/dzień
-              śr.
-            </span>
-          </div>
-          <button
-            className={cn(
-              "inline-flex items-center gap-2 px-5 py-2.5 rounded-sm tnum text-[14px]",
-              "transition-colors",
-              ordered
-                ? "bg-[var(--color-olive)] text-[var(--color-cream)]"
-                : "bg-[var(--color-amber)] text-[var(--color-cream)] hover:bg-[var(--color-amber-deep)]"
-            )}
-            onClick={() => {
-              setOrdered(true);
-              window.setTimeout(() => {
-                setOrdered(false);
-              }, 2500);
-            }}
-            type="button"
-          >
-            {ordered ? (
-              <>
-                <span aria-hidden>✓</span>
-                <span>zamówione (mock)</span>
-              </>
-            ) : (
-              <>
-                <span>zamów</span>
-                <span aria-hidden>→</span>
-              </>
-            )}
-          </button>
         </div>
       </div>
     </div>
@@ -750,6 +678,12 @@ export interface DayByDaySingleProps {
   readonly yId: MetricId;
   readonly onChangeX: (id: MetricId) => void;
   readonly onChangeY: (id: MetricId) => void;
+  /** Caterings pinned via "lubię" — the scatter plots them regardless of
+   *  rank. */
+  readonly pinnedCompanyIds?: ReadonlySet<string>;
+  /** Fired whenever the per-day resolved picks change — the plan summary
+   *  above the list renders from these. */
+  readonly onResolvedChange?: (resolved: readonly ResolvedSelection[]) => void;
 }
 
 type Overrides = Readonly<Record<string, string>>;
@@ -766,6 +700,8 @@ export const DayByDayListSingle = ({
   onChangeY,
   onExpandDate,
   onLoadCatering,
+  onResolvedChange,
+  pinnedCompanyIds,
   poolByDate,
   skeletonDates,
   sortId,
@@ -795,6 +731,19 @@ export const DayByDayListSingle = ({
   React.useEffect(() => {
     setOverrides({});
   }, [sortId]);
+
+  // Swapping a scatter axis changes which offers the chart wants to rank, so
+  // the open day's pool needs the new axis's branch. `onExpandDate` is
+  // branch-idempotent — it fetches only what's missing — so re-asking is
+  // cheap, and a no-op when the new axis has no pool branch of its own.
+  const expandRef = React.useRef(onExpandDate);
+  expandRef.current = onExpandDate;
+  React.useEffect(() => {
+    if (expansion !== null) {
+      expandRef.current?.(expansion);
+    }
+    // oxlint-disable-next-line react-hooks/exhaustive-deps -- onExpandDate is read through a ref; its identity changes on every pool state update and would re-fire this effect
+  }, [expansion, xId, yId]);
 
   const handleSwap = React.useCallback(
     (date: string, offerId: string, slot: string, opt: MealOption) => {
@@ -838,14 +787,19 @@ export const DayByDayListSingle = ({
           ? ranked[0]
           : (ranked.find((o) => o.offer_id === overrideId) ?? ranked[0]);
       out.push({
-        company_name: chosen.company_name,
         date: day.date,
-        price_per_day: chosen.price_per_day,
+        offer: chosen,
         weekday: day.weekday_short_pl,
       });
     }
     return out;
   }, [days, overrides, poolByDate, sortId, swaps]);
+
+  const resolvedRef = React.useRef(onResolvedChange);
+  resolvedRef.current = onResolvedChange;
+  React.useEffect(() => {
+    resolvedRef.current?.(resolved);
+  }, [resolved]);
 
   // Phase A is in flight after a config change — show shimmer placeholders
   // for every selected date. Inputs above stay live; debounce + abort in
@@ -960,6 +914,7 @@ export const DayByDayListSingle = ({
                   toggleExpansion(day.date, open);
                 }}
                 open={open}
+                pinnedCompanyIds={pinnedCompanyIds}
                 poolLoading={poolLoading}
                 rank={chosenRank + 1}
                 totalForDay={day.total_considered}
@@ -970,8 +925,6 @@ export const DayByDayListSingle = ({
             );
           })}
         </div>
-
-        <OrderSummary resolved={resolved} />
       </div>
     </TooltipProvider>
   );

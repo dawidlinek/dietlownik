@@ -28,3 +28,38 @@ export const q = <R extends pg.QueryResultRow = pg.QueryResultRow>(
   sql: string,
   params?: readonly unknown[]
 ) => getPool().query<R>(sql, params === undefined ? undefined : [...params]);
+
+export type TxQuery = typeof q;
+
+/**
+ * Run `fn` inside one transaction on a dedicated pooled client. `fn` gets a
+ * `q`-shaped function bound to that client. Commits on success, rolls back
+ * and rethrows on failure. Span writes need this: closing the old span and
+ * opening its successor must be atomic, or the one-open-span-per-key index
+ * sees two.
+ */
+export const withTx = async <T>(
+  fn: (tq: TxQuery) => Promise<T>
+): Promise<T> => {
+  const client = await getPool().connect();
+  // oxlint-disable-next-line typescript/promise-function-async -- same thin forwarder shape as `q`
+  const tq: TxQuery = <R extends pg.QueryResultRow = pg.QueryResultRow>(
+    sql: string,
+    params?: readonly unknown[]
+  ) => client.query<R>(sql, params === undefined ? undefined : [...params]);
+  try {
+    await client.query("BEGIN");
+    const result = await fn(tq);
+    await client.query("COMMIT");
+    return result;
+  } catch (error) {
+    try {
+      await client.query("ROLLBACK");
+    } catch {
+      // Connection already broken; the original error is the one to surface.
+    }
+    throw error;
+  } finally {
+    client.release();
+  }
+};

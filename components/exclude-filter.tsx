@@ -46,7 +46,7 @@ const LogoPlaceholder = ({ name }: Readonly<{ name: string }>) => {
  *  When the URL is malformed or has previously failed to load, render the
  *  placeholder straight away; when the URL looks plausible we try the
  *  image and demote it to a placeholder on `onError`. */
-const LogoOrPlaceholder = ({
+export const LogoOrPlaceholder = ({
   logoUrl,
   name,
 }: Readonly<{ logoUrl: string | null; name: string }>) => {
@@ -98,7 +98,7 @@ const ExcludeChip = ({ name, onRemove }: Readonly<ExcludeChipProps>) => (
   </span>
 );
 
-const folded = (s: string): string =>
+export const folded = (s: string): string =>
   s
     .toLocaleLowerCase("pl-PL")
     .normalize("NFD")

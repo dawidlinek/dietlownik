@@ -72,7 +72,7 @@ export const GET = async (request: Request) => {
     kcalMaxRaw === null ? undefined : parseIntOr(kcalMaxRaw, Number.NaN);
   const orderDaysRaw = searchParams.get("order_days");
   const orderDays =
-    orderDaysRaw === null ? undefined : parseIntOr(orderDaysRaw, 5);
+    orderDaysRaw === null ? undefined : parseIntOr(orderDaysRaw, 1);
   // Per-day top-N cap. The home page's two-phase loader uses `1` for the
   // fast first-paint table and omits the param (= 0 = no cap) for the
   // per-day lazy fetch that powers the expanded-row scatter.

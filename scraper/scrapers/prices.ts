@@ -1,6 +1,8 @@
-import { post, futureWeekdays } from "../api";
+import { HttpError, post, futureWeekdays } from "../api";
 import { q } from "../db";
 import { recordScrapeError, getCurrentRunId } from "../scrape-run";
+import { recordSpan } from "../spans";
+import type { SpanTable } from "../spans";
 import type {
   DeepReadonly,
   PriceRequestBody,
@@ -104,16 +106,78 @@ interface PriceJob {
   promoCodes: string[];
 }
 
+// A quote is one observation of the price_history span keyed by
+// (catering, leaf = diet_calories_id + tier, city, order length, promo set).
+// Value columns in the order fetchAndInsert passes them.
+const PRICE_SPAN: SpanTable = {
+  key: [
+    ["company_id", "text"],
+    ["diet_calories_id", "int"],
+    ["tier_id", "int"],
+    ["city_id", "bigint"],
+    ["order_days", "int"],
+    ["promo_codes", "text[]"],
+  ],
+  table: "price_history",
+  values: [
+    ["per_day_cost", "numeric(10,2)"],
+    ["total_cost", "numeric(10,2)"],
+    ["total_cost_without_discounts", "numeric(10,2)"],
+    ["total_lowest_30days_cost_without_discounts", "numeric(10,2)"],
+    ["total_delivery_cost", "numeric(10,2)"],
+    ["total_delivery_discount", "numeric(10,2)"],
+    ["total_promo_code_discount", "numeric(10,2)"],
+    ["total_promo_code_discount_info", "text"],
+    ["total_order_length_discount", "numeric(10,2)"],
+    ["total_deliveries_on_date_discount", "numeric(10,2)"],
+    ["total_loyalty_points_discount", "numeric(10,2)"],
+    ["total_pickup_point_discount", "numeric(10,2)"],
+    ["total_one_time_side_orders_cost", "numeric(10,2)"],
+    ["total_awarded_loyalty_program_points", "int"],
+    ["total_awarded_global_loyalty_program_points", "int"],
+  ],
+};
+
+/** Record one quote as an observation of its price_history span. */
+export const recordQuote = async (
+  key: Readonly<{
+    companyId: string;
+    dietCaloriesId: number;
+    tierId: number;
+    cityId: number;
+    orderDays: number;
+    promoCodes: readonly string[];
+  }>,
+  values: readonly unknown[]
+): Promise<void> => {
+  await recordSpan(
+    PRICE_SPAN,
+    [
+      key.companyId,
+      key.dietCaloriesId,
+      key.tierId,
+      key.cityId,
+      key.orderDays,
+      [...key.promoCodes],
+    ],
+    values
+  );
+};
+
 /**
- * One quote → one row. Returns true on insert, false on any HTTP/API
- * failure. With-code failures are isolated: the no-code job is a separate
- * PriceJob, so its outcome is independent.
+ * One quote → one observation. Returns true when recorded, false on any
+ * HTTP/API failure. With-code failures are isolated: the no-code job is a
+ * separate PriceJob, so its outcome is independent.
  */
-// oxlint-disable-next-line eslint/complexity -- straight-line fetch + insert; one branch per quote column is the goal
+// dietly's reply for a promo code it doesn't know (HTTP 490).
+const CODE_NOT_FOUND = /Nie znaleziono takiego kodu rabatowego/u;
+
+// oxlint-disable-next-line eslint/complexity -- straight-line fetch + record; one branch per quote column is the goal
 export const fetchAndInsert = async (
   job: DeepReadonly<PriceJob>,
   companyId: string,
-  cityId: number
+  cityId: number,
+  onCodeRejected?: (code: string) => void
 ): Promise<boolean> => {
   const { leaf, days, deliveryDates, promoCodes } = job;
 
@@ -137,6 +201,15 @@ export const fetchAndInsert = async (
       { companyId }
     );
   } catch (error) {
+    const [onlyCode] = promoCodes;
+    if (
+      onlyCode !== undefined &&
+      promoCodes.length === 1 &&
+      error instanceof HttpError &&
+      CODE_NOT_FOUND.test(error.bodySnippet)
+    ) {
+      onCodeRejected?.(onlyCode);
+    }
     const codeTag =
       promoCodes.length > 0 ? ` code=${promoCodes.join(",")}` : "";
     console.warn(
@@ -153,26 +226,17 @@ export const fetchAndInsert = async (
   const { cart } = result;
   const [item] = result.items;
 
-  await q(
-    `INSERT INTO prices
-       (diet_calories_id, company_id, city_id, order_days, promo_codes,
-        per_day_cost,
-        total_cost, total_cost_without_discounts,
-        total_lowest_30days_cost_without_discounts,
-        total_delivery_cost, total_delivery_discount,
-        total_promo_code_discount, total_promo_code_discount_info,
-        total_order_length_discount, total_deliveries_on_date_discount,
-        total_loyalty_points_discount, total_pickup_point_discount,
-        total_one_time_side_orders_cost,
-        total_awarded_loyalty_program_points,
-        total_awarded_global_loyalty_program_points)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
-    [
-      leaf.diet_calories_id,
-      companyId,
+  // Same order as PRICE_SPAN.values.
+  await recordQuote(
+    {
       cityId,
-      days,
+      companyId,
+      dietCaloriesId: leaf.diet_calories_id,
+      orderDays: days,
       promoCodes,
+      tierId: leaf.tier_id,
+    },
+    [
       // List per-day. Effective net per-day is derived at read time as
       // total_cost / order_days — the API's perDayDietWithDiscountsCost
       // doesn't include the promo discount (verified against live API
@@ -207,6 +271,24 @@ const runConcurrent = async (
 ): Promise<number> => {
   let inserted = 0;
   const queue = [...jobs];
+  // Codes dietly rejected this run: retired once, then skipped.
+  const rejected = new Set<string>();
+  const retiring: Promise<unknown>[] = [];
+  const onCodeRejected = (code: string): void => {
+    if (rejected.has(code)) {
+      return;
+    }
+    rejected.add(code);
+    console.warn(
+      `[prices] ${companyId}: dietly rejects code ${code} — retiring it, skipping its remaining quotes`
+    );
+    retiring.push(
+      (async () => {
+        const { retirePromoCode } = await import("./promotions.js");
+        await retirePromoCode(companyId, code);
+      })()
+    );
+  };
 
   await Promise.all(
     Array.from({ length: concurrency }, async () => {
@@ -215,12 +297,16 @@ const runConcurrent = async (
         if (job === undefined) {
           break;
         }
-        if (await fetchAndInsert(job, companyId, cityId)) {
+        if (job.promoCodes.some((c: string) => rejected.has(c))) {
+          continue;
+        }
+        if (await fetchAndInsert(job, companyId, cityId, onCodeRejected)) {
           inserted += 1;
         }
       }
     })
   );
+  await Promise.all(retiring);
 
   return inserted;
 };
@@ -228,13 +314,13 @@ const runConcurrent = async (
 export const scrapePrices = async (
   companyId: string,
   cityId: number
-): Promise<void> => {
+): Promise<{ ok: number; fail: number }> => {
   console.log(`[prices] ${companyId} / city=${cityId}`);
   const leaves = await getLeaves(companyId);
 
   if (leaves.length === 0) {
     console.log(`[prices] no active leaves for ${companyId}, skipping`);
-    return;
+    return { fail: 0, ok: 0 };
   }
 
   const codes = await getActivePromoCodes(companyId);
@@ -275,8 +361,9 @@ export const scrapePrices = async (
   const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
 
   console.log(
-    `[prices] ✓ ${companyId}: ${inserted}/${jobs.length} rows inserted (${elapsed}s)`
+    `[prices] ✓ ${companyId}: ${inserted}/${jobs.length} quotes recorded (${elapsed}s)`
   );
+  return { fail: jobs.length - inserted, ok: inserted };
 };
 
 // Exported for the backfill script.

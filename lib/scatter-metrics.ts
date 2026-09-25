@@ -1,5 +1,6 @@
 import { formatPriceNumber } from "@/lib/format";
 import type { Offer } from "@/lib/match-types";
+import type { SortId } from "@/lib/sort-metrics";
 
 export type MetricId =
   | "price"
@@ -21,6 +22,25 @@ export interface Metric {
   readonly format: (v: number) => string;
   /** True for metrics where bigger is "better" (positive = green). */
   readonly higherIsBetter: boolean;
+  /**
+   * Optional eligibility filter, applied before a "top N by this metric"
+   * pick. Caterings that don't report macros surface every macro as 0,
+   * which would sweep the whole top-N of any lower-is-better metric — a
+   * diet with no declared fat is not the leanest diet. Mirrors the same
+   * guard on the asc sorts in `lib/sort-metrics.ts`.
+   *
+   * Only relevant for `higherIsBetter: false` metrics; a missing-as-0 on a
+   * higher-is-better metric sinks to the bottom on its own.
+   */
+  readonly eligible?: (o: Offer) => boolean;
+  /**
+   * Sort branch that fetches this metric's genuine day-wide leaders. The
+   * scatter's candidate pool is assembled from sort branches, so without
+   * one a "top 3 by X" is only top-3-of-whatever-the-pool-happens-to-hold.
+   * `undefined` for metrics with no matching `SortId` (score_default,
+   * kcal, sugar) — those stay top-of-pool.
+   */
+  readonly poolSortId?: SortId;
 }
 
 const formatScore = (v: number): string => {
@@ -41,6 +61,7 @@ export const METRICS: readonly Metric[] = [
     higherIsBetter: false,
     id: "price",
     label: "cena",
+    poolSortId: "price-asc",
     unit: "zł",
   },
   {
@@ -49,6 +70,7 @@ export const METRICS: readonly Metric[] = [
     higherIsBetter: true,
     id: "score",
     label: "score",
+    poolSortId: "score-desc",
     unit: "",
   },
   {
@@ -61,6 +83,7 @@ export const METRICS: readonly Metric[] = [
   },
   {
     accessor: (o) => o.total_kcal,
+    eligible: (o) => o.total_kcal > 0,
     format: formatInt,
     higherIsBetter: false,
     id: "kcal",
@@ -73,22 +96,27 @@ export const METRICS: readonly Metric[] = [
     higherIsBetter: true,
     id: "protein",
     label: "białko",
+    poolSortId: "protein-desc",
     unit: "g",
   },
   {
     accessor: (o) => o.total_fat_g,
+    eligible: (o) => o.total_fat_g > 0,
     format: formatInt,
     higherIsBetter: false,
     id: "fat",
     label: "tłuszcz",
+    poolSortId: "fat-asc",
     unit: "g",
   },
   {
     accessor: (o) => o.total_carbs_g,
+    eligible: (o) => o.total_carbs_g > 0,
     format: formatInt,
     higherIsBetter: false,
     id: "carbs",
     label: "węgle",
+    poolSortId: "carbs-asc",
     unit: "g",
   },
   {
@@ -97,10 +125,12 @@ export const METRICS: readonly Metric[] = [
     higherIsBetter: true,
     id: "fiber",
     label: "błonnik",
+    poolSortId: "fiber-desc",
     unit: "g",
   },
   {
     accessor: (o) => o.total_sugar_g,
+    eligible: (o) => o.total_sugar_g > 0,
     format: formatInt,
     higherIsBetter: false,
     id: "sugar",
@@ -117,6 +147,7 @@ export const METRICS: readonly Metric[] = [
     higherIsBetter: true,
     id: "review",
     label: "ocena",
+    poolSortId: "review-desc",
     unit: "★",
   },
 ];

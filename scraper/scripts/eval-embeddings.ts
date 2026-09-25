@@ -393,10 +393,10 @@ const significantTokens = (name: string): readonly string[] => {
     .toLowerCase()
     .normalize("NFD")
     // strip combining marks
-    .replaceAll(/[̀-ͯ]/g, "")
+    .replaceAll(/[̀-ͯ]/gu, "")
     .replaceAll("ł", "l")
-    .replaceAll(/[^a-z0-9\s]/g, " ")
-    .split(/\s+/);
+    .replaceAll(/[^a-z0-9\s]/gu, " ")
+    .split(/\s+/u);
   return normalized.filter((t) => t.length >= 5 && !POLISH_STOP.has(t));
 };
 
@@ -460,7 +460,6 @@ interface DbMealRow {
   readonly company_id: string;
   readonly name: string;
   readonly diet_tag: string | null;
-  readonly kcal: number | null;
 }
 
 const MACRO_EXTREMES: readonly (readonly [string, string])[] = [
@@ -675,14 +674,18 @@ const fetchDbPairs = async (
     const client = new pg.Client({ connectionString: url });
     await client.connect();
     try {
-      // Pull all meals + their diet_tag (via daily_menu → diet_calories → diet_options → tiers → diets).
-      // Cheap because the join chain is over indexed PKs.
+      // Pull all meals + their diet_tag (via menu_items → diet_calories → diets).
+      // Cheap because the join chain is over indexed PKs. diet_calories_id is
+      // only unique per company, so the join carries company_id too.
       const meals = await client.query<DbMealRow>(`
         SELECT DISTINCT
-          m.id, m.company_id, m.name, d.diet_tag, m.kcal::float AS kcal
+          m.id, m.company_id, m.name, d.diet_tag
         FROM meals m
-        LEFT JOIN daily_menu dm ON dm.meal_id = m.id
-        LEFT JOIN diet_calories dc ON dc.diet_calories_id = dm.diet_calories_id
+        LEFT JOIN menu_items mi ON mi.meal_id = m.id
+        LEFT JOIN diet_calories dc
+          ON dc.company_id = mi.company_id
+         AND dc.diet_calories_id = mi.diet_calories_id
+         AND dc.tier_id = mi.tier_id
         LEFT JOIN diets d ON d.company_id = dc.company_id AND d.diet_id = dc.diet_id
         ORDER BY m.id
         `);

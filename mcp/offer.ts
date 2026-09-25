@@ -63,3 +63,17 @@ export const parseOfferId = (id: string): OfferParts => {
         is_menu_configuration: false,
       };
 };
+
+/**
+ * The tier a menu-configuration offer is for, from its tier_diet_option_id
+ * ("<tier>-<option>"). Menu-configuration diets reuse one diet_calories_id
+ * across their tiers, so this is needed to find that offer's prices and
+ * menus. Null for other offers, whose diet_calories_id is unique per catering.
+ */
+export const tierIdOfOffer = (offer: Readonly<OfferParts>): number | null => {
+  if (!offer.is_menu_configuration || offer.tier_diet_option_id === undefined) {
+    return null;
+  }
+  const tierId = Number(offer.tier_diet_option_id.split("-")[0]);
+  return Number.isInteger(tierId) ? tierId : null;
+};

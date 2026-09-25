@@ -1,5 +1,9 @@
 # dietly.pl mobile API — reverse-engineered
 
+> **Verified 2026-09-21** against the live API via
+> `INTEGRATION=1 bun run test:integration` — 10/10 pass. One drift was found
+> and is flagged inline: `/banners` no longer returns promo codes.
+
 Notes from analysing `HTTPToolkit_2026-04-26_21-20.har` (232 entries, captured
 from the **Android app** browsing Wrocław, companies `robinfood` and
 `mangodiet`). Everything here is directly observed in the HAR; "inferred" tags
@@ -47,7 +51,7 @@ Hierarchy: **company → diet → tier → dietOption → dietCalories** (leaf).
 
 | ID                   | Where it comes from                                    | Example                                   | Notes                                                                                               |
 | -------------------- | ------------------------------------------------------ | ----------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `cityId`             | `top-search` → `cities[].cityId`, also `cities/top-10` | `986283` (Wrocław)                        | `int`                                                                                               |
+| `cityId`             | `top-search` → `cities[].cityId`, also `cities/top-10` | `986283` (Wrocław)                        | `int`. The GUS TERYT **SIMC** code of the locality (Wrocław = SIMC 0986283)                         |
 | `companyId`          | URL slug; `awarded-and-top` returns `name` (= slug)    | `robinfood`, `mangodiet`                  | `string`, URL-stable                                                                                |
 | `dietId`             | `companyDiets[].dietId`                                | `4` ("Wybór menu"), `9` ("Standard Food") | `int`                                                                                               |
 | `tierId`             | `dietTiers[].tierId`                                   | `6` ("Pakiet Comfort")                    | `int`. Only set for menu-config diets.                                                              |
@@ -74,6 +78,21 @@ shape.
 ### `GET /api/open/search/top-search?query={name}&citiesSize={n}&companiesSize={n}&cityId=`
 
 Resolve a city name to a `cityId`. Identical shape to the web API.
+
+Behaviour measured 2026-09-24:
+
+- `citiesSize` is capped at **100** (above it: HTTP 490 _"Maksymalna
+  wielkość wynosi: 100."_), with no paging — `moreCitiesAvailable: true`
+  just says there were more.
+- Matching is per word, by prefix, in any order: `wie` finds
+  _Zielonki-Wieś_, `wola ma` finds _Magierowa Wola_. Names only — county
+  and voivodeship words match nothing. One-letter queries return nothing.
+- Only localities with at least one catering come back
+  (`numberOfCompanies >= 1`); _Żółkiewka_, which has none, returns `[]`.
+- Some exact names miss while a prefix hits: `Świnoujście` → `[]`,
+  `Świnouj` → Świnoujście. The scraper retries with shorter prefixes.
+- Names repeat (seven _Józefów_ in Mazowieckie alone);
+  `largestCityForName` marks the town among them.
 
 ```jsonc
 {
@@ -117,8 +136,35 @@ Top-10 cities with delivery-window info. Useful as a seed list.
 
 ### `GET /api/dietly-shop/open/supported-cities`
 
-Full list of supported cities for the Dietly Shop product. Not exercised in
-HAR but listed here for completeness.
+A bare array of 1,135 city ids for the **Dietly Shop** product — and not a
+national list: 1,134 of them are in Mazowieckie (Warsaw area). Don't seed
+anything national from it.
+
+### Catering delivery areas — `/api/dietly/open/…` (web client)
+
+Found 2026-09-24 in the dietly.pl web bundle (`citiesApi`:
+`getCitiesSearchV2`, `getSupportedCities`, `getTopCities` — the catering
+page's "cities list" modal). All take the catering in the `company-id`
+header, and all need the **`/api/dietly/`** prefix: under `/api/open/…` the
+same paths answer with decoy 400/403/422/500/503s.
+
+- `GET /api/dietly/open/v2/cities/search?query=&page={n}&numberOfResults=60`
+  — every locality the catering delivers to, as a Spring page (`content`,
+  `totalElements`, `totalPages`, …). `query` is required but may be empty
+  (= all). Pages hold **60** whatever `numberOfResults` says. Each item:
+  `cityId`, `name`, `county`, `municipality`, `province`, `sectorId`,
+  **`deliveryFee`** and **`deliveryTime[]`** for that locality.
+  `totalElements` equals `/constant`'s `deliveryCities.numberOfCities`
+  (robinfood: 7,983).
+- `GET /api/dietly/open/cities/id?cityIds=986283,950463,…` — the same
+  records for just those ids.
+- `GET /api/dietly/open/cities/top-{n}` — the catering's top-n cities.
+
+Not used by the scraper yet. Across all 177 caterings the delivery areas
+sum to 991,666 (catering, locality) pairs — ~16.6k requests to map every
+locality dietly serves (~49k; Kuchnia Vikinga alone reaches 48,499, and
+over half of all localities are served by exactly one catering). See
+CLAUDE.md "City scope" for why the scraper tracks 66 cities instead.
 
 ### `GET /api/open/search/full/awarded-and-top?cId={cityId}&page={n}&pageSize={n}&rV=V2023_1&active=`
 
@@ -578,24 +624,37 @@ sweep without fetching `/constant` per company.
 
 ### `GET /api/open/mobile/banners?cId={cityId}`
 
-City-scoped marketing banners. Each banner has:
+City-scoped marketing banners.
+
+> **Changed upstream.** The `code` field is gone, and `target` (string) became
+> `targets` (array). Re-verified live 2026-09-21: 6 banners for Wrocław, none
+> carrying a code. **This endpoint is no longer a source of promo codes.**
+> `scraper/scrapers/promotions.ts` previously mapped `banner.code` into a
+> campaign and, once the field vanished, silently contributed zero — it now
+> logs the drift instead.
+
+Current shape, as observed:
 
 ```jsonc
 {
-  "name": "ROBIM30",
-  "code": "ROBIM30", // promo code string (or campaign name)
+  "name": "PACZKI1", // campaign label, NOT a redeemable code
   "url": "https://ml-assets.com/images/...", // banner image
-  "validFrom": "2026-04-13T09:30:00+02:00",
-  "validTo": "2026-04-26T23:59:00+02:00",
-  "deepLink": "dietly://mobile/catering-dietetyczny-firma/robinfood",
-  "target": "DASHBOARD", // DASHBOARD / SAVED_MEALS / COMPANIES
+  "validFrom": "2026-09-14T02:00:00+02:00",
+  "validTo": "2027-01-01T00:59:59.999+01:00",
+  "deepLink": "dietly://mobile/promocje",
+  "targets": ["PROMO_LISTING"], // placement slots; was a singular `target`
   "priority": 1, // lower = shown first
-  "type": "CAMPAIGN", // CAMPAIGN / STANDALONE
+  "type": "STANDALONE", // CAMPAIGN / STANDALONE
+  "isOpenLoyalty": false, // new
 }
 ```
 
-`type=CAMPAIGN` banners typically carry redeemable codes. `type=STANDALONE`
-are referral / generic programme cards (`PACZKI`, `REFERRAL`).
+Observed `name` values are campaign labels like `PROMO_LISTING`,
+`TWOJE MENU - SMACZNEGO`, `PACZKI1`, `[zdrowaszama][21.09-27.09][2D,2LD,2LC]`.
+Promoting one to a promo code would fabricate a discount, so don't.
+
+Promo codes now come from `companyHeader.activePromotionInfo` (in `/constant`)
+and `searchData[].activePromotionInfo` (in `/awarded-and-top`) — see above.
 
 ### `GET /api/open/content-management/recommended-diets?cId={cityId}&page=0&pageSize=5`
 
@@ -734,6 +793,12 @@ diet/price/menu/promo scrape.
   `awarded-and-top` lists a promo for them — refresh from both sources.
 - The `awarded-and-top` `searchData[].name` is the slug, **`fullName`** is the
   display name; don't confuse them.
+- HTTP **490** is dietly's "business refusal", with a Polish `message`.
+  Two matter to the scraper: _"Nie znaleziono takiego kodu rabatowego"_ —
+  the promo code is unknown/retired even though listings may still
+  advertise it (the scraper retires the code); and _"Catering nie ustalił
+  ceny dla tego zestawu dla wybranej miejscowości"_ — that package is not
+  sold in that locality (a real answer: the offer is absent there).
 - The mobile menu endpoint is slow (~400 ms). With `menuDaysAhead=18` and ~7
   kcal levels per fixed diet, a full menu sweep is hundreds of requests per
   company. Be selective about which leaves you fetch (e.g. one canonical kcal
@@ -743,13 +808,15 @@ diet/price/menu/promo scrape.
 
 ## 9. Scraping playbook
 
-1. **City** → `top-search?query=...` → `cityId`.
-2. **Companies** → `awarded-and-top?cId={cityId}&rV=V2023_1&pageSize=50&page=0..N`
-   until `currentPage == totalPages-1`. Already gives you ratings, params,
-   `priceCategory`, and `activePromotionInfo` for every company in town.
-3. **Per company catalog** → `company-card/{companyId}/constant?cityId={cityId}`
-   for the diet/tier/option/kcal tree, plus `company-card/{companyId}/city/{cityId}`
-   for advertised prices.
+1. **Cities** → `top-search?query=...` → `cityId` for each city you track.
+2. **Companies per city** → `awarded-and-top?cId={cityId}&rV=V2023_1&pageSize=200&page=0`
+   (one page holds every catering of even the largest city). Gives ratings,
+   params, `priceCategory` and `activePromotionInfo`. Then
+   `company-card/{companyId}/city/{cityId}` per catering for that city's
+   delivery fee and advertised prices.
+3. **Per company catalog, once** → `company-card/{companyId}/constant?cityId={home}`
+   from any city the catering delivers to: catalogs and menus are the same
+   in every city (CLAUDE.md "City scope").
 4. **True prices** → for every leaf `dietCaloriesId` (with `tierDietOptionId`
    for menu-config diets): `POST quick-order/calculate-price` with
    `deliveryDates=[today+1, ...]`. Use a fixed length (e.g. 10 weekdays) so
@@ -761,3 +828,57 @@ diet/price/menu/promo scrape.
    `awarded-and-top.searchData[].activePromotionInfo`, banners
    (`/api/open/mobile/banners?cId=`), and `recommended-diets`. Validate by
    round-tripping through `quick-order/calculate-price`.
+
+## 10. What we store, and what we drop
+
+Audited 2026-09-23 against live responses of every endpoint the scraper calls
+(29 requests; robinfood, activbox, naszadietapl; Wrocław). Since v13 every
+field useful for choosing, pricing or history is stored; the rest is dropped on
+purpose. Keep this table current when the scraper starts or stops reading a
+field.
+
+### Stored (table)
+
+| endpoint                      | fields → table                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `top-search`                  | `cityId`, `name`, `sanitizedName`, `provinceName`, `numberOfCompanies` → `cities`                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `awarded-and-top`             | slug, `inviteCodeDiscountPercent`, `positiveMealsReviewPercent`, `params` (capability flags) → `companies` (+`company_history`); `orderPossibleOn/To` → `company_cities`; `activePromotionInfo` + `activePromotion.dateFrom/dateTo` → `campaigns` (+`campaign_history`)                                                                                                                                                                                                                                                                   |
+| `diet-tag-info/all`           | `dietTagId`, `name`, `dietDescriptions`, `dietTagSimilarDiets` → `diet_tags`                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `company-card/constant`       | header (name, logo, ratings → `company_ratings_history`, delivery info, flags), `companyParams`, `menuSettings`, `formSettings`, `contactDetails` (description, email, phone, address) and `deliveryCities.numberOfCities` → `companies` (+`company_history`); diet tree → `diets`/`tiers` (incl. `description`, `minPrice`)/`diet_options`/`diet_calories` (+ `*_snapshots`); diet **and tier** discount ladders → `diet_discounts`; `companySideOrders` → `company_side_orders`; `activePromotionInfo` (incl. `separate`) → `campaigns` |
+| `company-card/city`           | `companySettings`, `companyPriceCategory`, `awarded` → `companies`; `deliveryFee`, `lowestPrice.*`, `deliveryTime[]` → `company_cities` (+`company_city_history`); `dietPriceInfo[]` (default / discount price, in-promotion) → `diet_advertised_prices`; `dietCaloriesIds` → `diet_calories`                                                                                                                                                                                                                                             |
+| `menu`                        | per option: slot, default flag, `dietCaloriesMealId`, 8 macros, reviews, photo → `menu_items`; dish name → `meals`; label, thermo, allergens (+ id and catering wording), ingredients (+ `major`, exclusion ids) → `meal_variants` / `variant_ingredients` / `ingredient_names` / `dietary_exclusions`                                                                                                                                                                                                                                    |
+| `quick-order/calculate-price` | every `cart.*` total + `items[0].perDayDietCost`, keyed by leaf (incl. tier), city, order length, promo set → `price_history`                                                                                                                                                                                                                                                                                                                                                                                                             |
+
+### Dropped on purpose
+
+| endpoint            | field                                                                                                                                 | why                                                                             |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `top-search`        | `countyName`, `municipalityName`, `cityStatus`, company/diet suggestions                                                              | admin detail / search UI                                                        |
+| `awarded-and-top`   | `rate`, `numberOfRates`, `priceCategory`, `fullName`, `dietNames`, `numberOfDiets`, `deliveryInfo`, `dietlyDelivery`, `recentlyAdded` | same data comes from `/constant` and `/city`                                    |
+| `awarded-and-top`   | `shortDescription`, `imageUrl`, `badgeUrl`, `gallery*`, `histogramResponses`, `possibleCalories`, paging, `similarCityNames`          | presentation / search UI                                                        |
+| `awarded-and-top`   | `lastOrdered`, `newness`                                                                                                              | per-user / unknown meaning                                                      |
+| `awarded-and-top`   | `activePromotion.promotionName`, `participatesInCampaign`, `descriptionShort`                                                         | duplicates `activePromotionInfo` / unknown meaning                              |
+| `diet-tag-info/all` | `bulletPoints`, `priority`, `main`, `locativeName`, `additionalName`, `urlName`, images, typical `calories[]`                         | presentation                                                                    |
+| `/constant`         | `images`, `programs`, `mainImageUrl`, `badgeUrl`, diet/tier `imageUrl`, `contactDetails.logo`, `companyHeader.favourite`              | presentation / per-user                                                         |
+| `/constant`         | `companyHeader.rate`, `contactDetails.priceRangeInfo`, `deliveryCities.cities[]`                                                      | duplicate of `feedbackValue` / derivable from prices / truncated to ~20 entries |
+| `/constant`         | `dietTiers[].defaultOptionChange`, `formSettings.visibleInDietly`                                                                     | unknown meaning / minor                                                         |
+| `/city`             | `citySearchResult.sectorId`, `topCompanies`, city admin names                                                                         | unknown / always null / admin detail                                            |
+| `menu`              | `details.allergens` (pretty string), kJ half of `calories`, `details.name`/`thermo`, `info`, `excluded`/`chosen`                      | derivable / per-user                                                            |
+| `calculate-price`   | `items[].costPerDate`, `totalItemDeliveryCost`, `perDayDietWithDiscountsCost`, side-order/cutlery totals, `itemId`                    | one delivery date per quote (flat) / derivable / always 0 for quick-order       |
+| `banners`           | everything                                                                                                                            | no longer carries promo codes (§5)                                              |
+| `recommended-diets` | everything                                                                                                                            | returned HTTP 500 at audit time; would only add promo codes                     |
+
+### Known limits of what is stored
+
+- **One menu per (diet, tier, option) family**: the lowest-kcal sibling; other
+  kcal levels are scaled from it (see CLAUDE.md "Ranking engine").
+- **Menus 7 days ahead** (`MENU_DAYS`), though caterings publish 14–18: a dish
+  is first seen a week before its date, not two.
+- **Quotes are 1-day orders** (`ORDER_DAY_TIERS=[1]`), and a quote's delivery
+  date is not recorded; order-length discounts are in `diet_discounts`.
+- **`companies` is one row per catering** although some fields are per city
+  (price category, ordering switches): the last city scraped wins. Only
+  Wrocław is scraped today.
+- **Variants are immutable**: allergen detail and ingredient exclusion ids are
+  recorded when a content is first seen.
+- **Macro strings** are parsed to their first number, so `"<0.1g"` becomes 0.1.

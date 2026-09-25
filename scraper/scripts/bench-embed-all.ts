@@ -30,6 +30,7 @@ import {
 import { join } from "node:path";
 
 import { query } from "../../lib/db.js";
+import { buildPassage } from "../meal-passage.js";
 // Candidates moved to bench-candidates.ts to keep this module's `await main()`
 // from running when another script imports the registry (it would otherwise
 // embed the corpus + exit before the caller's main runs).
@@ -44,9 +45,15 @@ const VECTORS_DIR = join(dir, "..", "..", "bench", "vectors");
 
 // 'BENC' as a 32-bit little-endian magic number (0x42454E43).
 const MAGIC = 1_111_705_667;
-const VERSION = 1;
+// 2 = passages built by scraper/meal-passage.ts (the production format) from
+// the dish's latest variant. Bumping it invalidates v1 caches, which used a
+// bench-local passage format; readers ignore this field.
+const VERSION = 2;
 const BATCH = 16;
 
+// One row per dish: meals.name + the content of its latest variant
+// (meal_latest_variant). Vectors stay keyed by meal_id because bench labels
+// are per meal.
 interface MealRow {
   readonly id: string;
   readonly name: string;
@@ -54,20 +61,6 @@ interface MealRow {
   readonly ingredients_raw: string | null;
   readonly allergens: readonly string[] | null;
 }
-
-const buildPassage = (m: Readonly<MealRow>): string => {
-  const lines = [
-    m.name,
-    m.label !== null && m.label !== "" ? `Wariant: ${m.label}` : "",
-    m.ingredients_raw !== null && m.ingredients_raw !== ""
-      ? `Składniki: ${m.ingredients_raw}`
-      : "",
-    m.allergens && m.allergens.length > 0
-      ? `Alergeny: ${m.allergens.join(", ")}`
-      : "",
-  ];
-  return lines.filter((l) => l.length > 0).join("\n");
-};
 
 const ensureDir = (path: string): void => {
   if (!existsSync(path)) {
@@ -230,15 +223,15 @@ const errorMessage = (error: unknown): string =>
 const pickBusiestDay = async (cityId: number): Promise<string> => {
   const rows = await query<{ menu_date: string }>(
     `SELECT menu_date::text
-       FROM daily_menu
-      WHERE city_id = $1 AND meal_id IS NOT NULL
+       FROM menu_items
+      WHERE city_id = $1
       GROUP BY menu_date
       ORDER BY COUNT(DISTINCT meal_id) DESC, menu_date DESC
       LIMIT 1`,
     [cityId]
   );
   if (rows.length === 0) {
-    throw new Error(`no daily_menu rows for city_id=${cityId}`);
+    throw new Error(`no menu_items rows for city_id=${cityId}`);
   }
   return rows[0].menu_date;
 };
@@ -275,21 +268,23 @@ const main = async (): Promise<void> => {
       `slice mode: city_id=${cityId} day=${day} — only meals on offer in this (city,day)`
     );
     meals = await query<MealRow>(
-      `SELECT m.id::text, m.name, m.label, m.ingredients_raw, m.allergens
+      `SELECT m.id::text, m.name, lv.label, lv.ingredients_raw, lv.allergens
          FROM meals m
+         LEFT JOIN meal_latest_variant lv ON lv.meal_id = m.id
         WHERE m.id IN (
                 SELECT DISTINCT meal_id
-                  FROM daily_menu
-                 WHERE city_id = $1 AND menu_date = $2 AND meal_id IS NOT NULL
+                  FROM menu_items
+                 WHERE city_id = $1 AND menu_date = $2
               )
         ORDER BY m.id`,
       [cityId, day]
     );
   } else {
     meals = await query<MealRow>(
-      `SELECT id::text, name, label, ingredients_raw, allergens
-         FROM meals
-        ORDER BY id`
+      `SELECT m.id::text, m.name, lv.label, lv.ingredients_raw, lv.allergens
+         FROM meals m
+         LEFT JOIN meal_latest_variant lv ON lv.meal_id = m.id
+        ORDER BY m.id`
     );
   }
   const scopeNote = sliceOnly ? " (slice-only)" : " (full corpus)";

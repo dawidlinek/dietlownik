@@ -46,8 +46,7 @@ const formatZodIssues = (error: z.ZodError): string =>
 
 /**
  * Domain-specific recovery hints for HttpError responses from the dietly API.
- * Ported verbatim from the legacy `app/api/mcp/route.ts:recoveryHint()` so
- * tool callers continue to see the same actionable next-step messages.
+ * Each names the tool that recovers from it.
  */
 const recoveryHint = (status: number, body: string): string => {
   if (status === 401) {
@@ -60,10 +59,10 @@ const recoveryHint = (status: number, body: string): string => {
     return "Cloudflare rate-limited the request. Retry in 5–30s.";
   }
   if (status === 404) {
-    return "ID not found. Re-resolve via `search_caterings` or `get_meal_options`.";
+    return "Not found on dietly. Re-run `plan` for fresh offer_ids.";
   }
-  if (status === 400) {
-    return "Bad request — check that all IDs come from `search_caterings`/`get_meal_options` (not invented).";
+  if (status === 400 || status === 490) {
+    return "dietly rejected the request — the offer may no longer be sold, or a date/promo is invalid. Re-run `plan` for fresh selections.";
   }
   return "";
 };

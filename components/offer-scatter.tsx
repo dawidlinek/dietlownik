@@ -28,6 +28,7 @@ import {
 import { formatPriceNumber } from "@/lib/format";
 import type { Offer } from "@/lib/match-types";
 import type { Metric, MetricId } from "@/lib/scatter-metrics";
+import { selectTopOffers, TOP_N } from "@/lib/scatter-top";
 import { cn } from "@/lib/utils";
 
 const chartConfig = {
@@ -309,7 +310,7 @@ const LogoMarker = ({
   // doesn't resolve). Sanitize to id-safe chars before stamping into the
   // DOM.
   const clipId = `logo-clip-${payload.offer_id.replaceAll(
-    /[^a-zA-Z0-9_-]/g,
+    /[^a-zA-Z0-9_-]/gu,
     "_"
   )}`;
   const ringR = r + ringWidth - 0.5;
@@ -396,22 +397,10 @@ export interface OfferScatterProps {
   readonly loadingCateringIds?: ReadonlySet<string>;
   /** Fired when the user clicks an unloaded catering entry. */
   readonly onLoadCatering?: (companyId: string) => void;
+  /** company_ids the user pinned via "lubię" — plotted like the top set,
+   *  whether or not they rank on any leg. */
+  readonly pinnedCompanyIds?: ReadonlySet<string>;
 }
-
-const TOP_N = 5;
-
-const topByMetric = (
-  offers: readonly Offer[],
-  metric: Metric,
-  n: number
-): readonly Offer[] => {
-  const sorted = [...offers].toSorted((a, b) => {
-    const av = metric.accessor(a);
-    const bv = metric.accessor(b);
-    return metric.higherIsBetter ? bv - av : av - bv;
-  });
-  return sorted.slice(0, n);
-};
 
 // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- filterLabel is React.ReactNode which recursively contains mutable Iterable<ReactNode>; cannot be deeply readonly
 export const OfferScatter = ({
@@ -423,6 +412,7 @@ export const OfferScatter = ({
   onChangeY,
   onLoadCatering,
   onPick,
+  pinnedCompanyIds,
   selectedId,
   unloadedCaterings,
   xMetric,
@@ -446,55 +436,70 @@ export const OfferScatter = ({
     return [...seen].toSorted((a, b) => a.localeCompare(b, "pl"));
   }, [offers]);
 
-  // Top set: union of top-5-by-X + top-5-by-Y, plus the cheapest and
-  // currently-selected dots (always visible for context). Computed from ALL
-  // offers — not from the user's filter — so it represents the natural picks.
-  const topOffers = React.useMemo(() => {
-    const keep = new Set<string>();
-    const out: Offer[] = [];
-    const push = (o: Offer) => {
-      if (!keep.has(o.offer_id)) {
-        keep.add(o.offer_id);
-        out.push(o);
-      }
-    };
-    for (const o of topByMetric(offers, xMetric, TOP_N)) {
-      push(o);
-    }
-    for (const o of topByMetric(offers, yMetric, TOP_N)) {
-      push(o);
-    }
-    for (const o of offers) {
-      if (o.offer_id === cheapestId || o.offer_id === selectedId) {
-        push(o);
-      }
-    }
-    return out;
-  }, [offers, xMetric, yMetric, cheapestId, selectedId]);
-
-  // The default visible set — top-5 by X, top-5 by Y, plus cheapest +
-  // currently-selected dots. User can extend or trim via the filter popover.
-  const modeDefaultCompanies = React.useMemo(
-    () => new Set(topOffers.map((o) => o.company_name)),
-    [topOffers]
+  // Default set: top-3 by X + top-3 by Y + top-3 on the X/Y value ratio,
+  // plus the cheapest and currently-selected dots. Computed from ALL offers
+  // — not from the user's filter — so it represents the natural picks.
+  const { offers: topOffers, ratioLabel } = React.useMemo(
+    () => selectTopOffers({ cheapestId, offers, selectedId, xMetric, yMetric }),
+    [offers, xMetric, yMetric, cheapestId, selectedId]
   );
 
-  // Visible = default ∪ added − excluded.
+  // The picker toggles whole caterings, so the default set has to be readable
+  // both ways: as offer ids (what actually gets plotted) and as the company
+  // names those ids belong to (what the popover ticks).
+  // Pinned caterings join the default set, so unticking one in the popover
+  // excludes it just like a top-set catering.
+  const defaultOffers = React.useMemo(
+    () =>
+      pinnedCompanyIds === undefined || pinnedCompanyIds.size === 0
+        ? topOffers
+        : [
+            ...topOffers,
+            ...offers.filter((o) => pinnedCompanyIds.has(o.company_id)),
+          ],
+    [offers, pinnedCompanyIds, topOffers]
+  );
+  const modeDefaultOfferIds = React.useMemo(
+    () => new Set(defaultOffers.map((o) => o.offer_id)),
+    [defaultOffers]
+  );
+  const modeDefaultCompanies = React.useMemo(
+    () => new Set(defaultOffers.map((o) => o.company_name)),
+    [defaultOffers]
+  );
+
+  // Visible = the default offers ∪ every offer of an added company, minus
+  // every offer of an excluded company. Deliberately offer-grained on the
+  // default side: a catering holding several top slots contributes exactly
+  // those dots. Filtering the default set by company name instead would
+  // drag in the rest of its catalogue (the query keeps up to
+  // `DEFAULT_MAX_PER_COMPANY` offers per catering), so a "top 11" set
+  // rendered as twenty-odd dots, most of them top by nothing.
+  const visibleOffers = React.useMemo(
+    () =>
+      offers.filter(
+        (o) =>
+          !excludedCompanies.has(o.company_name) &&
+          (modeDefaultOfferIds.has(o.offer_id) ||
+            addedCompanies.has(o.company_name))
+      ),
+    [offers, modeDefaultOfferIds, addedCompanies, excludedCompanies]
+  );
+
+  // Companies with at least one dot on the chart — drives the popover ticks
+  // and the "widoczne · N" count.
   const visibleCompanies = React.useMemo(() => {
-    const next = new Set(modeDefaultCompanies);
-    for (const a of addedCompanies) {
-      next.add(a);
+    const next = new Set<string>();
+    for (const o of visibleOffers) {
+      next.add(o.company_name);
     }
-    for (const e of excludedCompanies) {
-      next.delete(e);
+    for (const a of addedCompanies) {
+      if (!excludedCompanies.has(a)) {
+        next.add(a);
+      }
     }
     return next;
-  }, [modeDefaultCompanies, addedCompanies, excludedCompanies]);
-
-  const visibleOffers = React.useMemo(
-    () => offers.filter((o) => visibleCompanies.has(o.company_name)),
-    [offers, visibleCompanies]
-  );
+  }, [visibleOffers, addedCompanies, excludedCompanies]);
 
   const toggleCompany = (name: string) => {
     const isVisible = visibleCompanies.has(name);
@@ -553,17 +558,23 @@ export const OfferScatter = ({
   const selected = points.filter((p) => p.offer_id === selectedId);
   const others = points.filter((p) => p.offer_id !== selectedId);
 
-  // Axis padding scaled to value range.
+  // Axis padding scaled to value range. `points` can be empty — the user can
+  // untick every catering in the popover — and spreading an empty array into
+  // Math.min/max yields ±Infinity, which hands Recharts an inverted domain
+  // and a blank, unlabelled chart. Fall back to a unit domain instead.
   const xs = points.map((p) => p.x);
   const ys = points.map((p) => p.y);
-  const xRange = Math.max(...xs) - Math.min(...xs);
-  const yRange = Math.max(...ys) - Math.min(...ys);
-  const xPad = Math.max(xRange * 0.05, 1);
-  const yPad = Math.max(yRange * 0.05, 0.5);
-  const minX = Math.min(...xs) - xPad;
-  const maxX = Math.max(...xs) + xPad;
-  const minY = Math.min(...ys) - yPad;
-  const maxY = Math.max(...ys) + yPad;
+  const hasPoints = points.length > 0;
+  const xLo = hasPoints ? Math.min(...xs) : 0;
+  const xHi = hasPoints ? Math.max(...xs) : 1;
+  const yLo = hasPoints ? Math.min(...ys) : 0;
+  const yHi = hasPoints ? Math.max(...ys) : 1;
+  const xPad = Math.max((xHi - xLo) * 0.05, 1);
+  const yPad = Math.max((yHi - yLo) * 0.05, 0.5);
+  const minX = xLo - xPad;
+  const maxX = xHi + xPad;
+  const minY = yLo - yPad;
+  const maxY = yHi + yPad;
 
   const handleClick = (data: Readonly<{ offer_id?: string }>) => {
     if (typeof data.offer_id === "string") {
@@ -772,7 +783,11 @@ export const OfferScatter = ({
                           setAddedCompanies(new Set());
                           setExcludedCompanies(new Set());
                         }}
-                        title={`Zawęź do top: top ${TOP_N} po X + top ${TOP_N} po Y + najtańsza + wybrana`}
+                        title={
+                          ratioLabel === null
+                            ? `Zawęź do top: top ${TOP_N} po X + top ${TOP_N} po Y + najtańsza + wybrana`
+                            : `Zawęź do top: top ${TOP_N} po X + top ${TOP_N} po Y + top ${TOP_N} po ${ratioLabel} + najtańsza + wybrana`
+                        }
                         type="button"
                       >
                         top {topOffers.length}

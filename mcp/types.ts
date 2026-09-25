@@ -45,7 +45,7 @@ export type DeepReadonly<T> = T extends (...args: readonly never[]) => unknown
  *
  * - `extra` is the SDK's `RequestHandlerExtra` — has `signal`, `sessionId`, etc.
  * - `server` is the low-level MCP Server — needed by tools that call
- *   `elicitInput()` or `getClientCapabilities()` (`place_order`).
+ *   `elicitInput()` or `getClientCapabilities()`.
  *
  * Both are optional so a non-elicitation tool (or a unit test) doesn't have
  * to plumb them.
@@ -64,7 +64,7 @@ export interface ToolContext {
  *    dispatcher wraps it into `structuredContent` plus a JSON text fallback;
  *  - a raw `CallToolResult` when `content` is present — returned verbatim so
  *    the tool can emit confirmation prompts / multi-block payloads (e.g.
- *    `place_order`'s elicitation flow).
+ *    an elicitation flow).
  */
 export interface ToolDefinition<
   TName extends string,

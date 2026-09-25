@@ -6,6 +6,7 @@ import {
   getCaterings,
   getCities,
   getKcalBounds,
+  getSelectionSize,
 } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
@@ -16,11 +17,17 @@ const DEFAULT_KCAL_MIN = 1500;
 const DEFAULT_KCAL_MAX = 2000;
 // Picker cap. Caterings publish ~1–2 weeks ahead in practice, so 90 is
 // effectively "everything available" — the SQL still bounds by what's in
-// current_daily_menu, so the picker reflects the real DB tail.
+// the current menu_items, so the picker reflects the real DB tail.
 const DEFAULT_WINDOW_DAYS = 90;
 /** Caterings need lead time — same-day and next-day orders aren't possible,
  *  so the earliest sensible default is two calendar days out. */
 const ORDER_LEAD_DAYS = 2;
+
+const plPlural = new Intl.PluralRules("pl");
+const CITY_NOUN: Readonly<Record<string, string>> = {
+  few: "miasta",
+  one: "miasto",
+};
 
 interface PageProps {
   readonly searchParams: Promise<
@@ -80,22 +87,25 @@ const Page = async ({ searchParams }: Readonly<PageProps>) => {
   const urlDates = parseList(params.dates);
   const exclude = parseList(params.exclude);
 
-  const [cities, bounds, availableDatesAll, caterings] = await Promise.all([
-    getCities().catch(() => [] as Awaited<ReturnType<typeof getCities>>),
-    getKcalBounds(cityId).catch(() => ({
-      max: 3000,
-      min: 1000,
-      presets: [1200, 1500, 1800, 2000, 2500],
-    })),
-    getAvailableDates(
-      cityId,
-      warsawDatePlus(ORDER_LEAD_DAYS),
-      DEFAULT_WINDOW_DAYS
-    ).catch(() => [] as string[]),
-    getCaterings(cityId).catch(
-      () => [] as Awaited<ReturnType<typeof getCaterings>>
-    ),
-  ]);
+  const [cities, bounds, availableDatesAll, caterings, selectionSize] =
+    await Promise.all([
+      getCities().catch(() => [] as Awaited<ReturnType<typeof getCities>>),
+      getKcalBounds(cityId).catch(() => ({
+        max: 3000,
+        min: 1000,
+        presets: [1200, 1500, 1800, 2000, 2500],
+      })),
+      getAvailableDates(
+        cityId,
+        warsawDatePlus(ORDER_LEAD_DAYS),
+        DEFAULT_WINDOW_DAYS
+      ).catch(() => [] as string[]),
+      getCaterings(cityId).catch(
+        () => [] as Awaited<ReturnType<typeof getCaterings>>
+      ),
+      // Missing before v14, or before the first scrape that computed it.
+      getSelectionSize().catch(() => null),
+    ]);
 
   const activeCity = cities.find((c) => c.city_id === cityId) ?? {
     city_id: cityId,
@@ -118,16 +128,14 @@ const Page = async ({ searchParams }: Readonly<PageProps>) => {
 
   return (
     <>
-      <Header
-        activeCityId={activeCity.city_id}
-        activeCityName={activeCity.name}
-        cities={cities}
-      />
+      <Header />
 
       <MatchExperience2
         availableCaterings={caterings}
         availableDates={availableDatesAll}
+        cities={cities}
         cityId={cityId}
+        cityName={activeCity.name}
         dataMax={bounds.max}
         dataMin={bounds.min}
         initialAvoid={avoid}
@@ -141,7 +149,27 @@ const Page = async ({ searchParams }: Readonly<PageProps>) => {
       />
 
       <footer className="border-t border-[var(--color-bone)] px-5 sm:px-8 lg:px-14 py-6 text-[12px] text-[var(--color-ink-3)]">
-        <span>dietlownik · dane z dietly.pl, scrapowane lokalnie.</span>
+        <span>
+          dietlownik
+          {cities.length === 0 ? null : (
+            <>
+              {" · "}
+              <span className="tabular-nums text-[var(--color-ink-2)]">
+                {cities.length}
+              </span>{" "}
+              {CITY_NOUN[plPlural.select(cities.length)] ?? "miast"}
+            </>
+          )}
+          {selectionSize === null ? null : (
+            <>
+              {" · "}
+              <span className="tabular-nums text-[var(--color-ink-2)]">
+                {selectionSize.toLocaleString("en-US")}
+              </span>{" "}
+              wycenionych dań
+            </>
+          )}
+        </span>
       </footer>
     </>
   );

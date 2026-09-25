@@ -7,7 +7,6 @@
     ".next/",
     ".wrangler/",
     ".playwright-cli/",
-    "db/migrate.js",
     "db/migrate_v*.js"
   ],
   "options": {

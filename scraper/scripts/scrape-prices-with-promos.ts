@@ -129,12 +129,14 @@ const processCompany = async (
   // Sanity check: confirm the regular scrape already covered this company
   // with no-code rows recently. The instruction is to run with-code only —
   // if no-code is missing, surface a warning instead of silently producing
-  // half-coverage rows.
+  // half-coverage rows. price_history holds spans, so "recent" = an open
+  // no-code span whose last observation is within the window.
   const { rows: cov } = await q<{ recent: number }>(
-    `SELECT COUNT(*)::int AS recent FROM prices
+    `SELECT COUNT(*)::int AS recent FROM price_history
       WHERE company_id = $1
         AND promo_codes = '{}'
-        AND captured_at > NOW() - INTERVAL '6 hours'`,
+        AND closed_at IS NULL
+        AND last_seen_at > NOW() - INTERVAL '6 hours'`,
     [companyId]
   );
   const noCodeRowsRecent = cov[0]?.recent ?? 0;

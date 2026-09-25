@@ -30,6 +30,9 @@ export interface MealMacros {
 
 /** A single meal option in a slot (sans slot context). */
 export interface MealOption extends MealMacros {
+  /** `meals.id` — lets the dietly basket handoff resolve the slot id dietly
+   *  wants. Absent on the /match mock fixtures. */
+  readonly meal_id?: number;
   readonly meal_name: string;
   /** Signed; sum of this option's hits.contribution. */
   readonly meal_score: number;
@@ -168,6 +171,7 @@ const toMealOption = (
   ingredients_raw: meal.ingredients_raw ?? "",
   is_default: isDefault,
   kcal: numOr(meal.kcal ?? null, 0),
+  meal_id: meal.meal_id,
   meal_name: meal.meal_name,
   meal_score: numOr(meal.score, 0),
   protein_g: numOr(meal.protein_g ?? null, 0),

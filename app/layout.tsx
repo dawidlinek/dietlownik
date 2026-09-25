@@ -20,7 +20,7 @@ const jakarta = Plus_Jakarta_Sans({
 
 export const metadata: Metadata = {
   description:
-    "Porównywarka cen cateringów dietetycznych — Wrocław, dane z dietly.pl.",
+    "Porównywarka cen cateringów dietetycznych — 66 miast w całej Polsce, dane z dietly.pl.",
   title: "dietlownik",
 };
 

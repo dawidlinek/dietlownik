@@ -111,7 +111,7 @@ describe.runIf(RUN)("integration: aplikacja.dietly.pl mobile API", () => {
     expect(Array.isArray(data.dietPriceInfo)).toBe(true);
     expect(data.dietPriceInfo.length).toBeGreaterThan(0);
     expect(data.lowestPrice).toBeDefined();
-    expect(data.citySearchResult.cityId).toBe(CITY_ID);
+    expect(data.citySearchResult?.cityId).toBe(CITY_ID);
   }, 15_000);
 
   it("POST quick-order/calculate-price returns numeric pricing for a fixed diet", async () => {
@@ -222,7 +222,11 @@ describe.runIf(RUN)("integration: aplikacja.dietly.pl mobile API", () => {
     // here we want to know.
     expect(banners.length).toBeGreaterThan(0);
     for (const b of banners.slice(0, 3)) {
-      expect(typeof b.code).toBe("string");
+      // `code` was removed upstream — verified live 2026-09-21, 6 banners for
+      // Wrocław, none carrying one. `name` is the campaign label that
+      // survived; asserting `code` here silently tracked a dead field.
+      expect(typeof b.name).toBe("string");
+      expect(b.targets === null || Array.isArray(b.targets)).toBe(true);
     }
   }, 15_000);
 });

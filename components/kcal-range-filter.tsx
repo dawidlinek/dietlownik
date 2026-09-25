@@ -89,31 +89,11 @@ const NumberCell = ({
   />
 );
 
-// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- extraSlot is React.ReactNode which transitively includes mutable Iterable<ReactNode>; cannot be deeply readonly
-export const KcalRangeFilter = ({
-  activeDays,
-  activeMax,
-  activeMin,
-  dataMax,
-  dataMin,
-  dayOptions,
-  extraSlot,
-  presets,
-}: Readonly<Props>) => {
+const useUrlPatch = () => {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-
-  const [minStr, setMinStr] = React.useState(String(activeMin));
-  const [maxStr, setMaxStr] = React.useState(String(activeMax));
-
-  // Re-sync local state when URL changes externally (back/forward).
-  React.useEffect(() => {
-    setMinStr(String(activeMin));
-    setMaxStr(String(activeMax));
-  }, [activeMin, activeMax]);
-
-  const setUrl = React.useCallback(
+  return React.useCallback(
     (patch: Readonly<Record<string, string | number | undefined>>) => {
       const sp = new URLSearchParams(searchParams.toString());
       for (const [k, v] of Object.entries(patch)) {
@@ -129,6 +109,38 @@ export const KcalRangeFilter = ({
     },
     [router, pathname, searchParams]
   );
+};
+
+export interface KcalRangeControlsProps {
+  readonly dataMin: number;
+  readonly dataMax: number;
+  readonly presets: readonly number[];
+  readonly activeMin: number;
+  readonly activeMax: number;
+  /** Wrapper classes — `contents` lets the two groups join a parent flex row. */
+  readonly className?: string;
+}
+
+/** Min/max inputs plus preset pills, writing `kcal_min`/`kcal_max` to the
+ *  URL. Shared by the filter strip and the query sentence's kcal popover. */
+export const KcalRangeControls = ({
+  activeMax,
+  activeMin,
+  className,
+  dataMax,
+  dataMin,
+  presets,
+}: Readonly<KcalRangeControlsProps>) => {
+  const setUrl = useUrlPatch();
+
+  const [minStr, setMinStr] = React.useState(String(activeMin));
+  const [maxStr, setMaxStr] = React.useState(String(activeMax));
+
+  // Re-sync local state when URL changes externally (back/forward).
+  React.useEffect(() => {
+    setMinStr(String(activeMin));
+    setMaxStr(String(activeMax));
+  }, [activeMin, activeMax]);
 
   // Debounced commit of the typed range.
   const debounceRef = React.useRef<number | null>(null);
@@ -165,65 +177,92 @@ export const KcalRangeFilter = ({
     activeMin > dataMin || activeMax < dataMax || activeMin === activeMax;
 
   return (
+    <div className={className}>
+      {/* Range inputs */}
+      <div className="flex items-center gap-2">
+        <span className="text-[11px] uppercase tracking-[0.08em] text-[var(--color-ink-3)] mr-1">
+          Kcal
+        </span>
+        <NumberCell
+          ariaLabel="Minimalna kaloryczność"
+          onChange={(v) => {
+            setMinStr(v);
+            commit(v, maxStr);
+          }}
+          value={minStr}
+        />
+        <span aria-hidden className="text-[var(--color-ink-3)]">
+          –
+        </span>
+        <NumberCell
+          ariaLabel="Maksymalna kaloryczność"
+          onChange={(v) => {
+            setMaxStr(v);
+            commit(minStr, v);
+          }}
+          value={maxStr}
+        />
+        {showRangeReset && (
+          <button
+            className="text-[12px] text-[var(--color-ink-3)] hover:text-[var(--color-ink)] underline-offset-2 hover:underline ml-1"
+            onClick={() => {
+              setMinStr(String(dataMin));
+              setMaxStr(String(dataMax));
+              setUrl({ kcal_max: dataMax, kcal_min: dataMin });
+            }}
+            type="button"
+          >
+            cały zakres
+          </button>
+        )}
+      </div>
+
+      {/* Presets */}
+      <div className="flex flex-wrap items-center gap-1">
+        {presets.map((k) => {
+          const isActive = activeMin === k && activeMax === k;
+          return (
+            <Pill
+              active={isActive}
+              key={k}
+              onClick={() => {
+                onPreset(k);
+              }}
+              title={`${k} kcal — kliknij, by zawęzić`}
+            >
+              {k}
+            </Pill>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- extraSlot is React.ReactNode which transitively includes mutable Iterable<ReactNode>; cannot be deeply readonly
+export const KcalRangeFilter = ({
+  activeDays,
+  activeMax,
+  activeMin,
+  dataMax,
+  dataMin,
+  dayOptions,
+  extraSlot,
+  presets,
+}: Readonly<Props>) => {
+  const setUrl = useUrlPatch();
+
+  return (
     <div className="px-5 sm:px-8 lg:px-14 py-5 border-b border-[var(--color-bone)]">
       <div className="flex flex-wrap items-center gap-x-7 gap-y-4">
-        {/* Range inputs */}
-        <div className="flex items-center gap-2">
-          <span className="text-[11px] uppercase tracking-[0.08em] text-[var(--color-ink-3)] mr-1">
-            Kcal
-          </span>
-          <NumberCell
-            ariaLabel="Minimalna kaloryczność"
-            onChange={(v) => {
-              setMinStr(v);
-              commit(v, maxStr);
-            }}
-            value={minStr}
-          />
-          <span aria-hidden className="text-[var(--color-ink-3)]">
-            –
-          </span>
-          <NumberCell
-            ariaLabel="Maksymalna kaloryczność"
-            onChange={(v) => {
-              setMaxStr(v);
-              commit(minStr, v);
-            }}
-            value={maxStr}
-          />
-          {showRangeReset && (
-            <button
-              className="text-[12px] text-[var(--color-ink-3)] hover:text-[var(--color-ink)] underline-offset-2 hover:underline ml-1"
-              onClick={() => {
-                setMinStr(String(dataMin));
-                setMaxStr(String(dataMax));
-                setUrl({ kcal_max: dataMax, kcal_min: dataMin });
-              }}
-              type="button"
-            >
-              cały zakres
-            </button>
-          )}
-        </div>
-
-        {/* Presets */}
-        <div className="flex items-center gap-1">
-          {presets.map((k) => {
-            const isActive = activeMin === k && activeMax === k;
-            return (
-              <Pill
-                active={isActive}
-                key={k}
-                onClick={() => {
-                  onPreset(k);
-                }}
-                title={`${k} kcal — kliknij, by zawęzić`}
-              >
-                {k}
-              </Pill>
-            );
-          })}
-        </div>
+        <KcalRangeControls
+          activeMax={activeMax}
+          activeMin={activeMin}
+          className="contents"
+          dataMax={dataMax}
+          dataMin={dataMin}
+          presets={presets}
+        />
 
         {/* Days — hidden when dayOptions is empty (calendar lives elsewhere). */}
         {dayOptions.length > 0 && (

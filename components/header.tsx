@@ -3,6 +3,7 @@
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import * as React from "react";
 
+import { McpConnect } from "@/components/mcp-connect";
 import {
   Command,
   CommandEmpty,
@@ -24,12 +25,16 @@ export interface CityOption {
 }
 
 export interface HeaderProps {
-  readonly cities: readonly CityOption[];
-  readonly activeCityId: number;
-  readonly activeCityName: string;
+  /** City picker data. Omit it where the city is chosen elsewhere on the
+   *  page (the home page's query sentence); the header then shows only MCP. */
+  readonly city?: Readonly<{
+    cities: readonly CityOption[];
+    activeCityId: number;
+    activeCityName: string;
+  }>;
 }
 
-const useUrlSetter = () => {
+export const useUrlSetter = () => {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -49,7 +54,7 @@ const useUrlSetter = () => {
   );
 };
 
-const CityPicker = ({
+export const CityPicker = ({
   activeId,
   cities,
   onPick,
@@ -135,11 +140,7 @@ const PickerButton = ({
   );
 };
 
-export const Header = ({
-  activeCityId,
-  activeCityName,
-  cities,
-}: Readonly<HeaderProps>) => {
+export const Header = ({ city }: Readonly<HeaderProps>) => {
   const setUrl = useUrlSetter();
 
   return (
@@ -160,15 +161,27 @@ export const Header = ({
         </a>
 
         <div className="flex items-center gap-1">
-          <PickerButton label="Miasto" value={activeCityName || "Wrocław"}>
-            <CityPicker
-              activeId={activeCityId}
-              cities={cities}
-              onSelect={(id) => {
-                setUrl({ city: id });
-              }}
-            />
-          </PickerButton>
+          {city !== undefined && (
+            <>
+              <PickerButton
+                label="Miasto"
+                value={city.activeCityName || "Wrocław"}
+              >
+                <CityPicker
+                  activeId={city.activeCityId}
+                  cities={city.cities}
+                  onSelect={(id) => {
+                    setUrl({ city: id });
+                  }}
+                />
+              </PickerButton>
+              <span
+                aria-hidden
+                className="h-4 w-px bg-[var(--color-bone)] mx-1"
+              />
+            </>
+          )}
+          <McpConnect />
         </div>
       </div>
     </header>

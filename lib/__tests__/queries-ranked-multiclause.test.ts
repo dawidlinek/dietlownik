@@ -24,7 +24,36 @@ const HEAVY_SKIP =
   process.env.DATABASE_URL === "";
 
 const WROCLAW_ID = 986_283;
-const POPULATED_DATE = "2026-05-17";
+
+/** Every keyword credited with a hit across a set of ranked offers. */
+const hitKeywords = (
+  offers: readonly {
+    readonly picks: readonly {
+      readonly meal: { readonly hits: readonly { readonly keyword: string }[] };
+    }[];
+  }[]
+): Set<string> =>
+  new Set(
+    offers.flatMap((o) =>
+      o.picks.flatMap((pick) => pick.meal.hits.map((h) => h.keyword))
+    )
+  );
+
+// Dates are resolved from the data, never hardcoded — a pinned fixture date
+// ages out of the retained window and turns passing tests into
+// `expected 0 to be greater than 0` failures that look like regressions.
+// Populated by the file-level `beforeAll` below.
+let POPULATED_DATE = "";
+let POPULATED_DATES: readonly string[] = [];
+
+beforeAll(async () => {
+  if (HEAVY_SKIP) {
+    return;
+  }
+  const { resolvePopulatedDates } = await import("./helpers/populated-date");
+  POPULATED_DATES = await resolvePopulatedDates(WROCLAW_ID, 3);
+  POPULATED_DATE = POPULATED_DATES[0] ?? "";
+});
 
 // Wide-enough range to cover lunch+dinner tiers (1200..2500 kcal/day diets)
 const KCAL_MIN = 1200;
@@ -89,7 +118,7 @@ describe.skipIf(HEAVY_SKIP)(
       );
     });
 
-    it("A2 — diacritic-stripped match still routes to embedding", async () => {
+    it("A2 — diacritic-stripped keyword still finds the ingredient", async () => {
       const { getRankedOffersForDay } = await import("../queries.js");
       const withDia = await getRankedOffersForDay({
         avoid: [],
@@ -112,12 +141,28 @@ describe.skipIf(HEAVY_SKIP)(
       if (withDia.offers.length === 0 || stripped.offers.length === 0) {
         return;
       }
-      // Both should produce non-empty results and the embedding model treats
-      // them similarly — top score within 30% of each other.
+      // Both forms must FIND salmon. Their scores — and the offers they
+      // surface — legitimately differ, so don't assert either.
+      //
+      // `łosoś` is a real word: the semantic channel fires (sim ≈ 0.83) on
+      // top of the lexical one. `losos` is a misspelling that falls under
+      // τ=0.80, so only the lexical channel fires — `meals.name_normalized`
+      // is diacritic-stripped, so it still matches ("losos wedzony",
+      // sim=1.00). That asymmetry IS the designed fall-through, introduced
+      // with the lexical ingredient channel in `9e03f81`.
+      //
+      // Measured on a production snapshot the two share ZERO offers: the
+      // embedding boost carries `łosoś` to a different catering entirely.
+      // The original assertion (scores within 50%) only held while embedding
+      // was the sole fallback channel.
       const a = withDia.offers[0].verdict.score_best;
       const b = stripped.offers[0].verdict.score_best;
-      const denom = Math.max(Math.abs(a), Math.abs(b), 0.01);
-      expect(Math.abs(a - b) / denom).toBeLessThan(0.5);
+      expect(a).toBeGreaterThan(0);
+      expect(b).toBeGreaterThan(0);
+
+      // Every hit must be attributable to the keyword that was asked for.
+      expect([...hitKeywords(withDia.offers)]).toContain("łosoś");
+      expect([...hitKeywords(stripped.offers)]).toContain("losos");
     });
 
     it("A3 — Polish inflection variants score sensibly close", async () => {
@@ -542,8 +587,12 @@ describe.skipIf(HEAVY_SKIP)(
         avoid: [],
         cityId: WROCLAW_ID,
         date: POPULATED_DATE,
-        kcalMax: 1,
-        kcalMin: 0,
+        // Deliberately above every real diet. The previous bound was [0, 1],
+        // which does NOT exclude everything: the corpus contains a genuine
+        // `calories = 1` diet (Czapielskie Pudełka / "Wychodząca"), and C4
+        // asserts the bounds are inclusive — so [0, 1] correctly matched it.
+        kcalMax: 1_000_000,
+        kcalMin: 999_999,
         limit: 10,
         prefer: ["kurczak"],
       });
@@ -733,7 +782,7 @@ describe.skipIf(HEAVY_SKIP)(
       const day2 = await getRankedOffersForDay({
         avoid: [],
         cityId: WROCLAW_ID,
-        date: "2026-05-19",
+        date: POPULATED_DATES[2] ?? POPULATED_DATE,
         kcalMax: KCAL_MAX,
         kcalMin: KCAL_MIN,
         limit: 50,
@@ -1134,9 +1183,13 @@ describe.skipIf(HEAVY_SKIP)(
             totalHits += 1;
             expect(["prefer", "avoid"]).toContain(hit.channel);
             expect(
-              ["allergen", "category", "macro", "embedding"].includes(
-                hit.source
-              )
+              [
+                "allergen",
+                "category",
+                "macro",
+                "ingredient",
+                "embedding",
+              ].includes(hit.source)
             ).toBe(true);
             expect(Number.isFinite(hit.contribution)).toBe(true);
           }

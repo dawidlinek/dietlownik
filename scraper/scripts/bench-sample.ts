@@ -7,7 +7,8 @@
  *
  * Stratification per query:
  *   - `text_match`     : meals (in the slice) whose name+ingredients ILIKE %query%
- *   - `embedding_pool` : top-K nearest neighbours under current meal_embeddings
+ *   - `embedding_pool` : top-K nearest neighbours under variant_embeddings
+ *                        (the vector of each dish's latest variant)
  *   - `random`         : pure random distractors from the slice
  *
  *   BENCH_CITY=986283 BENCH_DAY=2026-05-20 npm run bench:sample
@@ -45,8 +46,8 @@ interface MealIdRow {
 const pickBusiestDay = async (cityId: number): Promise<string> => {
   const rows = await query<{ menu_date: string; distinct_meals: string }>(
     `SELECT menu_date::text, COUNT(DISTINCT meal_id)::text AS distinct_meals
-       FROM daily_menu
-      WHERE city_id = $1 AND meal_id IS NOT NULL
+       FROM menu_items
+      WHERE city_id = $1
       GROUP BY menu_date
       ORDER BY COUNT(DISTINCT meal_id) DESC, menu_date DESC
       LIMIT 1`,
@@ -54,7 +55,7 @@ const pickBusiestDay = async (cityId: number): Promise<string> => {
   );
   if (rows.length === 0) {
     throw new Error(
-      `no daily_menu rows for city_id=${cityId} — has the scrape finished any companies?`
+      `no menu_items rows for city_id=${cityId} — has the scrape finished any companies?`
     );
   }
   return rows[0].menu_date;
@@ -70,19 +71,22 @@ const pickMeals = async (
 
   // Common slice filter — meal must be on offer in the (city, day) slice.
   // The subquery is small (a few thousand meal_ids) so this is cheap.
+  // menu_items (every span, not just open ones) mirrors the old daily_menu
+  // event log, which kept every capture of the day.
   const SLICE = `
-    id IN (
+    m.id IN (
       SELECT DISTINCT meal_id
-        FROM daily_menu
-       WHERE city_id = $sliceCity AND menu_date = $sliceDay AND meal_id IS NOT NULL
+        FROM menu_items
+       WHERE city_id = $sliceCity AND menu_date = $sliceDay
     )
   `;
 
   // ── 1. text_match ────────────────────────────────────────────────────────
-  const pattern = `%${q.query_text.replaceAll(/[%_]/g, "\\$&")}%`;
+  const pattern = `%${q.query_text.replaceAll(/[%_]/gu, "\\$&")}%`;
   const textRows = await query<MealIdRow>(
-    `SELECT id::text FROM meals
-      WHERE (name ILIKE $1 OR ingredients_raw ILIKE $1)
+    `SELECT m.id::text FROM meals m
+       LEFT JOIN meal_latest_variant lv ON lv.meal_id = m.id
+      WHERE (m.name ILIKE $1 OR lv.ingredients_raw ILIKE $1)
         AND ${SLICE.replace("$sliceCity", "$2").replace("$sliceDay", "$3")}
       ORDER BY RANDOM()
       LIMIT $4`,
@@ -100,14 +104,15 @@ const pickMeals = async (
   try {
     const vec = await embedKeyword(q.query_text);
     const embRows = await query<MealIdRow>(
-      `SELECT cme.meal_id::text AS id
-         FROM current_meal_embeddings cme
-        WHERE cme.meal_id IN (
+      `SELECT lv.meal_id::text AS id
+         FROM meal_latest_variant lv
+         JOIN variant_embeddings ve ON ve.variant_id = lv.variant_id
+        WHERE lv.meal_id IN (
                 SELECT DISTINCT meal_id
-                  FROM daily_menu
-                 WHERE city_id = $2 AND menu_date = $3 AND meal_id IS NOT NULL
+                  FROM menu_items
+                 WHERE city_id = $2 AND menu_date = $3
               )
-        ORDER BY cme.embedding <=> $1::vector
+        ORDER BY ve.embedding <=> $1::vector
         LIMIT $4`,
       [toPgVector(vec), cityId, day, EMBEDDING_CAP]
     );
@@ -128,8 +133,8 @@ const pickMeals = async (
   if (remaining > 0) {
     const seenList = [...seen];
     const randRows = await query<MealIdRow>(
-      `SELECT id::text FROM meals
-        WHERE NOT (id = ANY($1::bigint[]))
+      `SELECT m.id::text FROM meals m
+        WHERE NOT (m.id = ANY($1::bigint[]))
           AND ${SLICE.replace("$sliceCity", "$2").replace("$sliceDay", "$3")}
         ORDER BY RANDOM()
         LIMIT $4`,
@@ -161,8 +166,8 @@ const main = async (): Promise<void> => {
   // Sanity: surface the slice size so the user can react if it's tiny.
   const sliceRows = await query<{ n: string }>(
     `SELECT COUNT(DISTINCT meal_id)::text AS n
-       FROM daily_menu
-      WHERE city_id = $1 AND menu_date = $2 AND meal_id IS NOT NULL`,
+       FROM menu_items
+      WHERE city_id = $1 AND menu_date = $2`,
     [CITY_ID, day]
   );
   const sliceSize = Number.parseInt(sliceRows[0]?.n ?? "0", 10);

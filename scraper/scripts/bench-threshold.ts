@@ -200,8 +200,8 @@ const main = async (): Promise<void> => {
   // 1. Load meal vectors + slice meal_ids
   const meals = loadCache(cachePath);
   const sliceRows = await query<{ meal_id: string }>(
-    `SELECT DISTINCT meal_id::text FROM daily_menu
-      WHERE city_id=$1 AND menu_date=$2 AND meal_id IS NOT NULL`,
+    `SELECT DISTINCT meal_id::text FROM menu_items
+      WHERE city_id=$1 AND menu_date=$2`,
     [CITY_ID, DAY]
   );
   // oxlint-disable-next-line typescript-eslint/prefer-readonly-parameter-types -- query<T>() row type is mutable by design
@@ -221,8 +221,8 @@ const main = async (): Promise<void> => {
        FROM bench_labels bl
        JOIN bench_queries q ON q.query_id = bl.query_id
       WHERE bl.meal_id IN (
-              SELECT DISTINCT meal_id FROM daily_menu
-               WHERE city_id=$1 AND menu_date=$2 AND meal_id IS NOT NULL
+              SELECT DISTINCT meal_id FROM menu_items
+               WHERE city_id=$1 AND menu_date=$2
             )`,
     [CITY_ID, DAY]
   );

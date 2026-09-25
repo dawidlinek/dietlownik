@@ -77,6 +77,15 @@ export interface CompanySearchItem {
   galleryFullSize?: number | null;
   priceCategory?: string | null;
   activePromotionInfo?: ActivePromotionInfo | null;
+  /** Exact validity of the running promotion (UTC, no offset in the JSON). */
+  activePromotion?: {
+    code: string | null;
+    dateFrom: string | null;
+    dateTo: string | null;
+    discountPercents: number | null;
+    promotionName?: string | null;
+    participatesInCampaign?: boolean | null;
+  } | null;
   galleryImages?: unknown[] | null;
   /** Set client-side; equal to `name`. */
   companyId?: string;
@@ -84,7 +93,8 @@ export interface CompanySearchItem {
 }
 
 export interface AwardedAndTopResponse {
-  city?: unknown;
+  /** The resolved city record — same shape as top-search's `cities[]`. */
+  city?: City;
   currentPage: number;
   totalElements: number;
   totalPages: number;
@@ -112,6 +122,8 @@ export interface DietOption {
 
 export interface Tier {
   tierId: number;
+  /** Tier-level discount ladder, next to the diet's own. */
+  discounts?: Discount[];
   name: string;
   description?: string | null;
   imageUrl?: string | null;
@@ -201,13 +213,32 @@ export interface ConstantResponse {
   companyDiets: Diet[];
   companyHeader: CompanyHeader;
   companyParams: CompanyParams;
-  companySideOrders?: unknown[];
-  contactDetails?: unknown;
-  deliveryCities?: unknown[];
+  companySideOrders?: SideOrder[] | null;
+  contactDetails?: ContactDetails | null;
+  deliveryCities?: {
+    numberOfCities?: number | null;
+    /** truncated to ~20 entries; not a full list */
+    cities?: unknown[];
+  } | null;
   formSettings?: FormSettings;
   images?: unknown[];
   menuSettings: MenuSettings;
   programs?: unknown[];
+}
+
+export interface SideOrder {
+  name: string;
+  /** "9.90 zł" */
+  price: string | number | null;
+  imageUrl?: string | null;
+}
+
+export interface ContactDetails {
+  email?: string | null;
+  phoneNumber?: string | null;
+  description?: string | null;
+  /** A JSON document serialised into a string: {street, zipCode, cityName, …} */
+  address?: string | null;
 }
 
 // ── /city/{cityId} ────────────────────────────────────────────────────────────
@@ -251,7 +282,8 @@ export interface CityResponse {
   companyPriceCategory: string | null;
   companySettings: CompanySettings;
   awarded?: boolean;
-  citySearchResult: CitySearchResult;
+  /** null when the catering doesn't currently deliver to this city */
+  citySearchResult: CitySearchResult | null;
   lowestPrice: LowestPrice | null;
 }
 
@@ -314,6 +346,7 @@ export interface DietTag {
   calories?: number[];
   dietTagBulletPoints?: string[];
   dietDescriptions?: { title: string; description: string }[];
+  dietTagSimilarDiets?: string[];
   [key: string]: unknown;
 }
 
@@ -336,12 +369,16 @@ export interface MealDetails {
   /** pretty string */
   allergens?: string | null;
   allergensWithExcluded?: {
-    dietaryExclusionId: number;
+    dietaryExclusionId: number | null;
     companyAllergenName: string;
     dietlyAllergenName: string;
     excluded: boolean;
   }[];
-  ingredients?: { name: string; major: boolean; exclusion: unknown[] }[];
+  ingredients?: {
+    name: string;
+    major: boolean;
+    exclusion: { dietaryExclusionId: number; name: string }[];
+  }[];
 }
 
 export interface MealOption {
@@ -371,18 +408,22 @@ export interface MenuResponse {
 // ── /api/open/mobile/banners ─────────────────────────────────────────────────
 
 export interface Banner {
+  /** Campaign name, e.g. "PACZKI1", "PROMO_LISTING". NOT a redeemable code. */
   name: string;
-  code: string;
   url: string | null;
   /** ISO 8601 with offset */
   validFrom: string | null;
   validTo: string | null;
   deepLink: string | null;
-  /** DASHBOARD | SAVED_MEALS | COMPANIES */
-  target: string | null;
+  /**
+   * Placement slots, e.g. ["PROMO_LISTING"], ["DASHBOARD"]. Replaced the
+   * former singular `target` string.
+   */
+  targets: string[] | null;
   priority: number | null;
   /** CAMPAIGN | STANDALONE */
   type: string | null;
+  isOpenLoyalty: boolean | null;
 }
 
 // ── /api/open/content-management/recommended-diets ───────────────────────────
@@ -454,7 +495,7 @@ export interface FeedbackResponse {
 export interface PriceLeaf {
   diet_calories_id: number;
   diet_id: number;
-  tier_id: number | null;
+  tier_id: number;
   tier_diet_option_id: string | null;
   is_menu_configuration: boolean;
   delivery_on_saturday: boolean;

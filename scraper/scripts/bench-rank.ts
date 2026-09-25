@@ -7,14 +7,14 @@
  *   - bench_queries
  *   - bench_labels             (filtered by labeler_model)
  *   - bench/vectors/<id>.bin   (one file per model, from bench-embed-all)
- *   - daily_menu               (to enforce the city+day slice)
+ *   - menu_items               (to enforce the city+day slice)
  *
  * Writes:
  *   - bench_runs               (one row per model × scope)
  *   - bench_run_per_query      (per-query breakdown)
  *
  *   BENCH_CITY=986283 BENCH_DAY=2026-05-20 npm run bench:rank
- *   # defaults: city=Wrocław (986283), day=busiest day in daily_menu
+ *   # defaults: city=Wrocław (986283), day=busiest day in menu_items
  *   BENCH_MODELS=e5-large,mmlw-e5-large npm run bench:rank
  *   BENCH_LABELER=claude-sonnet-4-5 npm run bench:rank
  */
@@ -249,15 +249,15 @@ const errorMessage = (error: unknown): string =>
 const pickBusiestDay = async (cityId: number): Promise<string> => {
   const rows = await query<{ menu_date: string }>(
     `SELECT menu_date::text
-       FROM daily_menu
-      WHERE city_id = $1 AND meal_id IS NOT NULL
+       FROM menu_items
+      WHERE city_id = $1
       GROUP BY menu_date
       ORDER BY COUNT(DISTINCT meal_id) DESC, menu_date DESC
       LIMIT 1`,
     [cityId]
   );
   if (rows.length === 0) {
-    throw new Error(`no daily_menu rows for city_id=${cityId}`);
+    throw new Error(`no menu_items rows for city_id=${cityId}`);
   }
   return rows[0].menu_date;
 };
@@ -268,8 +268,8 @@ const loadSliceMealIds = async (
 ): Promise<Set<bigint>> => {
   const rows = await query<{ meal_id: string }>(
     `SELECT DISTINCT meal_id::text
-       FROM daily_menu
-      WHERE city_id = $1 AND menu_date = $2 AND meal_id IS NOT NULL`,
+       FROM menu_items
+      WHERE city_id = $1 AND menu_date = $2`,
     [cityId, day]
   );
   return new Set(
@@ -452,7 +452,7 @@ const main = async (): Promise<void> => {
     ? new Set(
         readdirSync(VECTORS_DIR)
           .filter((f) => f.endsWith(".bin"))
-          .map((f) => f.replace(/\.bin$/, ""))
+          .map((f) => f.replace(/\.bin$/u, ""))
       )
     : new Set<string>();
   const selected = CANDIDATES.filter((c) => {
